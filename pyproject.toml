@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "takvim"
+version = "0.1.0"
+description = "Yerel-oncelikli takvim uygulamasi - saf mantik cekirdegi (Faz 0)"
+requires-python = ">=3.12"
+dependencies = [
+    "python-dateutil>=2.9",
+    # tzdata blueprint'teki listede yok, ama Windows'ta isletim sisteminin IANA
+    # veritabani olmadigi icin stdlib zoneinfo tek basina calismaz
+    # (ZoneInfoNotFoundError). Opsiyonel bir kolaylik degil, zorunluluk.
+    "tzdata>=2024.1; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+package-data = { store = ["schema.sql", "migrations/*.sql"] }
+packages = ["core", "store"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
