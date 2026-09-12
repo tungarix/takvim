@@ -14,11 +14,13 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Faz 0 — saf mantık çekirdeği (`core/`) | ✅ bitti |
 | Faz 1 — kalıcılık (`store/`) | ✅ bitti |
 | Faz 2 — `.ics` içe aktarma (`ics/`) | ✅ bitti |
-| Faz 3 — UI, hafta görünümü (`ui/`) | ✅ bitti |
-| **Faz 4 — konfor** | ⬅️ **sıradaki** (hızlı ekleme, arama, kısayollar) |
-| Faz 5 — `.ics` dışa aktarma | bekliyor |
+| Faz 3 — UI, gün/hafta/ay (`ui/`) | ✅ bitti |
+| Faz 4 — konfor (hızlı ekleme, arama, kısayollar) | ✅ bitti |
+| Faz 5 — `.ics` dışa aktarma | ✅ bitti |
 
-**126 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**v1 kapsamı tamamlandı.**
+
+**185 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -146,6 +148,30 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     Tek kullanıcıda eşzamanlılık kazandırmıyor; dönmek istersen
     `store.connect()`'e `check_same_thread=False` geçip erişimi kilitle.
 
+### core/quickadd.py
+
+17. **Ayrıştırma sırası: tarih -> süre -> saat aralığı -> tek saat**, her adım
+    bir öncekini MASKELER. İkisi de gerçek hatadan çıktı: "15.10.2026" içindeki
+    `15.10` saat sanılıyordu; "2 saat 14:00" içindeki `saat 14:00` deseni
+    süreyle çakışıp saati başlıkta bırakıyordu.
+18. **İşaretsiz çıplak sayı saat DEĞİL.** "3 ekim 10 kişilik toplantı"da 10'u
+    saat sanmaktansa zamanı bulamamış olmayı tercih ediyoruz. Tanınmayan ifade
+    `matched=""` ile bildirilir; arayüz kullanıcıyı uyarır.
+
+### ics/exporter.py
+
+19. **Dışa aktarmada saatli etkinlikler UTC'ye ÇEVRİLMEZ.** `TZID` + `VTIMEZONE`
+    yazılır. UTC'ye çevirseydik tekrarlı etkinliğin duvar saati karşı tarafta
+    DST geçişinde kayardı -- kendi düzelttiğimiz hatayı ihraç ederdik.
+    Gidiş-dönüş testi bunu KASTEN farklı bir `default_tzid` ile ölçüyor.
+
+### store/repo.py (arama)
+
+20. **Arama katlaması dilbilimsel Türkçe küçültme DEĞİL.** `I`->`ı` doğru
+    Türkçedir ama aramada yanlış davranış: "ALGORITMA" yazan "Algoritma"yı
+    bulamaz. `_arama_anahtari` I ailesini (I/İ/ı/i) tek harfe indirir ve
+    şapkaları düzler. Arama niyet eşleştirir, dil kuralı uygulamaz.
+
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -209,11 +235,9 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**Faz 4 — kullanım konforu:** hızlı ekleme ("yarın 14:00 diş hekimi" → parse),
-arama, hatırlatıcı, klavye kısayolları. Hatırlatıcının uygulama kapalıyken de
-çalışıp çalışmayacağı KARARA BAĞLI (README §9) — kendi başına seçme, sor.
+**v1 kapsamı tamamlandı** (README §1). Yeni özellik eklemeden önce SOR --
+kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-Faz 3 kapsam dışı bıraktıkları Faz 4'e ait: sürükle-bırak, etkinlik
-oluşturma/düzenleme, ay ve gün görünümleri.
-
-Biten faz: [docs/faz2-ics-import.md](docs/faz2-ics-import.md).
+Bilinçli olarak yapılmamış olanlar README §9'da. Hatırlatıcı kararı hâlâ
+açık (README §10): uygulama kapalıyken de çalışacaksa arka plan servisi
+gerekir ve bu ayrı bir proje kadar iş -- kendi başına başlama.

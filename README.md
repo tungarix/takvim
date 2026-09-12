@@ -2,10 +2,10 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** Faz 0-3 tamamlandı. Çalışan hafta görünümü + etkinlik paneli var.
+**Durum:** v1 tamamlandı (Faz 0-5). Gün/hafta/ay görünümleri, hızlı ekleme,
+arama, `.ics` içe ve dışa aktarma çalışıyor.
 
 > Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
-> Sıradaki faz: 4 — kullanım konforu (hızlı ekleme, arama, kısayollar).
 
 ---
 
@@ -37,8 +37,8 @@ Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, ç
 ```
 core/     saf mantık — DB ve GUI bilmez          ✓ Faz 0
 store/    kalıcılık (SQLite)                      ✓ Faz 1
-ics/      içe aktarma                             ✓ Faz 2 (dışa aktarma Faz 5)
-ui/       arayüz (yerel web)                      ✓ Faz 3 (hafta görünümü)
+ics/      içe/dışa aktarma                        ✓ Faz 2 + 5
+ui/       arayüz (yerel web)                      ✓ Faz 3 + 4
 ```
 
 **`core/` hiçbir zaman `store/` veya `ui/` import etmez. Tersi serbest.**
@@ -163,7 +163,7 @@ IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 
 ## 6. Kabul kriterleri
 
-**126 test geçiyor** (84 + 20 Faz 2 + 4 `ics_sequence` + 18 Faz 3). Blueprint §7 listesinin tamamı karşılandı:
+**185 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -259,6 +259,8 @@ aktarıcının `repo.conn` ile ham SQL yazması da böylece kalktı.
 .venv\Scripts\python.exe -m ui --demo
 ```
 
+Kalıcı veritabanıyla: `-m ui --db takvim.db`
+
 Tarayıcıda `http://127.0.0.1:8765` açılır. `--db takvim.db` ile kalıcı veritabanı,
 `--tz` ile saat dilimi verilir.
 
@@ -308,15 +310,74 @@ Sürükle-bırak, etkinlik oluşturma/düzenleme, ay ve gün görünümleri. Faz
 
 ---
 
-## 8. Sonraki fazlar
+## 8. Faz 4 ve 5'te ne var
 
-- **Faz 2 — `.ics` içe aktarma:** ✓ tamamlandı (parse saf + `Repo` kaydı, 20 test).
-- **Faz 4 — Konfor:** hızlı ekleme, arama, hatırlatıcı, kısayollar.
-- **Faz 5 — `.ics` dışa aktarma.**
+| Dosya | Sorumluluk |
+|---|---|
+| `core/quickadd.py` | "yarın 14:00 diş hekimi" -> Event alanları (saf) |
+| `ics/exporter.py` | `.ics` dışa aktarma, VTIMEZONE üretimi |
+| `ui/presenter.py` | `day_payload`, `month_payload` eklendi |
+| `ui/server.py` | CRUD, hızlı ekleme, arama, içe/dışa aktarma uçları |
+
+### Hızlı ekleme: tahmin etme, tanı
+
+`parse_quick_add` tanımadığı bir zaman ifadesini uydurmaz; tüm gün etkinliği
+üretip `matched` alanını boş bırakır ve arayüz bunu kullanıcıya söyler.
+**Yanlış saate sessizce kaydedilen bir randevu, kaydedilmemiş randevudan
+beterdir.**
+
+Aynı sebeple işaretsiz çıplak sayı saat sayılmaz: "3 ekim 10 kişilik toplantı"
+ifadesinde 10'u saat sanmaktansa zamanı bulamamış olmayı tercih ediyoruz.
+Saat için işaret şart: `14:00`, `14.30`, `9da`, `saat 9`.
+
+Ayrıştırma sırası önemli ve her adım bir öncekini maskeliyor:
+**tarih → süre → saat aralığı → tek saat.** İkisi de gerçek hatalardan çıktı:
+"15.10.2026" içindeki `15.10` saat sanılıyordu; "2 saat 14:00" içindeki
+`saat 14:00` deseni süreyle çakışıp saati başlıkta bırakıyordu.
+
+### Arama: dil kuralı değil, niyet
+
+Dilbilimsel olarak doğru Türkçe küçültme (`I`→`ı`) arama için **yanlış**
+davranış: Türkçe klavyesi olmayan biri "ALGORITMA" yazdığında "algorıtma"
+elde edilir ve "Algoritma" bulunamaz. Bu yüzden arama I ailesini (I/İ/ı/i) tek
+harfe indiriyor ve şapkalı harfleri düzlüyor — "carsamba" da "Çarşamba"yı
+buluyor.
+
+Eşleştirme Python'da, SQL `LIKE` ile değil (SQLite'ın `lower()`'ı yalnızca
+ASCII'de çalışır). Tam tarama; kişisel takvim ölçeğinde sorun değil, ölçülüp
+gerekirse FTS5 eklenir.
+
+### Dışa aktarma: UTC'ye çevirme
+
+Saatli etkinlikler `TZID` parametresiyle kendi dilimlerinde yazılır ve dosyaya
+`VTIMEZONE` blokları eklenir. UTC'ye çevirseydik tekrarlı bir etkinliğin duvar
+saati karşı tarafta DST geçişinde kayardı — `core/recurrence.py`'de çözdüğümüz
+hatanın aynısını ihraç etmiş olurduk.
+
+Gidiş-dönüş testi bunu, içe aktarırken **kasten farklı** bir `default_tzid`
+vererek ölçüyor: dilim bilgisi dosyadaki TZID'den gelmek zorunda. (İlk hâlinde
+aynı dilimi veriyordu ve dışa aktarma UTC'ye düşse bile test kazara geçiyordu;
+mutasyon testi bunu yakaladı.)
+
+### Tek örnek / tüm seri ayrımı
+
+Panelde iki ayrı düğme var ve ikisi de onay istiyor: bir dersi bu haftalık iptal
+etmekle dönem boyunca silmek karıştırılmamalı. Tek örnek iptali override yazar
+(`cancelled=1`), seri silme satırı `CASCADE` ile kaldırır.
 
 ---
 
-## 9. Açık sorular
+## 9. Sonraki fazlar
+
+v1 kapsamı tamamlandı. Kalanlar bilinçli olarak dışarıda:
+
+- **Sürükle-bırak** ile blok taşıma (override altyapısı hazır, yalnızca ön yüz işi)
+- **Hatırlatıcı** — bkz. §10, karara bağlı
+- **Ay görünümünde "+N daha"** tıklanınca gün görünümüne geçiyor; açılır liste yok
+
+---
+
+## 10. Açık sorular
 
 Bunlar Faz 1'e geçmeden cevaplanmalı değil ama Faz 3'ten önce cevaplanmalı:
 

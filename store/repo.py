@@ -73,14 +73,45 @@ def _now_db() -> str:
     return datetime.now(UTC).replace(microsecond=0).strftime(_DB_FORMAT)
 
 
-def connect(path: str | Path) -> sqlite3.Connection:
+# Arama için katlama tablosu. DİLBİLİMSEL OLARAK DOĞRU Türkçe küçültme
+# ('I'->'ı', 'İ'->'i') arama için YANLIŞ davranış: Türkçe klavyesi olmayan biri
+# "ALGORITMA" yazdığında "algorıtma" elde edilir ve "Algoritma" bulunamaz.
+# Aramada niyet eşleştirmek, dil kuralı uygulamak değil; bu yüzden I ailesini
+# (I/İ/ı/i) tek harfe indiriyor ve şapkalı harfleri düzlüyoruz. Böylece
+# "carsamba" da "Çarşamba"yı buluyor.
+_ARAMA_KATLAMA = str.maketrans({
+    "I": "i", "İ": "i", "ı": "i",
+    "Ş": "s", "ş": "s",
+    "Ğ": "g", "ğ": "g",
+    "Ç": "c", "ç": "c",
+    "Ö": "o", "ö": "o",
+    "Ü": "u", "ü": "u",
+})
+
+
+def _arama_anahtari(metin: str) -> str:
+    """Metni arama karşılaştırması için normalize eder."""
+    return metin.translate(_ARAMA_KATLAMA).lower()
+
+
+def connect(path: str | Path, *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Takvim DB'sine bağlanır.
 
     isolation_level=None: transaction'ları açıkça biz yönetiyoruz.
     foreign_keys=ON: SQLite'ta varsayılan KAPALI; açılmazsa ON DELETE CASCADE
     sessizce hiçbir şey yapmaz ve silinen takvimin etkinlikleri öksüz kalır.
+
+    `check_same_thread=False` sqlite3'ün thread kontrolünü KAPATIR ve bağlantıyı
+    başka bir thread'den kullanmaya izin verir. Varsayılan True, çünkü kontrolü
+    kapatmak eşzamanlılığı güvenli yapmaz -- yalnızca kontrolü susturur.
+    False geçen çağıran, erişimin sırayla olmasını KENDİSİ garanti etmelidir
+    (tek bir sunucu thread'i, ya da bir kilit). Bunu testler kullanıyor: HTTP
+    sunucusunu arka plan thread'inde çalıştırıp ana thread'de kurulan depoya
+    konuşuyorlar.
     """
-    conn = sqlite3.connect(str(path), isolation_level=None)
+    conn = sqlite3.connect(
+        str(path), isolation_level=None, check_same_thread=check_same_thread
+    )
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -147,9 +178,13 @@ class Repo:
         self.conn = conn
 
     @classmethod
-    def open(cls, path: str | Path) -> "Repo":
-        """DB'yi açar ve bekleyen migrationları uygular."""
-        conn = connect(path)
+    def open(cls, path: str | Path, *, check_same_thread: bool = True) -> "Repo":
+        """DB'yi açar ve bekleyen migrationları uygular.
+
+        `check_same_thread` için bkz. `connect()`; varsayılanı değiştirmeden
+        önce erişimin sırayla olduğundan emin ol.
+        """
+        conn = connect(path, check_same_thread=check_same_thread)
         migrate(conn)
         return cls(conn)
 
@@ -262,6 +297,30 @@ class Repo:
                 (calendar_id,),
             )
         return [_row_to_event(r) for r in rows]
+
+    def search_events(self, sorgu: str, *, limit: int = 50) -> list[Event]:
+        """Başlık, açıklama ve konumda geçen etkinlikleri arar.
+
+        Eşleştirme Python tarafında yapılıyor, SQL `LIKE` ile değil: SQLite'ın
+        `lower()`/`LIKE`'ı yalnızca ASCII'de büyük-küçük harf duyarsız, yani
+        "İstanbul" araması "istanbul"u bulamazdı. Karşılaştırma `_arama_anahtari`
+        ile hoşgörülü: büyük/küçük harf ve Türkçe şapkalar önemsenmez. Tam tarama, kişisel bir
+        takvimin ölçeğinde (binlerce satır) sorun değil; ölçüp gerekirse FTS5
+        eklenir -- şimdiden değil.
+        """
+        anahtar = _arama_anahtari(sorgu).strip()
+        if not anahtar:
+            return []
+        bulunan: list[Event] = []
+        for event in self.list_events():
+            havuz = " ".join(
+                p for p in (event.title, event.description, event.location) if p
+            )
+            if anahtar in _arama_anahtari(havuz):
+                bulunan.append(event)
+                if len(bulunan) >= limit:
+                    break
+        return bulunan
 
     def update_event(self, event: Event) -> None:
         """Etkinliği günceller; sequence artar, series_end_utc yeniden hesaplanır."""

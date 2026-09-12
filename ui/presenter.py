@@ -15,9 +15,19 @@ from datetime import date, datetime, time, timedelta
 from core import Occurrence, layout
 from core.timeutil import UTC, get_tz
 
-__all__ = ["week_start", "week_bounds", "day_bounds", "week_payload"]
+__all__ = [
+    "week_start",
+    "week_bounds",
+    "day_bounds",
+    "week_payload",
+    "day_payload",
+    "month_payload",
+]
 
 _GUN_ADLARI = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
+_TAM_GUN_ADLARI = [
+    "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar",
+]
 _AY_ADLARI = [
     "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
@@ -83,6 +93,97 @@ def _occ_sozluk(occ: Occurrence, renkler: dict[int, str]) -> dict:
     }
 
 
+def day_payload(
+    repo,
+    anchor: date,
+    tzid: str,
+    *,
+    calendar_ids: list[int] | None = None,
+    include_hidden: bool = False,
+) -> dict:
+    """Tek günlük ızgara. Hafta ile aynı yapı, tek gün.
+
+    Ön yüz aynı çizim koduyla ilgilenebilsin diye `days` yine liste.
+    """
+    return _izgara_payload(
+        repo, anchor, 1, tzid,
+        calendar_ids=calendar_ids, include_hidden=include_hidden,
+        etiket=_gun_etiketi(anchor), gorunum="day",
+    )
+
+
+def month_payload(
+    repo,
+    anchor: date,
+    tzid: str,
+    *,
+    calendar_ids: list[int] | None = None,
+    include_hidden: bool = False,
+) -> dict:
+    """Ay görünümü: saat ızgarası yok, gün hücrelerinde etkinlik listesi.
+
+    Izgara her zaman tam haftalardan oluşur (pazartesiden başlar), yani ayın
+    başındaki ve sonundaki komşu ay günleri de gelir; `inMonth` alanı bunları
+    ayırt ediyor. Sabit 6 satır YAPMIYORUZ: ay 5 haftaya sığıyorsa 5 satır
+    gösterip boş bir hafta çizmiyoruz.
+    """
+    ilk = anchor.replace(day=1)
+    izgara_baslangic = week_start(ilk)
+    sonraki_ay = (ilk.replace(day=28) + timedelta(days=4)).replace(day=1)
+    son = sonraki_ay - timedelta(days=1)
+    izgara_bitis = week_start(son) + timedelta(days=6)
+    gun_sayisi = (izgara_bitis - izgara_baslangic).days + 1
+
+    baslangic, _ = day_bounds(izgara_baslangic, tzid)
+    _, bitis = day_bounds(izgara_bitis, tzid)
+
+    takvimler = repo.list_calendars()
+    renkler = {c.id: c.color for c in takvimler}
+    occurrences = repo.occurrences(
+        baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
+    )
+
+    gunler = []
+    for offset in range(gun_sayisi):
+        gun = izgara_baslangic + timedelta(days=offset)
+        gun_baslangic, gun_bitis = day_bounds(gun, tzid)
+        icerik = [
+            o for o in occurrences
+            if o.start_utc < gun_bitis and o.end_utc > gun_baslangic
+        ]
+        # Tüm gün etkinlikleri üstte, sonra saate göre.
+        icerik.sort(key=lambda o: (not o.all_day, o.start_utc))
+        gunler.append(
+            {
+                "date": gun.isoformat(),
+                "dayNumber": gun.day,
+                "inMonth": gun.month == ilk.month,
+                "events": [
+                    dict(
+                        _occ_sozluk(o, renkler),
+                        startMin=_dakika(max(o.start_utc, gun_baslangic), gun_baslangic),
+                    )
+                    for o in icerik
+                ],
+            }
+        )
+
+    return {
+        "view": "month",
+        "tzid": tzid,
+        "anchor": ilk.isoformat(),
+        "gridStart": izgara_baslangic.isoformat(),
+        "gridEnd": izgara_bitis.isoformat(),
+        "label": f"{_AY_ADLARI[ilk.month - 1]} {ilk.year}",
+        "dayNames": _GUN_ADLARI,
+        "calendars": [
+            {"id": c.id, "name": c.name, "color": c.color, "visible": c.visible}
+            for c in takvimler
+        ],
+        "days": gunler,
+    }
+
+
 def week_payload(
     repo,
     anchor: date,
@@ -106,21 +207,41 @@ def week_payload(
     olabilir, ön yüz yüzdeleri buna göre hesaplıyor.
     """
     pazartesi = week_start(anchor)
-    hafta_baslangic, hafta_bitis = week_bounds(anchor, tzid)
+    return _izgara_payload(
+        repo, pazartesi, 7, tzid,
+        calendar_ids=calendar_ids, include_hidden=include_hidden,
+        etiket=_hafta_etiketi(pazartesi), gorunum="week",
+    )
+
+
+def _izgara_payload(
+    repo,
+    ilk_gun: date,
+    gun_sayisi: int,
+    tzid: str,
+    *,
+    calendar_ids: list[int] | None,
+    include_hidden: bool,
+    etiket: str,
+    gorunum: str,
+) -> dict:
+    """Gün ve hafta görünümlerinin ortak gövdesi.
+
+    İkisi de aynı zaman ızgarası; fark yalnızca gün sayısı ve başlık.
+    """
+    baslangic, _ = day_bounds(ilk_gun, tzid)
+    _, bitis = day_bounds(ilk_gun + timedelta(days=gun_sayisi - 1), tzid)
 
     takvimler = repo.list_calendars()
     renkler = {c.id: c.color for c in takvimler}
 
     occurrences = repo.occurrences(
-        hafta_baslangic,
-        hafta_bitis,
-        calendar_ids=calendar_ids,
-        include_hidden=include_hidden,
+        baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
 
     gunler = []
-    for offset in range(7):
-        gun = pazartesi + timedelta(days=offset)
+    for offset in range(gun_sayisi):
+        gun = ilk_gun + timedelta(days=offset)
         gun_baslangic, gun_bitis = day_bounds(gun, tzid)
         gun_dakika = _dakika(gun_bitis, gun_baslangic)
 
@@ -167,7 +288,7 @@ def week_payload(
         gunler.append(
             {
                 "date": gun.isoformat(),
-                "dayName": _GUN_ADLARI[offset],
+                "dayName": _GUN_ADLARI[gun.weekday()],
                 "dayNumber": gun.day,
                 "monthName": _AY_ADLARI[gun.month - 1],
                 "dayMinutes": gun_dakika,
@@ -176,17 +297,24 @@ def week_payload(
             }
         )
 
+    son_gun = ilk_gun + timedelta(days=gun_sayisi - 1)
     return {
+        "view": gorunum,
         "tzid": tzid,
-        "weekStart": pazartesi.isoformat(),
-        "weekEnd": (pazartesi + timedelta(days=6)).isoformat(),
-        "label": _hafta_etiketi(pazartesi),
+        "weekStart": ilk_gun.isoformat(),
+        "weekEnd": son_gun.isoformat(),
+        "label": etiket,
         "calendars": [
             {"id": c.id, "name": c.name, "color": c.color, "visible": c.visible}
             for c in takvimler
         ],
         "days": gunler,
     }
+
+
+def _gun_etiketi(gun: date) -> str:
+    """'13 Eylül 2026 Pazar' biçiminde başlık."""
+    return f"{gun.day} {_AY_ADLARI[gun.month - 1]} {gun.year} {_TAM_GUN_ADLARI[gun.weekday()]}"
 
 
 def _hafta_etiketi(pazartesi: date) -> str:

@@ -10,6 +10,7 @@ Bu paket disk, veritabanı ve ekran hakkında hiçbir şey bilmez; girdisi veri,
 from .layout import layout
 from .models import Calendar, Event, Occurrence, Override
 from .query import conflicts, free_slots, overlaps
+from .quickadd import QuickAdd, parse_quick_add
 from .recurrence import expand, series_end
 from .timeutil import (
     UTC,
@@ -37,6 +38,9 @@ __all__ = [
     "overlaps",
     "conflicts",
     "free_slots",
+    # hızlı ekleme
+    "QuickAdd",
+    "parse_quick_add",
     # zaman
     "UTC",
     "get_tz",

@@ -1,36 +1,28 @@
-/* Hafta görünümü ön yüzü.
+/* Takvim ön yüzü.
  *
- * Sunucu her gün için kolon (col/colCount) ve dakika (startMin/endMin) gönderir;
- * burada yalnızca yüzdeye çeviriyoruz. Çakışma yerleşimi core/layout.py'de,
- * yani burada yeniden hesaplanmıyor.
+ * İş bölümü: çakışma yerleşimi core/layout.py'de, gün sınırları ve kırpma
+ * ui/presenter.py'de, zaman ayrıştırma core/quickadd.py'de. Burada yalnızca
+ * gelen sayıları piksele çeviriyoruz.
  *
- * dayMinutes her gün için ayrı geliyor: DST geçiş gününde 1380 veya 1500 olur.
- * Yüzdeleri ona böldüğümüz için ızgara o günlerde de doğru hizalanıyor.
+ * dayMinutes her gün için ayrı geliyor: DST gününde 1380 veya 1500 olur ve
+ * yüzdeleri ona bölmek ızgarayı o günlerde de doğru hizalıyor.
  */
 
+const SAAT_YUKSEKLIK = 48; // CSS'teki --saat-yukseklik ile aynı olmalı
+const AY_MAKS_BLOK = 3;    // ay hücresinde gösterilecek en fazla etkinlik
+
 const durum = {
+  gorunum: "week",
   anchor: bugunISO(),
   veri: null,
-  seciliId: null,
+  secili: null,          // seçili occurrence (panel için)
   takvimGorunur: new Map(),
+  kaydirildi: false,
 };
 
-const el = {
-  haftaEtiketi: document.getElementById("hafta-etiketi"),
-  tzEtiketi: document.getElementById("tz-etiketi"),
-  takvimListesi: document.getElementById("takvim-listesi"),
-  izgaraBaslik: document.getElementById("izgara-baslik"),
-  tumgunSerit: document.getElementById("tumgun-serit"),
-  saatSutunu: document.getElementById("saat-sutunu"),
-  gunler: document.getElementById("gunler"),
-  kaydirma: document.getElementById("izgara-kaydirma"),
-  panel: document.getElementById("panel"),
-  panelIcerik: document.getElementById("panel-icerik"),
-  panelKapat: document.getElementById("panel-kapat"),
-  yukleniyor: document.getElementById("yukleniyor"),
-};
+const el = (id) => document.getElementById(id);
 
-/* ---------- yardımcılar ---------- */
+/* ---------- tarih yardımcıları ---------- */
 
 function bugunISO() {
   const d = new Date();
@@ -44,7 +36,12 @@ function tarihKaydir(iso, gun) {
   return t.toISOString().slice(0, 10);
 }
 
-/** UTC ISO metnini etkinliğin kendi diliminde "HH:MM" olarak biçimler. */
+function ayKaydir(iso, ay) {
+  const [y, m] = iso.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1 + ay, 1));
+  return t.toISOString().slice(0, 10);
+}
+
 function saatBicim(iso, tzid) {
   return new Intl.DateTimeFormat("tr-TR", {
     hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tzid,
@@ -57,72 +54,56 @@ function tarihBicim(iso, tzid) {
   }).format(new Date(iso));
 }
 
-/** Rengi blok zemini için saydamlaştırır. */
 function zemin(hex) {
   const n = parseInt(hex.replace("#", ""), 16);
-  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
-  return `rgba(${r},${g},${b},0.22)`;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},0.22)`;
+}
+
+function kacir(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : s;
+  return d.innerHTML;
 }
 
 function occAnahtar(occ) {
   return `${occ.uid}|${occ.startUtc}`;
 }
 
-/* ---------- veri ---------- */
+/* ---------- ağ ---------- */
 
-async function haftaYukle(anchor) {
-  el.yukleniyor.hidden = false;
+async function istek(yol, secenekler = {}) {
+  const yanit = await fetch(yol, secenekler);
+  const tur = yanit.headers.get("Content-Type") || "";
+  const govde = tur.includes("json") ? await yanit.json() : await yanit.text();
+  if (!yanit.ok) {
+    throw new Error((govde && govde.error) || `sunucu ${yanit.status}`);
+  }
+  return govde;
+}
+
+let bildirimZaman = null;
+function bildir(mesaj, hata = false) {
+  const kutu = el("bildirim");
+  kutu.textContent = mesaj;
+  kutu.classList.toggle("hata", hata);
+  kutu.hidden = false;
+  clearTimeout(bildirimZaman);
+  bildirimZaman = setTimeout(() => { kutu.hidden = true; }, hata ? 7000 : 3500);
+}
+
+async function yukle() {
   try {
-    const yanit = await fetch(`/api/week?date=${anchor}`);
-    if (!yanit.ok) throw new Error(`sunucu ${yanit.status}`);
-    durum.veri = await yanit.json();
+    durum.veri = await istek(`/api/${durum.gorunum}?date=${durum.anchor}`);
     durum.veri.calendars.forEach((c) => {
       if (!durum.takvimGorunur.has(c.id)) durum.takvimGorunur.set(c.id, c.visible);
     });
     ciz();
   } catch (hata) {
-    gosterHata(hata.message);
-  } finally {
-    el.yukleniyor.hidden = true;
+    bildir(`Veri alınamadı: ${hata.message}`, true);
   }
-}
-
-async function gorunurlukDegistir(id, gorunur) {
-  durum.takvimGorunur.set(id, gorunur);
-  takvimleriCiz();
-  ciz();
-  try {
-    await fetch(`/api/calendars/${id}/visible`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visible: gorunur }),
-    });
-  } catch {
-    /* Görünürlük yalnızca bir tercih; yazılamazsa ekran yine doğru. */
-  }
-}
-
-function gosterHata(mesaj) {
-  el.gunler.innerHTML = `<div class="hata">Veri alınamadı: ${mesaj}</div>`;
 }
 
 /* ---------- çizim ---------- */
-
-function takvimleriCiz() {
-  if (!durum.veri) return;
-  el.takvimListesi.innerHTML = "";
-  durum.veri.calendars.forEach((c) => {
-    const gorunur = durum.takvimGorunur.get(c.id);
-    const li = document.createElement("li");
-    li.className = "takvim-satir" + (gorunur ? "" : " gizli");
-    li.innerHTML = `<span class="renk-kutu"></span><span class="takvim-ad"></span>`;
-    li.querySelector(".renk-kutu").style.background = c.color;
-    li.querySelector(".takvim-ad").textContent = c.name;
-    li.title = gorunur ? "Gizle" : "Göster";
-    li.onclick = () => gorunurlukDegistir(c.id, !gorunur);
-    el.takvimListesi.appendChild(li);
-  });
-}
 
 function gorunurMu(occ) {
   return durum.takvimGorunur.get(occ.calendarId) !== false;
@@ -132,23 +113,73 @@ function ciz() {
   const veri = durum.veri;
   if (!veri) return;
 
-  el.haftaEtiketi.textContent = veri.label;
-  el.tzEtiketi.textContent = veri.tzid;
+  el("baslik").textContent = veri.label;
+  el("tz-etiketi").textContent = veri.tzid;
   takvimleriCiz();
 
-  const bugun = bugunISO();
+  document.querySelectorAll(".gorunum-dugme").forEach((b) => {
+    b.classList.toggle("secili", b.dataset.gorunum === durum.gorunum);
+  });
 
-  /* --- gün başlıkları --- */
-  el.izgaraBaslik.innerHTML = `<div></div>`;
+  const ayMi = durum.gorunum === "month";
+  el("zaman-gorunum").hidden = ayMi;
+  el("ay-gorunum").hidden = !ayMi;
+
+  if (ayMi) ayCiz(veri);
+  else zamanCiz(veri);
+}
+
+function takvimleriCiz() {
+  const liste = el("takvim-listesi");
+  liste.innerHTML = "";
+  durum.veri.calendars.forEach((c) => {
+    const gorunur = durum.takvimGorunur.get(c.id);
+    const li = document.createElement("li");
+    li.className = "takvim-satir" + (gorunur ? "" : " gizli");
+    li.innerHTML = `<span class="renk-kutu"></span><span class="takvim-ad"></span>`;
+    li.querySelector(".renk-kutu").style.background = c.color;
+    li.querySelector(".takvim-ad").textContent = c.name;
+    li.title = gorunur ? "Gizle" : "Göster";
+    li.onclick = () => gorunurlukDegistir(c.id, !gorunur);
+    liste.appendChild(li);
+  });
+}
+
+async function gorunurlukDegistir(id, gorunur) {
+  durum.takvimGorunur.set(id, gorunur);
+  ciz();
+  try {
+    await istek(`/api/calendars/${id}/visible`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visible: gorunur }),
+    });
+  } catch {
+    /* Görünürlük bir tercih; yazılamazsa ekran yine doğru. */
+  }
+}
+
+/* ---------- zaman ızgarası (gün / hafta) ---------- */
+
+function zamanCiz(veri) {
+  const bugun = bugunISO();
+  const tekGun = veri.days.length === 1;
+
+  const baslikKap = el("izgara-baslik");
+  const seritKap = el("tumgun-serit");
+  const gunlerKap = el("gunler");
+  [baslikKap, seritKap].forEach((e) => e.classList.toggle("tek-gun", tekGun));
+  gunlerKap.classList.toggle("tek-gun", tekGun);
+
+  baslikKap.innerHTML = `<div></div>`;
   veri.days.forEach((g) => {
     const d = document.createElement("div");
     d.className = "gun-basligi" + (g.date === bugun ? " bugun" : "");
     d.innerHTML = `<div class="ad">${g.dayName}</div><div class="sayi">${g.dayNumber}</div>`;
-    el.izgaraBaslik.appendChild(d);
+    baslikKap.appendChild(d);
   });
 
-  /* --- tüm gün şeridi --- */
-  el.tumgunSerit.innerHTML = `<div class="tumgun-etiket">tüm gün</div>`;
+  seritKap.innerHTML = `<div class="tumgun-etiket">tüm gün</div>`;
   veri.days.forEach((g) => {
     const hucre = document.createElement("div");
     hucre.className = "tumgun-hucre";
@@ -161,22 +192,20 @@ function ciz() {
       blok.onclick = () => panelAc(occ);
       hucre.appendChild(blok);
     });
-    el.tumgunSerit.appendChild(hucre);
+    seritKap.appendChild(hucre);
   });
 
-  /* --- saat sütunu --- */
-  el.saatSutunu.innerHTML = "";
+  const saatKap = el("saat-sutunu");
+  saatKap.innerHTML = "";
   for (let s = 0; s < 24; s++) {
     const e = document.createElement("div");
     e.className = "saat-etiket";
     e.textContent = s === 0 ? "" : `${String(s).padStart(2, "0")}:00`;
-    el.saatSutunu.appendChild(e);
+    saatKap.appendChild(e);
   }
 
-  /* --- gün sütunları --- */
-  const yukseklik = 24 * 48; // saat başına 48px, CSS'teki --saat-yukseklik ile aynı
-  el.gunler.innerHTML = "";
-  el.gunler.style.height = `${yukseklik}px`;
+  gunlerKap.innerHTML = "";
+  gunlerKap.style.height = `${24 * SAAT_YUKSEKLIK}px`;
 
   veri.days.forEach((g) => {
     const sutun = document.createElement("div");
@@ -189,99 +218,124 @@ function ciz() {
       sutun.appendChild(c);
     }
 
-    g.timed.filter(gorunurMu).forEach((occ) => {
-      sutun.appendChild(blokYap(occ, g));
-    });
+    g.timed.filter(gorunurMu).forEach((occ) => sutun.appendChild(blokYap(occ, g)));
 
     if (g.date === bugun) {
-      const simdi = simdiCizgi(g);
-      if (simdi) sutun.appendChild(simdi);
+      const simdi = new Date();
+      const gecen = simdi.getHours() * 60 + simdi.getMinutes();
+      if (gecen <= g.dayMinutes) {
+        const c = document.createElement("div");
+        c.className = "simdi-cizgi";
+        c.style.top = `${(gecen / g.dayMinutes) * 100}%`;
+        sutun.appendChild(c);
+      }
     }
 
-    el.gunler.appendChild(sutun);
+    gunlerKap.appendChild(sutun);
   });
 
-  ilkKaydir();
+  if (!durum.kaydirildi) {
+    durum.kaydirildi = true;
+    el("izgara-kaydirma").scrollTop = (7 / 24) * 24 * SAAT_YUKSEKLIK;
+  }
 }
 
 function blokYap(occ, gun) {
-  const ustPct = (occ.startMin / gun.dayMinutes) * 100;
-  const yukPct = Math.max(((occ.endMin - occ.startMin) / gun.dayMinutes) * 100, 1.1);
   const genPct = 100 / occ.colCount;
-
   const blok = document.createElement("div");
   blok.className = "blok";
   if (occ.endMin - occ.startMin <= 35) blok.classList.add("kisa");
-  if (occAnahtar(occ) === durum.seciliId) blok.classList.add("secili");
+  if (durum.secili && occAnahtar(occ) === occAnahtar(durum.secili)) blok.classList.add("secili");
 
-  blok.style.top = `${ustPct}%`;
-  blok.style.height = `${yukPct}%`;
+  blok.style.top = `${(occ.startMin / gun.dayMinutes) * 100}%`;
+  blok.style.height = `${Math.max(((occ.endMin - occ.startMin) / gun.dayMinutes) * 100, 1.1)}%`;
   blok.style.left = `calc(${occ.col * genPct}% + 2px)`;
   blok.style.width = `calc(${genPct}% - 4px)`;
   blok.style.background = zemin(occ.color);
   blok.style.borderLeftColor = occ.color;
 
-  const baslik = document.createElement("div");
-  baslik.className = "b-baslik";
-  baslik.textContent = occ.title;
-  blok.appendChild(baslik);
-
-  const saat = document.createElement("div");
-  saat.className = "b-saat";
-  saat.textContent =
-    `${saatBicim(occ.startUtc, occ.tzid)}–${saatBicim(occ.endUtc, occ.tzid)}` +
-    (occ.clipped ? " ⇥" : "");
-  blok.appendChild(saat);
-
-  if (occ.isOverride) {
-    const rozet = document.createElement("div");
-    rozet.className = "b-rozet";
-    rozet.textContent = "· taşındı";
-    blok.appendChild(rozet);
-  }
+  blok.innerHTML =
+    `<div class="b-baslik">${kacir(occ.title)}</div>` +
+    `<div class="b-saat">${saatBicim(occ.startUtc, occ.tzid)}–${saatBicim(occ.endUtc, occ.tzid)}` +
+    `${occ.clipped ? " ⇥" : ""}</div>` +
+    (occ.isOverride ? `<div class="b-rozet">· taşındı</div>` : "");
 
   blok.onclick = () => panelAc(occ);
   return blok;
 }
 
-function simdiCizgi(gun) {
-  const simdi = new Date();
-  const gecen = (simdi.getHours() * 60 + simdi.getMinutes());
-  if (gecen < 0 || gecen > gun.dayMinutes) return null;
-  const c = document.createElement("div");
-  c.className = "simdi-cizgi";
-  c.style.top = `${(gecen / gun.dayMinutes) * 100}%`;
-  return c;
-}
+/* ---------- ay görünümü ---------- */
 
-/** İlk çizimde 07:00 civarına kaydır; gece saatleri boşuna yer kaplamasın. */
-let kaydirildi = false;
-function ilkKaydir() {
-  if (kaydirildi) return;
-  kaydirildi = true;
-  el.kaydirma.scrollTop = (7 / 24) * (24 * 48);
+function ayCiz(veri) {
+  const bugun = bugunISO();
+
+  const basliklar = el("ay-basliklar");
+  basliklar.innerHTML = "";
+  veri.dayNames.forEach((ad) => {
+    const d = document.createElement("div");
+    d.textContent = ad;
+    basliklar.appendChild(d);
+  });
+
+  const izgara = el("ay-izgara");
+  izgara.innerHTML = "";
+  veri.days.forEach((g) => {
+    const hucre = document.createElement("div");
+    hucre.className =
+      "ay-hucre" + (g.inMonth ? "" : " disarida") + (g.date === bugun ? " bugun" : "");
+
+    const no = document.createElement("div");
+    no.className = "ay-gun-no";
+    no.textContent = g.dayNumber;
+    hucre.appendChild(no);
+
+    const gorunurler = g.events.filter(gorunurMu);
+    gorunurler.slice(0, AY_MAKS_BLOK).forEach((occ) => {
+      const blok = document.createElement("div");
+      blok.className = "ay-blok";
+      blok.textContent = occ.allDay
+        ? occ.title
+        : `${saatBicim(occ.startUtc, occ.tzid)} ${occ.title}`;
+      blok.style.background = zemin(occ.color);
+      blok.style.borderLeftColor = occ.color;
+      blok.onclick = (e) => { e.stopPropagation(); panelAc(occ); };
+      hucre.appendChild(blok);
+    });
+
+    if (gorunurler.length > AY_MAKS_BLOK) {
+      const daha = document.createElement("div");
+      daha.className = "ay-daha";
+      daha.textContent = `+${gorunurler.length - AY_MAKS_BLOK} daha`;
+      hucre.appendChild(daha);
+    }
+
+    // Hücreye tıklayınca o günün gün görünümüne geç
+    hucre.onclick = () => { durum.gorunum = "day"; durum.anchor = g.date; yukle(); };
+    izgara.appendChild(hucre);
+  });
 }
 
 /* ---------- etkinlik paneli ---------- */
 
 function panelAc(occ) {
-  durum.seciliId = occAnahtar(occ);
+  durum.secili = occ;
   const takvim = durum.veri.calendars.find((c) => c.id === occ.calendarId);
 
   const satirlar = [];
-  const zaman = occ.allDay
-    ? tarihBicim(occ.startUtc, occ.tzid)
-    : `${tarihBicim(occ.startUtc, occ.tzid)}<br>${saatBicim(occ.startUtc, occ.tzid)} – ${saatBicim(occ.endUtc, occ.tzid)}`;
-  satirlar.push(["Zaman", zaman]);
-
+  satirlar.push([
+    "Zaman",
+    occ.allDay
+      ? tarihBicim(occ.startUtc, occ.tzid)
+      : `${tarihBicim(occ.startUtc, occ.tzid)}<br>${saatBicim(occ.startUtc, occ.tzid)} – ${saatBicim(occ.endUtc, occ.tzid)}`,
+  ]);
   if (takvim) {
     satirlar.push([
       "Takvim",
-      `<span class="p-takvim"><span class="renk-kutu" style="background:${takvim.color}"></span>${takvim.name}</span>`,
+      `<span class="p-takvim"><span class="renk-kutu" style="background:${takvim.color}"></span>${kacir(takvim.name)}</span>`,
     ]);
   }
-  if (occ.location) satirlar.push(["Konum", metinKacir(occ.location)]);
-  satirlar.push(["Dilim", occ.tzid]);
+  if (occ.location) satirlar.push(["Konum", kacir(occ.location)]);
+  satirlar.push(["Dilim", kacir(occ.tzid)]);
 
   const rozetler = [];
   if (occ.allDay) rozetler.push(`<span class="rozet">tüm gün</span>`);
@@ -289,52 +343,198 @@ function panelAc(occ) {
   if (occ.clipped) rozetler.push(`<span class="rozet">gece yarısını aşıyor</span>`);
   if (rozetler.length) satirlar.push(["Durum", rozetler.join(" ")]);
 
-  let html = `<div class="p-baslik">${metinKacir(occ.title)}</div>`;
+  let html = `<div class="p-baslik">${kacir(occ.title)}</div>`;
   html += satirlar
     .map(([e, d]) => `<div class="p-satir"><div class="p-etiket">${e}</div><div class="p-deger">${d}</div></div>`)
     .join("");
   if (occ.description) {
-    html += `<div class="p-satir"><div class="p-etiket">Açıklama</div><div class="p-deger p-aciklama">${metinKacir(occ.description)}</div></div>`;
+    html += `<div class="p-satir"><div class="p-etiket">Açıklama</div><div class="p-deger p-aciklama">${kacir(occ.description)}</div></div>`;
   }
+  el("panel-icerik").innerHTML = html;
 
-  el.panelIcerik.innerHTML = html;
-  el.panel.hidden = false;
+  islemleriCiz(occ);
+  el("panel").hidden = false;
   ciz();
+}
+
+function islemleriCiz(occ) {
+  const kap = el("panel-islemler");
+  kap.innerHTML = "";
+
+  const ekle = (metin, tehlike, islev) => {
+    const b = document.createElement("button");
+    b.className = "islem-dugme" + (tehlike ? " tehlike" : "");
+    b.textContent = metin;
+    b.onclick = islev;
+    kap.appendChild(b);
+  };
+
+  ekle("Başlığı değiştir", false, async () => {
+    const yeni = prompt("Yeni başlık:", occ.title);
+    if (yeni === null || !yeni.trim()) return;
+    await eylem(
+      () => istek(`/api/events/${occ.eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: yeni.trim() }),
+      }),
+      "Başlık güncellendi",
+    );
+  });
+
+  // Tekrarlı serilerde tek örnek / tüm seri ayrımı kritik: kullanıcı bir
+  // dersi bu haftalık iptal etmekle dönem boyunca silmeyi karıştırmamalı.
+  ekle("Bu örneği sil", true, async () => {
+    if (!confirm(`"${occ.title}" — yalnızca bu örnek silinecek. Devam?`)) return;
+    await eylem(
+      () => istek("/api/occurrences/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.startUtc }),
+      }),
+      "Bu örnek silindi",
+    );
+  });
+
+  ekle("Seriyi tamamen sil", true, async () => {
+    if (!confirm(`"${occ.title}" — TÜM seri silinecek. Bu geri alınamaz. Devam?`)) return;
+    await eylem(
+      () => istek(`/api/events/${occ.eventId}`, { method: "DELETE" }),
+      "Seri silindi",
+    );
+  });
+}
+
+async function eylem(islev, basariMesaji) {
+  try {
+    await islev();
+    bildir(basariMesaji);
+    panelKapat();
+    await yukle();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
 }
 
 function panelKapat() {
-  durum.seciliId = null;
-  el.panel.hidden = true;
+  durum.secili = null;
+  el("panel").hidden = true;
   ciz();
 }
 
-function metinKacir(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
+/* ---------- hızlı ekleme ---------- */
+
+el("hizli-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const girdi = el("hizli-girdi");
+  const metin = girdi.value.trim();
+  if (!metin) return;
+
+  try {
+    const sonuc = await istek("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: metin }),
+    });
+    girdi.value = "";
+    const p = sonuc.parsed;
+    // Neyin zaman olarak tanındığını SÖYLÜYORUZ. Tanınmayan ifade sessizce
+    // yanlış saate kaydedilmiş bir randevuya dönüşmesin.
+    bildir(
+      p.matched
+        ? `Eklendi: ${p.title} (${p.matched})`
+        : `Eklendi: ${p.title} — zaman ifadesi tanınmadı, tüm gün olarak kaydedildi`,
+      !p.matched,
+    );
+    await yukle();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+};
+
+/* ---------- arama ---------- */
+
+let aramaZaman = null;
+el("arama").oninput = (e) => {
+  const anahtar = e.target.value.trim();
+  clearTimeout(aramaZaman);
+  aramaZaman = setTimeout(() => aramaYap(anahtar), 220);
+};
+
+async function aramaYap(anahtar) {
+  const bolum = el("arama-bolum");
+  const liste = el("arama-listesi");
+  if (!anahtar) {
+    bolum.hidden = true;
+    return;
+  }
+  try {
+    const sonuc = await istek(`/api/search?q=${encodeURIComponent(anahtar)}`);
+    liste.innerHTML = "";
+    if (!sonuc.results.length) {
+      liste.innerHTML = `<li class="arama-bos">Sonuç yok</li>`;
+    }
+    sonuc.results.forEach((ev) => {
+      const takvim = durum.veri.calendars.find((c) => c.id === ev.calendarId);
+      const li = document.createElement("li");
+      li.className = "arama-satir";
+      li.style.borderLeftColor = takvim ? takvim.color : "#6b7280";
+      li.innerHTML =
+        `<div>${kacir(ev.title)}${ev.recurring ? " ↻" : ""}</div>` +
+        `<div class="a-tarih">${tarihBicim(ev.startUtc, ev.tzid)}</div>`;
+      // Sonuca tıklayınca o tarihe git
+      li.onclick = () => {
+        durum.anchor = new Intl.DateTimeFormat("en-CA", { timeZone: ev.tzid })
+          .format(new Date(ev.startUtc));
+        yukle();
+      };
+      liste.appendChild(li);
+    });
+    bolum.hidden = false;
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
 }
 
-/* ---------- olaylar ---------- */
+/* ---------- gezinme ---------- */
 
-document.getElementById("onceki").onclick = () => {
-  durum.anchor = tarihKaydir(durum.veri ? durum.veri.weekStart : durum.anchor, -7);
-  haftaYukle(durum.anchor);
-};
-document.getElementById("sonraki").onclick = () => {
-  durum.anchor = tarihKaydir(durum.veri ? durum.veri.weekStart : durum.anchor, 7);
-  haftaYukle(durum.anchor);
-};
-document.getElementById("bugun").onclick = () => {
-  durum.anchor = bugunISO();
-  haftaYukle(durum.anchor);
-};
-el.panelKapat.onclick = panelKapat;
+function kaydir(yon) {
+  if (durum.gorunum === "month") {
+    durum.anchor = ayKaydir(durum.veri ? durum.veri.anchor : durum.anchor, yon);
+  } else {
+    const adim = durum.gorunum === "day" ? 1 : 7;
+    durum.anchor = tarihKaydir(durum.veri ? durum.veri.weekStart : durum.anchor, yon * adim);
+  }
+  yukle();
+}
 
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") panelKapat();
-  if (e.key === "ArrowLeft") document.getElementById("onceki").click();
-  if (e.key === "ArrowRight") document.getElementById("sonraki").click();
-  if (e.key === "t" || e.key === "T") document.getElementById("bugun").click();
+el("onceki").onclick = () => kaydir(-1);
+el("sonraki").onclick = () => kaydir(1);
+el("bugun").onclick = () => { durum.anchor = bugunISO(); yukle(); };
+el("panel-kapat").onclick = panelKapat;
+el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
+
+document.querySelectorAll(".gorunum-dugme").forEach((b) => {
+  b.onclick = () => { durum.gorunum = b.dataset.gorunum; yukle(); };
 });
 
-haftaYukle(durum.anchor);
+document.addEventListener("keydown", (e) => {
+  // Yazarken kısayollar devreye girmesin
+  if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
+    if (e.key === "Escape") e.target.blur();
+    return;
+  }
+  const kisayollar = {
+    Escape: panelKapat,
+    ArrowLeft: () => kaydir(-1),
+    ArrowRight: () => kaydir(1),
+    t: () => { durum.anchor = bugunISO(); yukle(); },
+    g: () => { durum.gorunum = "day"; yukle(); },
+    h: () => { durum.gorunum = "week"; yukle(); },
+    a: () => { durum.gorunum = "month"; yukle(); },
+  };
+  const islev = kisayollar[e.key] || kisayollar[e.key.toLowerCase()];
+  if (islev) { e.preventDefault(); islev(); }
+});
+
+yukle();

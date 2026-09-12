@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Takvim — Hafta</title>
+<title>Takvim</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,14 +12,29 @@
   <div class="marka">Takvim</div>
 
   <nav class="gezinme">
-    <button id="onceki" class="ikon-dugme" title="Önceki hafta" aria-label="Önceki hafta">‹</button>
+    <button id="onceki" class="ikon-dugme" title="Önceki (←)" aria-label="Önceki">‹</button>
     <button id="bugun" class="dugme">Bugün</button>
-    <button id="sonraki" class="ikon-dugme" title="Sonraki hafta" aria-label="Sonraki hafta">›</button>
+    <button id="sonraki" class="ikon-dugme" title="Sonraki (→)" aria-label="Sonraki">›</button>
   </nav>
 
-  <h1 id="hafta-etiketi" class="hafta-etiketi">—</h1>
+  <h1 id="baslik" class="hafta-etiketi">—</h1>
+
+  <div class="gorunum-anahtari" role="group" aria-label="Görünüm">
+    <button class="gorunum-dugme" data-gorunum="day">Gün</button>
+    <button class="gorunum-dugme secili" data-gorunum="week">Hafta</button>
+    <button class="gorunum-dugme" data-gorunum="month">Ay</button>
+  </div>
 
   <div class="bosluk"></div>
+
+  <form id="hizli-form" class="hizli-form" autocomplete="off">
+    <input id="hizli-girdi" class="hizli-girdi" type="text"
+           placeholder="Hızlı ekle: yarın 14:00 diş hekimi" aria-label="Hızlı ekleme">
+  </form>
+
+  <input id="arama" class="arama" type="search" placeholder="Ara…" aria-label="Ara">
+
+  <button id="disa-aktar" class="dugme" title="Tüm takvimi .ics olarak indir">Dışa aktar</button>
   <div id="tz-etiketi" class="tz-etiketi"></div>
 </header>
 
@@ -28,32 +43,48 @@
   <aside class="kenar">
     <h2 class="kenar-baslik">Takvimler</h2>
     <ul id="takvim-listesi" class="takvim-listesi"></ul>
-    <p class="ipucu">Bir etkinliğe tıkla, ayrıntısı sağda açılır.</p>
+
+    <div id="arama-bolum" class="arama-bolum" hidden>
+      <h2 class="kenar-baslik">Arama sonuçları</h2>
+      <ul id="arama-listesi" class="arama-listesi"></ul>
+    </div>
+
+    <p class="ipucu">
+      Bir etkinliğe tıkla, ayrıntısı sağda açılır.<br>
+      <kbd>←</kbd> <kbd>→</kbd> gezin · <kbd>T</kbd> bugün ·
+      <kbd>G</kbd>/<kbd>H</kbd>/<kbd>A</kbd> görünüm · <kbd>Esc</kbd> kapat
+    </p>
   </aside>
 
   <main class="izgara-sarmal">
-    <!-- Gün başlıkları: ızgarayla aynı kolon şablonunu paylaşır -->
-    <div class="izgara-baslik" id="izgara-baslik"></div>
-
-    <!-- Tüm gün şeridi: saat ızgarasına girmez, üstte ayrı satır -->
-    <div class="tumgun-serit" id="tumgun-serit"></div>
-
-    <div class="izgara-kaydirma" id="izgara-kaydirma">
-      <div class="izgara" id="izgara">
-        <div class="saat-sutunu" id="saat-sutunu"></div>
-        <div class="gunler" id="gunler"></div>
+    <!-- Zaman ızgarası: gün ve hafta görünümleri -->
+    <div id="zaman-gorunum">
+      <div class="izgara-baslik" id="izgara-baslik"></div>
+      <div class="tumgun-serit" id="tumgun-serit"></div>
+      <div class="izgara-kaydirma" id="izgara-kaydirma">
+        <div class="izgara" id="izgara">
+          <div class="saat-sutunu" id="saat-sutunu"></div>
+          <div class="gunler" id="gunler"></div>
+        </div>
       </div>
+    </div>
+
+    <!-- Ay görünümü: saat ızgarası yok -->
+    <div id="ay-gorunum" class="ay-gorunum" hidden>
+      <div class="ay-basliklar" id="ay-basliklar"></div>
+      <div class="ay-izgara" id="ay-izgara"></div>
     </div>
   </main>
 
   <aside class="panel" id="panel" hidden>
     <button class="panel-kapat" id="panel-kapat" aria-label="Kapat">×</button>
     <div class="panel-icerik" id="panel-icerik"></div>
+    <div class="panel-islemler" id="panel-islemler"></div>
   </aside>
 
 </div>
 
-<div class="yukleniyor" id="yukleniyor" hidden>yükleniyor…</div>
+<div class="bildirim" id="bildirim" hidden></div>
 
 <script src="app.js"></script>
 </body>
