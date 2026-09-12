@@ -304,7 +304,7 @@ class Repo:
     def metadata(self, event_id: int) -> dict | None:
         """Modelde taşınmayan DB alanları: sequence, zaman damgaları, seri sonu."""
         row = self.conn.execute(
-            "SELECT sequence, created_at, updated_at, series_end_utc "
+            "SELECT sequence, ics_sequence, created_at, updated_at, series_end_utc "
             "FROM events WHERE id = ?",
             (event_id,),
         ).fetchone()
@@ -312,10 +312,38 @@ class Repo:
             return None
         return {
             "sequence": row["sequence"],
+            "ics_sequence": row["ics_sequence"],
             "created_at": parse_iso(row["created_at"]),
             "updated_at": parse_iso(row["updated_at"]),
             "series_end_utc": _from_db(row["series_end_utc"]),
         }
+
+    def get_ics_sequence(self, event_id: int) -> int | None:
+        """Etkinliğin en son içe aktarıldığı `.ics` SEQUENCE'i; hiç aktarılmadıysa None.
+
+        `sequence` ile karıştırma: o Repo'nun yerel revizyon sayacı ve her
+        `update_event` çağrısında artar. Bu kolon yalnızca `.ics` dosyasından
+        gelen sürümü taşır, böylece "elle düzenledim" ile "dosya eskidi"
+        birbirine karışmaz.
+        """
+        row = self.conn.execute(
+            "SELECT ics_sequence FROM events WHERE id = ?", (event_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        return None if row["ics_sequence"] is None else int(row["ics_sequence"])
+
+    def set_ics_sequence(self, event_id: int, sequence: int) -> None:
+        """İçe aktarılan `.ics` SEQUENCE'ini kaydeder.
+
+        Yerel revizyon sayacına (`sequence`) dokunmaz.
+        """
+        cur = self.conn.execute(
+            "UPDATE events SET ics_sequence = ? WHERE id = ?",
+            (int(sequence), event_id),
+        )
+        if cur.rowcount == 0:
+            raise LookupError(f"Etkinlik bulunamadı: id={event_id}")
 
     # --------------------------------------------------------------- override
 

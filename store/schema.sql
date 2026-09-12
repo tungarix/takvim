@@ -35,9 +35,15 @@ CREATE TABLE events (
     exdate          TEXT,                   -- hariç tarihler, virgüllü
     series_end_utc  TEXT,                   -- hesaplanmış; sonsuz seride NULL
 
-    sequence        INTEGER NOT NULL DEFAULT 0,
+    sequence        INTEGER NOT NULL DEFAULT 0,   -- Repo'nun yerel revizyon sayacı
     created_at      TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
+    updated_at      TEXT NOT NULL,
+
+    -- 002 ile eklendi. Sonda durmasının sebebi ALTER TABLE ADD COLUMN'un
+    -- kolonu tabloya sona eklemesi; burada başka yere yazmak migration'la
+    -- kurulan DB'den farklı bir kolon sırası anlamına gelirdi.
+    ics_sequence    INTEGER                 -- .ics'teki RFC 5545 SEQUENCE;
+                                            -- NULL = hiç içe aktarılmadı
 );
 
 -- RFC 5545'teki RECURRENCE-ID karşılığı: serinin tek bir örneğini değiştirmek

@@ -13,6 +13,8 @@ dependencies = [
     # veritabani olmadigi icin stdlib zoneinfo tek basina calismaz
     # (ZoneInfoNotFoundError). Opsiyonel bir kolaylik degil, zorunluluk.
     "tzdata>=2024.1; sys_platform == 'win32'",
+    # Faz 2 (.ics içe aktarma) için önceden onaylı bağımlılık.
+    "icalendar>=6",
 ]
 
 [project.optional-dependencies]
@@ -20,7 +22,7 @@ dev = ["pytest>=8"]
 
 [tool.setuptools]
 package-data = { store = ["schema.sql", "migrations/*.sql"] }
-packages = ["core", "store"]
+packages = ["core", "store", "ics"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

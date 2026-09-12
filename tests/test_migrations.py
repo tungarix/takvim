@@ -13,13 +13,46 @@ from store.migrator import MIGRATIONS_DIR, available
 SCHEMA_SQL = Path(__file__).resolve().parents[1] / "store" / "schema.sql"
 
 
-def _schema_of(conn: sqlite3.Connection) -> list[tuple]:
-    """DB'nin tablo/indeks tanımlarını karşılaştırılabilir biçimde döndürür."""
-    rows = conn.execute(
-        "SELECT type, name, sql FROM sqlite_master "
-        "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name"
+def _schema_of(conn: sqlite3.Connection) -> dict:
+    """DB şemasını YAPISAL olarak döndürür (ham DDL metni olarak değil).
+
+    Ham `sqlite_master.sql` karşılaştırmak cazip ama kırılgan: `ALTER TABLE ADD
+    COLUMN` sonrası SQLite saklanan metnin sonuna `, kolon TİP)` ekliyor, yani
+    migration'la kurulan DB ile `schema.sql`'den kurulan DB aynı şemaya sahip
+    olsa bile metinleri farklı oluyor. Metni eşitlemeye çalışmak `schema.sql`'i
+    okunmaz hâle getirirdi.
+
+    Bunun yerine testin ASIL niyetini ölçüyoruz: aynı tablolar, aynı kolonlar
+    (tip/NOT NULL/varsayılan/PK), aynı indeksler ve aynı yabancı anahtarlar.
+    Bu, boşluk farklarına takılmadığı için daha sadık bir karşılaştırma.
+    """
+    schema: dict = {}
+    tables = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' "
+        "AND name NOT LIKE 'sqlite_%' ORDER BY name"
     ).fetchall()
-    return [tuple(r) for r in rows]
+
+    for row in tables:
+        table = row["name"]
+        columns = [
+            (r["name"], r["type"].upper(), bool(r["notnull"]), r["dflt_value"], bool(r["pk"]))
+            for r in conn.execute(f"PRAGMA table_info({table})")
+        ]
+        # UNIQUE kısıtları da buradan görünür (otomatik indeksler dahil).
+        indexes = []
+        for r in conn.execute(f"PRAGMA index_list({table})"):
+            cols = [c["name"] for c in conn.execute(f"PRAGMA index_info({r['name']})")]
+            indexes.append((r["name"], bool(r["unique"]), tuple(cols)))
+        foreign_keys = [
+            (r["table"], r["from"], r["to"], r["on_delete"])
+            for r in conn.execute(f"PRAGMA foreign_key_list({table})")
+        ]
+        schema[table] = {
+            "columns": columns,
+            "indexes": sorted(indexes),
+            "foreign_keys": sorted(foreign_keys),
+        }
+    return schema
 
 
 def test_bos_db_migrate_edilir():
@@ -32,7 +65,7 @@ def test_bos_db_migrate_edilir():
 
     assert version == beklenen
     assert current_version(conn) == beklenen
-    tablolar = {name for _, name, _ in _schema_of(conn)}
+    tablolar = set(_schema_of(conn))
     assert {"calendars", "events", "event_overrides"} <= tablolar
 
 

@@ -13,12 +13,12 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 |---|---|
 | Faz 0 — saf mantık çekirdeği (`core/`) | ✅ bitti |
 | Faz 1 — kalıcılık (`store/`) | ✅ bitti |
-| **Faz 2 — `.ics` içe aktarma (`ics/`)** | ⬅️ **sıradaki** |
-| Faz 3 — UI | bekliyor (arayüz kararı verilmedi, bkz. README §8) |
+| Faz 2 — `.ics` içe aktarma (`ics/`) | ✅ bitti |
+| **Faz 3 — UI** | ⬅️ **sıradaki** (arayüz kararı HENÜZ VERİLMEDİ, bkz. README §8) |
 | Faz 4 — konfor | bekliyor |
 | Faz 5 — `.ics` dışa aktarma | bekliyor |
 
-**84 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**108 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -52,8 +52,9 @@ Sistem Python'unu değil **her zaman `.venv\Scripts\python.exe`** kullan.
 `tzdata` Windows'ta **zorunlu**: işletim sisteminin IANA veritabanı yok, stdlib
 `zoneinfo` onsuz `ZoneInfoNotFoundError` veriyor. Kaldırma.
 
-Yeni bağımlılık eklemeden önce gerekçelendir. Faz 2 için `icalendar` önceden
-onaylı; başkası için önce sor.
+`icalendar` Faz 2 ile eklendi (`.ics` ayrıştırma).
+
+Yeni bağımlılık eklemeden önce gerekçelendir ve önce sor.
 
 ---
 
@@ -103,17 +104,27 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
 8. **Zaman alanları sabit genişlikte UTC metni:** `2024-05-06T07:00:00Z`,
    20 karakter, mikrosaniye YOK. SQLite bunları metin olarak karşılaştırıyor;
    mikrosaniye eklenirse sözlük sırası kronolojik sıradan ayrılır.
+9. **`sequence` ve `ics_sequence` AYRI kolonlar, karıştırma.** `sequence`
+   Repo'nun yerel revizyon sayacı (`update_event` her çağrıda artırır);
+   `ics_sequence` yalnızca `.ics` dosyasından gelen RFC 5545 SEQUENCE'i taşır ve
+   `NULL` "hiç içe aktarılmadı" demektir. İkisi bir kez tek kolonda birleşmişti:
+   elle düzenlenen etkinlik `sequence`'i artırdığı için `SEQUENCE:0` yazan her
+   dosya sonsuza dek "eski" sayılıyor ve içe aktarma SESSİZCE düşüyordu.
+   Erişim `repo.get_ics_sequence()` / `repo.set_ics_sequence()` ile; `ics/`
+   içinden `repo.conn`'a ham SQL yazma.
 
 ### store/migrator.py
 
-9. **`BEGIN`/`COMMIT` migration script'inin İÇİNDE.** `executescript`
+10. **`BEGIN`/`COMMIT` migration script'inin İÇİNDE.** `executescript`
    kendisinden önce açılmış transaction'ı örtük commit ediyor; dışarıdan
    sarmak koruma sağlamıyor ve `ROLLBACK` "no transaction is active" ile patlar.
-10. **Uygulanmış bir migration DEĞİŞTİRİLMEZ.** Şema değişikliği yeni bir
-    dosyadır (`002_...sql`). Aksi hâlde iki makinedeki DB sessizce farklılaşır.
-11. **`schema.sql` ile `migrations/` aynı şemayı üretmeli.**
-    `test_schema_sql_migrationlarla_ayni` bunu zorluyor. Şema değiştirirsen
-    ikisini birden güncelle.
+11. **Uygulanmış bir migration DEĞİŞTİRİLMEZ.** Şema değişikliği yeni bir
+    dosyadır (`003_...sql`). Aksi hâlde iki makinedeki DB sessizce farklılaşır.
+12. **`schema.sql` ile `migrations/` aynı şemayı üretmeli.**
+    `test_schema_sql_migrationlarla_ayni` bunu zorluyor -- ham DDL metnini değil
+    YAPIYI (kolon/indeks/yabancı anahtar) karşılaştırır, çünkü `ALTER TABLE ADD
+    COLUMN` saklanan metni değiştiriyor. Şema değiştirirsen ikisini de güncelle
+    ve yeni kolonu `schema.sql`'de SONA yaz (ALTER kolonu sona ekler).
 
 ---
 
@@ -168,19 +179,20 @@ dosya bırakırsın (bu projede bir kez oldu).
 - Büyük dosyaları kabuk heredoc'u ile yazma: bu ortamda ~8KB'da kesiliyor ve
   "unexpected EOF" veriyor. Dosya yazma aracını kullan.
 
-### Sürüm kontrolü yok — ilk iş bu
+### Sürüm kontrolü
 
-Proje henüz git deposu değil. Kod değiştirmeye başlamadan önce:
-
-```powershell
-cd "C:\Users\Arda\Desktop\Aktenak\Projeler\takvim"; git init; git add -A; git commit -m "Faz 0 ve Faz 1"
-```
-
+Proje bir git deposu. Değişikliğe başlamadan önce çalışma ağacının temiz
+olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 `.gitignore` hazır (`.venv/`, `__pycache__/`, `*.db`).
 
 ---
 
 ## 7. Sıradaki görev
 
-[docs/faz2-ics-import.md](docs/faz2-ics-import.md) — `.ics` içe aktarma.
-Kabul kriterleri ve tuzaklar orada.
+**Faz 3 — UI.** Ama önce arayüz kararı verilmeli (README §8): FastAPI + yerel web
+ön yüz mü, PySide6 mı? Bu karar kullanıcıya ait; kendi başına seçme, sor.
+
+Karar verildikten sonra sıra: ay görünümü → hafta görünümü (`core.layout()`
+bunun için hazır) → gün görünümü.
+
+Biten faz: [docs/faz2-ics-import.md](docs/faz2-ics-import.md).

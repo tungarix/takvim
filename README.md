@@ -2,10 +2,10 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** Faz 0 ve Faz 1 tamamlandı (saf mantık çekirdeği + SQLite kalıcılık). GUI henüz yok.
+**Durum:** Faz 0, Faz 1 ve Faz 2 tamamlandı (saf mantık çekirdeği + SQLite kalıcılık + `.ics` içe aktarma). GUI henüz yok.
 
-> Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku; sıradaki görev
-> [docs/faz2-ics-import.md](docs/faz2-ics-import.md).
+> Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
+> Sıradaki faz: UI (arayüz kararı henüz verilmedi, bkz. §8).
 
 ---
 
@@ -37,7 +37,7 @@ Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, ç
 ```
 core/     saf mantık — DB ve GUI bilmez          ✓ Faz 0
 store/    kalıcılık (SQLite)                      ✓ Faz 1
-ics/      içe/dışa aktarma                          Faz 2, 5
+ics/      içe aktarma                             ✓ Faz 2 (dışa aktarma Faz 5)
 ui/       arayüz                                    Faz 3
 ```
 
@@ -137,7 +137,10 @@ açılmazdı; bu yüzden `event_overrides` tablosunu tarayan ikinci bir aday sor
 
 `DTSTART`'tan **önceye** düşen bir `RDATE`, aday sorgusuyla bulunamaz: `start_utc`
 alt sınır kabul ediliyor. RFC bunu yasaklamıyor ama üreticiler pratikte yapmıyor.
-Faz 2 aksini gösterirse `series_start_utc` kolonu eklenecek.
+Faz 2'de sentetik fixture'ların hiçbirinde ve `naive_until`/`e2e` serilerinde
+böyle bir kayda rastlanmadı; karşılaşılırsa içe aktarıcı uyarı üretiyor
+(`RDATE DTSTART'tan önce`) ve o zaman `series_start_utc` kolonu eklenecek.
+Migration yazılmadı — sessizce geçilmedi, uyarıyla gözetim altına alındı.
 
 ---
 
@@ -151,7 +154,7 @@ python -m venv .venv
 .venv\Scripts\python.exe -m pytest
 ```
 
-**Bağımlılıklar:** `python-dateutil` (RRULE), `pytest` (test).
+**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (Faz 2 `.ics` ayrıştırma), `pytest` (test).
 Windows'ta ayrıca `tzdata` — blueprint'in listesinde yok ama işletim sisteminin
 IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 (`ZoneInfoNotFoundError`). Opsiyonel kolaylık değil, zorunluluk.
@@ -160,7 +163,7 @@ IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 
 ## 6. Kabul kriterleri
 
-**84 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**108 test geçiyor** (84 + 20 Faz 2 + 4 `ics_sequence` regresyonu). Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -183,11 +186,76 @@ Dört kritik Faz 1 davranışı mutasyonla doğrulandı (iki parçalı sorgunun 
 dalı, `foreign_keys` pragması, override aday sorgusu, `series_end` yeniden hesabı):
 her biri bozulduğunda ilgili test kırmızıya dönüyor.
 
+Faz 2 ayrıca şunları kapsıyor (`docs/faz2-ics-import.md` kabul listesinin tamamı,
+`tests/test_ics_import.py`, fixture'lar `tests/fixtures/` altında):
+
+- [x] Tek seferlik saatli etkinlik (`TZID=Europe/Istanbul`)
+- [x] Çok günlü tüm gün etkinlik → `DTEND` dışlayıcı (3 gün)
+- [x] `DTEND` yok, `DURATION` var
+- [x] Haftalık `RRULE` + iki `EXDATE` satırı (biri virgüllü, toplam 3 dışlama)
+- [x] `RECURRENCE-ID` ile tek örnek kaydırma → `Override`, `expand()` sonucunda görünüyor
+- [x] `RECURRENCE-ID` + `STATUS:CANCELLED` → `Override(cancelled=True)`
+- [x] Windows saat dilimi adı (`Türkiye Standart Saati`, `W. Europe Standard Time`) → IANA
+- [x] Bilinmeyen saat dilimi → `default_tzid` + uyarı
+- [x] Kayan (TZID'siz) zaman → `default_tzid`'de yorumlanıyor
+- [x] Bozuk VEVENT (`DTEND < DTSTART`) → `errors`'a, kalan içe aktarılıyor
+- [x] `VTODO`/`VTIMEZONE` atlanıyor, hata yok
+- [x] Aynı dosya iki kez → ikinci seferde `added=0`, mükerrer yok
+- [x] `dry_run=True` → DB değişmiyor, rapor doluyor
+- [x] Uçtan uca: içe aktar → `repo.occurrences()` → beklenen 8 örnek
+- [x] Ek: UTC (`Z`) zamanlar, naive `UNTIL` ham saklama, `SEQUENCE` eskiye karşı
+      koruma, `RANGE=THISANDFUTURE` hatası, bitişsiz saatliye 1 saat varsayımı
+
+Üç kritik Faz 2 davranışı mutasyonla doğrulandı (tüm gün `DTEND` dışlayıcılığı,
+Windows eşlemesi, `SEQUENCE` karşılaştırması): her biri bozulduğunda ilgili test
+kırmızıya dönüyor.
+
+### Faz 2 sonrası düzeltme: `sequence` kolonu ikiye ayrıldı
+
+İlk uygulamada `.ics` dosyasındaki RFC 5545 `SEQUENCE`, Repo'nun yerel revizyon
+sayacı olan `events.sequence` kolonuna yazılıyordu. İki anlam tek kolonda
+çakışınca şu sessiz hata çıktı:
+
+1. Bir etkinliği uygulamada elle düzenle → `update_event` `sequence`'i 1 yapar
+2. Aynı (hatta güncellenmiş) `.ics` dosyasını tekrar içe aktar
+3. Dosyada `SEQUENCE:0` yazdığı için `0 < 1` → **sessizce atlanır**
+
+Google çoğu kayıtta `SEQUENCE:0` yazdığından bu, pratikte "elle düzenlenen
+etkinlik bir daha hiç senkronlanmaz" demekti.
+
+`002_ics_sequence.sql` ile `ics_sequence` ayrı kolona taşındı: `sequence` Repo'nun
+sayacı olarak kaldı, karşılaştırma yeni kolona bakıyor. `NULL` = bu etkinlik hiç
+`.ics`'ten gelmedi, dolayısıyla karşılaştıracak sürüm yok ve aktarma kabul edilir.
+Ayrıca gerçekten eski bir dosya atlandığında artık `warnings`'e gerekçe yazılıyor —
+atlama sessiz değil.
+
+Erişim `repo.get_ics_sequence()` / `repo.set_ics_sequence()` üzerinden; içe
+aktarıcının `repo.conn` ile ham SQL yazması da böylece kalktı.
+
+### Faz 2 kasıtlı kararları
+
+- **Bitişsiz saatli etkinlik → 1 saat varsayılır + uyarı.** RFC sıfır süre der ama
+  `Event` sıfır süreyi reddediyor; veri kaybetmek yerine Google'ın yeni etkinlik
+  varsayılanı (1 saat) alındı.
+- **Kayan zaman → `default_tzid`, uyarısız.** RFC'de "yerel saat" demek; uyarı
+  gürültü olurdu.
+- **Bilinmeyen TZID → `default_tzid` + uyarı.** Sessizce UTC'ye düşmek yok;
+  `core/` tekrarları tzid'de genişlettiği için yanlış tzid DST'de saat kaydırır.
+- **Yüzen `EXDATE`/`RDATE` serinin kendi diliminde yorumlanır.** Bunlar serinin
+  örneklerine gönderme yapıyor; `default_tzid`'den bağımsız olmalı ki dışlama
+  isabet etsin.
+- **Ana kaydı `STATUS:CANCELLED` olan seri atlanır** (hata değil, `skipped`).
+- **`SEQUENCE` DB'de ayrıca saklanır** (`Repo` kendi `sequence`'ini yönettiği için
+  gelen değer üstüne yazılır); eski dosya yeniyi ezmez.
+- **Gerçek veri notu:** Google/Outlook `.ics` ile hafta görünümü karşılaştırması
+  henüz yapılmadı (kullanıcı verisi bekleniyor); `series_end_utc` sentetik
+  veride doğrulandı (sonsuzda `NULL`, `COUNT=7`'de son örneğin bitişi).
+
 ---
 
 ## 7. Sonraki fazlar
 
-- **Faz 2 — `.ics` içe aktarma:** gerçek veriyle çarpışma. Varsayımları kıracak faz.
+- **Faz 2 — `.ics` içe aktarma:** ✓ tamamlandı (parse saf + `Repo` kaydı, 20 test).
 - **Faz 3 — UI:** ay → hafta → gün sırasıyla.
 - **Faz 4 — Konfor:** hızlı ekleme, arama, hatırlatıcı, kısayollar.
 - **Faz 5 — `.ics` dışa aktarma.**
