@@ -2,10 +2,10 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** Faz 0, Faz 1 ve Faz 2 tamamlandı (saf mantık çekirdeği + SQLite kalıcılık + `.ics` içe aktarma). GUI henüz yok.
+**Durum:** Faz 0-3 tamamlandı. Çalışan hafta görünümü + etkinlik paneli var.
 
 > Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
-> Sıradaki faz: UI (arayüz kararı henüz verilmedi, bkz. §8).
+> Sıradaki faz: 4 — kullanım konforu (hızlı ekleme, arama, kısayollar).
 
 ---
 
@@ -38,7 +38,7 @@ Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, ç
 core/     saf mantık — DB ve GUI bilmez          ✓ Faz 0
 store/    kalıcılık (SQLite)                      ✓ Faz 1
 ics/      içe aktarma                             ✓ Faz 2 (dışa aktarma Faz 5)
-ui/       arayüz                                    Faz 3
+ui/       arayüz (yerel web)                      ✓ Faz 3 (hafta görünümü)
 ```
 
 **`core/` hiçbir zaman `store/` veya `ui/` import etmez. Tersi serbest.**
@@ -163,7 +163,7 @@ IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 
 ## 6. Kabul kriterleri
 
-**108 test geçiyor** (84 + 20 Faz 2 + 4 `ics_sequence` regresyonu). Blueprint §7 listesinin tamamı karşılandı:
+**126 test geçiyor** (84 + 20 Faz 2 + 4 `ics_sequence` + 18 Faz 3). Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -253,16 +253,70 @@ aktarıcının `repo.conn` ile ham SQL yazması da böylece kalktı.
 
 ---
 
-## 7. Sonraki fazlar
+## 7. Faz 3'te ne var
+
+```powershell
+.venv\Scripts\python.exe -m ui --demo
+```
+
+Tarayıcıda `http://127.0.0.1:8765` açılır. `--db takvim.db` ile kalıcı veritabanı,
+`--tz` ile saat dilimi verilir.
+
+| Dosya | Sorumluluk |
+|---|---|
+| `ui/presenter.py` | Hafta verisi hazırlığı — HTTP bilmez, testleri sunucusuz |
+| `ui/server.py` | stdlib `http.server`, dört route |
+| `ui/static/` | Izgara (CSS Grid), etkinlik paneli, takvim listesi |
+| `ui/demo.py` | Örnek veri: kasten çakışan, gece yarısını aşan, çok günlü |
+
+### İki karar
+
+**Web ön yüz, Qt değil.** Blueprint §5'in gerekçesi zaten buydu: zaman ızgarası
+ve çakışma yerleşimi CSS'in doğal yaptığı şeyler.
+
+**Ama FastAPI değil, stdlib `http.server`.** Tek kullanıcılı, yalnızca
+localhost'a bağlanan bir uygulamanın dört route'u için fastapi + uvicorn +
+starlette + pydantic zinciri ağır. Blueprint'in gerekçesi ön yüz hakkındaydı,
+sunucu çatısı hakkında değil. API büyürse (Faz 4) geçiş route taşımaktan ibaret.
+
+**Sunucu tek thread'li.** `ThreadingHTTPServer` ile başlamıştı ve ilk istekte
+`SQLite objects created in a thread can only be used in that same thread`
+hatası verdi: sqlite3 bağlantıları thread'e bağlı. Tek kullanıcıda eşzamanlılık
+hiçbir şey kazandırmadığı için sorunu kilitle yönetmek yerine ortadan kaldırdık.
+
+### Üç tuzak
+
+**1. Gün sınırları `başlangıç + 24 saat` değil.** DST gününde bir gün 23 veya 25
+saat sürer. `dayMinutes` her gün için ayrı gönderiliyor, ön yüz yüzdeleri ona
+bölüyor.
+
+**2. `a - b` iki aware datetime'da ofsetleri UYGULAMAYABİLİR.** CPython'ın
+`datetime.__sub__`'ı `self._tzinfo is other._tzinfo` ise naive farkı döndürüyor.
+`get_tz` lru_cache'li olduğu için gün sınırlarının ikisi de aynı `ZoneInfo`
+nesnesini taşıyor — doğrudan çıkarınca DST günü 24 saat görünüyordu. Süre
+hesabı artık hep UTC üzerinden. Bunu kendi testim yakaladı.
+
+**3. Kırpma `layout()`'tan ÖNCE.** Gece yarısını aşan etkinlik her güne
+kırpılıp öyle yerleştiriliyor; yoksa dünden sarkan bir blok ertesi günün
+sabahını boşuna yarım genişliğe indirirdi. Kırpılan blok ızgarada kesik
+çizilir ama panelde GERÇEK saatini gösterir.
+
+### Kapsam dışı (bu fazda)
+
+Sürükle-bırak, etkinlik oluşturma/düzenleme, ay ve gün görünümleri. Faz 3
+"hafta görünümü + etkinlik paneli" olarak sınırlandı; gerisi Faz 4'e ait.
+
+---
+
+## 8. Sonraki fazlar
 
 - **Faz 2 — `.ics` içe aktarma:** ✓ tamamlandı (parse saf + `Repo` kaydı, 20 test).
-- **Faz 3 — UI:** ay → hafta → gün sırasıyla.
 - **Faz 4 — Konfor:** hızlı ekleme, arama, hatırlatıcı, kısayollar.
 - **Faz 5 — `.ics` dışa aktarma.**
 
 ---
 
-## 8. Açık sorular
+## 9. Açık sorular
 
 Bunlar Faz 1'e geçmeden cevaplanmalı değil ama Faz 3'ten önce cevaplanmalı:
 

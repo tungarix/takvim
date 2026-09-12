@@ -14,11 +14,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Faz 0 — saf mantık çekirdeği (`core/`) | ✅ bitti |
 | Faz 1 — kalıcılık (`store/`) | ✅ bitti |
 | Faz 2 — `.ics` içe aktarma (`ics/`) | ✅ bitti |
-| **Faz 3 — UI** | ⬅️ **sıradaki** (arayüz kararı HENÜZ VERİLMEDİ, bkz. README §8) |
-| Faz 4 — konfor | bekliyor |
+| Faz 3 — UI, hafta görünümü (`ui/`) | ✅ bitti |
+| **Faz 4 — konfor** | ⬅️ **sıradaki** (hızlı ekleme, arama, kısayollar) |
 | Faz 5 — `.ics` dışa aktarma | bekliyor |
 
-**108 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**126 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -64,7 +64,7 @@ Yeni bağımlılık eklemeden önce gerekçelendir ve önce sor.
 core/   saf mantık — DB, dosya, ekran bilmez
 store/  kalıcılık (SQLite)
 ics/    içe/dışa aktarma
-ui/     arayüz
+ui/     arayüz (yerel web, stdlib http.server)
 ```
 
 **`core/` hiçbir zaman `store/`, `ics/` veya `ui/` import etmez. Tersi serbest.**
@@ -125,6 +125,26 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     YAPIYI (kolon/indeks/yabancı anahtar) karşılaştırır, çünkü `ALTER TABLE ADD
     COLUMN` saklanan metni değiştiriyor. Şema değiştirirsen ikisini de güncelle
     ve yeni kolonu `schema.sql`'de SONA yaz (ALTER kolonu sona ekler).
+
+### ui/
+
+13. **Gün sınırları `başlangıç + 24 saat` DEĞİL.** DST gününde bir gün 23 veya
+    25 saat sürer. `day_bounds()` her iki sınırı da `datetime.combine` ile kurar
+    ve `dayMinutes` her gün için ayrı gönderilir.
+14. **Aware datetime farkını UTC'ye çevirmeden ALMA.** CPython'ın
+    `datetime.__sub__`'ı `self._tzinfo is other._tzinfo` ise ofsetleri
+    uygulamadan naive farkı döndürüyor. `get_tz` lru_cache'li olduğu için gün
+    sınırları aynı `ZoneInfo` nesnesini taşır ve doğrudan çıkarma DST gününde
+    24 saat verir. `_dakika()` bu yüzden `astimezone(UTC)` yapıyor.
+15. **Kırpma `layout()`'tan ÖNCE.** Gece yarısını aşan etkinlik her güne
+    kırpılıp öyle yerleştirilir; yoksa dünden sarkan blok ertesi sabahı boşuna
+    daraltır. Kırpılmış blok ızgarada kesik çizilir ama panelde GERÇEK saatini
+    gösterir (`startUtc`/`endUtc` orijinal kalır, yalnızca `startMin`/`endMin`
+    kırpılır).
+16. **Sunucu TEK THREAD'li.** `ThreadingHTTPServer` yaparsan sqlite3 bağlantısı
+    "created in a thread can only be used in that same thread" hatası verir.
+    Tek kullanıcıda eşzamanlılık kazandırmıyor; dönmek istersen
+    `store.connect()`'e `check_same_thread=False` geçip erişimi kilitle.
 
 ---
 
@@ -189,10 +209,11 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**Faz 3 — UI.** Ama önce arayüz kararı verilmeli (README §8): FastAPI + yerel web
-ön yüz mü, PySide6 mı? Bu karar kullanıcıya ait; kendi başına seçme, sor.
+**Faz 4 — kullanım konforu:** hızlı ekleme ("yarın 14:00 diş hekimi" → parse),
+arama, hatırlatıcı, klavye kısayolları. Hatırlatıcının uygulama kapalıyken de
+çalışıp çalışmayacağı KARARA BAĞLI (README §9) — kendi başına seçme, sor.
 
-Karar verildikten sonra sıra: ay görünümü → hafta görünümü (`core.layout()`
-bunun için hazır) → gün görünümü.
+Faz 3 kapsam dışı bıraktıkları Faz 4'e ait: sürükle-bırak, etkinlik
+oluşturma/düzenleme, ay ve gün görünümleri.
 
 Biten faz: [docs/faz2-ics-import.md](docs/faz2-ics-import.md).

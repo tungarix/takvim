@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Takvim — Hafta</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="ust-cubuk">
+  <div class="marka">Takvim</div>
+
+  <nav class="gezinme">
+    <button id="onceki" class="ikon-dugme" title="Önceki hafta" aria-label="Önceki hafta">‹</button>
+    <button id="bugun" class="dugme">Bugün</button>
+    <button id="sonraki" class="ikon-dugme" title="Sonraki hafta" aria-label="Sonraki hafta">›</button>
+  </nav>
+
+  <h1 id="hafta-etiketi" class="hafta-etiketi">—</h1>
+
+  <div class="bosluk"></div>
+  <div id="tz-etiketi" class="tz-etiketi"></div>
+</header>
+
+<div class="govde">
+
+  <aside class="kenar">
+    <h2 class="kenar-baslik">Takvimler</h2>
+    <ul id="takvim-listesi" class="takvim-listesi"></ul>
+    <p class="ipucu">Bir etkinliğe tıkla, ayrıntısı sağda açılır.</p>
+  </aside>
+
+  <main class="izgara-sarmal">
+    <!-- Gün başlıkları: ızgarayla aynı kolon şablonunu paylaşır -->
+    <div class="izgara-baslik" id="izgara-baslik"></div>
+
+    <!-- Tüm gün şeridi: saat ızgarasına girmez, üstte ayrı satır -->
+    <div class="tumgun-serit" id="tumgun-serit"></div>
+
+    <div class="izgara-kaydirma" id="izgara-kaydirma">
+      <div class="izgara" id="izgara">
+        <div class="saat-sutunu" id="saat-sutunu"></div>
+        <div class="gunler" id="gunler"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="panel" id="panel" hidden>
+    <button class="panel-kapat" id="panel-kapat" aria-label="Kapat">×</button>
+    <div class="panel-icerik" id="panel-icerik"></div>
+  </aside>
+
+</div>
+
+<div class="yukleniyor" id="yukleniyor" hidden>yükleniyor…</div>
+
+<script src="app.js"></script>
+</body>
+</html>

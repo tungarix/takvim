@@ -21,8 +21,8 @@ dependencies = [
 dev = ["pytest>=8"]
 
 [tool.setuptools]
-package-data = { store = ["schema.sql", "migrations/*.sql"] }
-packages = ["core", "store", "ics"]
+package-data = { store = ["schema.sql", "migrations/*.sql"], ui = ["static/*"] }
+packages = ["core", "store", "ics", "ui"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
