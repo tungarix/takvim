@@ -221,7 +221,11 @@ function modalForm(baslik, metin, alanlar, onay = "Kaydet") {
           });
         } else {
           g = document.createElement("input");
-          g.type = a.tur === "tarih" ? "date" : a.tur === "saat" ? "time" : "text";
+          g.type =
+            a.tur === "tarih" ? "date"
+            : a.tur === "saat" ? "time"
+            : a.tur === "renk" ? "color"
+            : "text";
           g.autocomplete = "off";
         }
         g.className = "modal-girdi";
@@ -243,13 +247,31 @@ function modalForm(baslik, metin, alanlar, onay = "Kaydet") {
 }
 
 let bildirimZaman = null;
-function bildir(mesaj, hata = false) {
+
+/* Bildirim kutusu bir EYLEM taşıyabiliyor: silmenin yanına "Geri al".
+ * Onay kutusu tek başına yetmiyor -- onay kutuları refleksle onaylanır ve
+ * silme geri alınamaz bir işlem. Pencere 10 saniye açık kalıyor. */
+function bildir(mesaj, hata = false, geriAl = null) {
   const kutu = el("bildirim");
-  kutu.textContent = mesaj;
+  kutu.textContent = "";
   kutu.classList.toggle("hata", hata);
+
+  const metin = document.createElement("span");
+  metin.textContent = mesaj;
+  kutu.appendChild(metin);
+
+  if (geriAl) {
+    const dugme = document.createElement("button");
+    dugme.type = "button";
+    dugme.className = "bildirim-dugme";
+    dugme.textContent = "Geri al";
+    dugme.onclick = () => { kutu.hidden = true; geriAl(); };
+    kutu.appendChild(dugme);
+  }
+
   kutu.hidden = false;
   clearTimeout(bildirimZaman);
-  bildirimZaman = setTimeout(() => { kutu.hidden = true; }, hata ? 7000 : 3500);
+  bildirimZaman = setTimeout(() => { kutu.hidden = true; }, hata ? 7000 : geriAl ? 10000 : 3500);
 }
 
 async function yukle() {
@@ -297,13 +319,87 @@ function takvimleriCiz() {
     const gorunur = durum.takvimGorunur.get(c.id);
     const li = document.createElement("li");
     li.className = "takvim-satir" + (gorunur ? "" : " gizli");
-    li.innerHTML = `<span class="renk-kutu"></span><span class="takvim-ad"></span>`;
+    li.innerHTML =
+      `<span class="renk-kutu"></span><span class="takvim-ad"></span>` +
+      `<button type="button" class="takvim-dugme" data-is="duzenle" title="Düzenle">✎</button>` +
+      `<button type="button" class="takvim-dugme" data-is="sil" title="Sil">×</button>`;
     li.querySelector(".renk-kutu").style.background = c.color;
     li.querySelector(".takvim-ad").textContent = c.name;
     li.title = gorunur ? "Gizle" : "Göster";
     li.onclick = () => gorunurlukDegistir(c.id, !gorunur);
+    // Satırın kendisi görünürlüğü değiştiriyor; düğmeler onu TETİKLEMEMELİ.
+    li.querySelector('[data-is="duzenle"]').onclick = (e) => {
+      e.stopPropagation();
+      takvimDuzenle(c);
+    };
+    li.querySelector('[data-is="sil"]').onclick = (e) => {
+      e.stopPropagation();
+      takvimSil(c);
+    };
     liste.appendChild(li);
   });
+}
+
+/* ---------- takvim yönetimi ---------- */
+
+/* Bu üçü uzun süre yoktu: kullanıcı ilk açılışta oluşan tek "Kişisel"
+ * takvimine mahkûmdu. Renk ve gizle/göster özellikleri de o yüzden pratikte
+ * ölüydü -- gizlenecek ikinci bir takvim olmuyordu. */
+
+async function takvimEkle() {
+  const s = await modalForm(
+    "Yeni takvim",
+    "",
+    [
+      { ad: "ad", etiket: "Ad", tur: "metin", deger: "" },
+      { ad: "renk", etiket: "Renk", tur: "renk", deger: "#3b82f6" },
+    ],
+    "Oluştur",
+  );
+  if (s === null || !s.ad.trim()) return;
+  await eylem(
+    () => istek("/api/calendars", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: s.ad.trim(), color: s.renk }),
+    }),
+    `Takvim eklendi: ${s.ad.trim()}`,
+  );
+}
+
+async function takvimDuzenle(c) {
+  const s = await modalForm(
+    "Takvimi düzenle",
+    "",
+    [
+      { ad: "ad", etiket: "Ad", tur: "metin", deger: c.name },
+      { ad: "renk", etiket: "Renk", tur: "renk", deger: c.color },
+    ],
+  );
+  if (s === null || !s.ad.trim()) return;
+  if (s.ad.trim() === c.name && s.renk === c.color) return;
+  await eylem(
+    () => istek(`/api/calendars/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: s.ad.trim(), color: s.renk }),
+    }),
+    "Takvim güncellendi",
+  );
+}
+
+async function takvimSil(c) {
+  const tamam = await onayla(
+    "Takvimi sil",
+    `"${c.name}" ve İÇİNDEKİ TÜM ETKİNLİKLER silinecek. Bu geri alınamaz.`,
+    "Takvimi sil",
+    true,
+  );
+  if (!tamam) return;
+  await eylem(
+    () => istek(`/api/calendars/${c.id}`, { method: "DELETE" }),
+    `Takvim silindi: ${c.name}`,
+  );
 }
 
 async function gorunurlukDegistir(id, gorunur) {
@@ -470,6 +566,16 @@ async function izgaraTik(e, sutun, gun) {
       /* Tekrar KAPALI bir liste: tekrar motoru baştan beri vardı ama
        * kullanıcının onu söyleyebileceği hiçbir yer yoktu; RFC 5545 kuralı
        * yazdırmak da bu uygulamanın işi değil. */
+      /* Hangi takvime yazılacağı SORULUYOR: birden çok takvim olduğunda
+       * sunucunun seçtiği varsayılan her zaman kullanıcının istediği olmuyor. */
+      {
+        ad: "takvim",
+        etiket: "Takvim",
+        tur: "secim",
+        deger: String((durum.veri.calendars.find((c) => durum.takvimGorunur.get(c.id) !== false)
+          || durum.veri.calendars[0] || {}).id || ""),
+        secenekler: durum.veri.calendars.map((c) => ({ deger: String(c.id), etiket: c.name })),
+      },
       {
         ad: "tekrar",
         etiket: "Tekrar",
@@ -500,6 +606,7 @@ async function izgaraTik(e, sutun, gun) {
         minutes: dakika,
         endMinutes: bitis,
         tekrar: s.tekrar,
+        calendarId: s.takvim ? Number(s.takvim) : undefined,
       }),
     }),
     `Eklendi: ${ad} (${gun.dayNumber} ${gun.monthName} ${dakikaSaat(dakika)})`,
@@ -1046,8 +1153,67 @@ async function ornegiSil(occ) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
     }),
-    "Bu örnek silindi",
+    occ.recurring ? "Bu örnek silindi" : "Silindi",
+    // Tüm gün etkinliğinde geri alma YOK: yeniden oluşturma yolu saatli
+    // etkinlik kuruyor ve sessizce yanlış bir şey geri getirmek, geri
+    // getirmemekten kötü.
+    occ.allDay ? null : () => silmeyiGeriAl(occ),
   );
+}
+
+/* Silmeyi geri alır.
+ *
+ * İki farklı iş: tekrarlı seride kayıt hiç silinmedi, yalnızca iptal
+ * override'ı yazıldı -- onu kaldırmak yetiyor. Tekrarsızda kayıt gerçekten
+ * gitti, elimizdeki örnek verisinden YENİDEN kuruyoruz (yeni id alır).
+ * Hatırlatıcılar ve konum/açıklama da geri geliyor.
+ */
+async function silmeyiGeriAl(occ) {
+  if (occ.recurring) {
+    await eylem(
+      () => istek("/api/occurrences/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
+      }),
+      "Geri alındı",
+    );
+    return;
+  }
+
+  const tarih = yerelTarihISO(occ.startUtc, occ.tzid);
+  const bas = dakikayaCevir(yerelSaatISO(occ.startUtc, occ.tzid));
+  let bit = dakikayaCevir(yerelSaatISO(occ.endUtc, occ.tzid));
+  if (bit <= bas) bit += 24 * 60;
+
+  await eylem(async () => {
+    const yanit = await istek("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: occ.title,
+        date: tarih,
+        minutes: bas,
+        endMinutes: bit,
+        calendarId: occ.calendarId,
+      }),
+    });
+    const yeniId = yanit.event.id;
+    if (occ.location || occ.description) {
+      await istek(`/api/events/${yeniId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ location: occ.location, description: occ.description }),
+      });
+    }
+    for (const r of occ.reminders || []) {
+      await istek(`/api/events/${yeniId}/reminders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutesBefore: r.minutesBefore }),
+      });
+    }
+  }, "Geri alındı");
 }
 
 /** Seriyi tamamen siler. Onay metni bunun geri alınamaz olduğunu söylüyor. */
@@ -1132,10 +1298,10 @@ function hatirlaticiMetni(dakika) {
   return `${dakika} dakika önce`;
 }
 
-async function eylem(islev, basariMesaji) {
+async function eylem(islev, basariMesaji, geriAl = null) {
   try {
     await islev();
-    bildir(basariMesaji);
+    bildir(basariMesaji, false, geriAl);
     panelKapat();
     await yukle();
   } catch (hata) {
@@ -1252,6 +1418,7 @@ function kaydir(yon) {
 el("onceki").onclick = () => kaydir(-1);
 el("sonraki").onclick = () => kaydir(1);
 el("bugun").onclick = () => { durum.anchor = bugunISO(); yukle(); };
+el("takvim-ekle").onclick = takvimEkle;
 el("panel-kapat").onclick = panelKapat;
 el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
 

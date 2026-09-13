@@ -119,7 +119,38 @@ html, body {
 }
 .takvim-satir.gizli .renk-kutu { background: transparent !important; }
 
-.takvim-ad { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.takvim-ad { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+/* Takvim satırındaki düzenle/sil düğmeleri: yalnızca fare satırın üstündeyken
+   ya da klavye odağı üstlerindeyken görünüyor. Her satırda sürekli duran iki
+   simge kenar çubuğunu gürültüye çeviriyor. */
+.takvim-dugme {
+  opacity: 0;
+  background: none;
+  border: none;
+  color: var(--metin-soluk);
+  font: inherit;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.takvim-satir:hover .takvim-dugme,
+.takvim-dugme:focus { opacity: .75; }
+.takvim-dugme:hover { opacity: 1; background: var(--yuzey-2); color: var(--metin); }
+
+.kenar-baslik { display: flex; align-items: center; justify-content: space-between; }
+.kenar-ekle {
+  background: none;
+  border: none;
+  color: var(--metin-soluk);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.kenar-ekle:hover { background: var(--yuzey-2); color: var(--metin); }
 
 .ipucu { margin-top: 18px; font-size: 12px; color: var(--metin-silik); line-height: 1.5; }
 
@@ -542,6 +573,18 @@ kbd {
   box-shadow: 0 6px 20px rgba(0,0,0,.45);
 }
 .bildirim.hata { border-color: #5b2626; background: #2a1616; color: #ffb4b4; }
+.bildirim { display: flex; align-items: center; gap: 12px; }
+.bildirim-dugme {
+  background: var(--vurgu);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.bildirim-dugme:hover { background: #3f7cf0; }
 
 /* Izgara kolonlarının min-content yüzünden şişmesini engelle */
 .izgara-baslik, .tumgun-serit { grid-template-columns: var(--saat-genislik) repeat(7, minmax(0, 1fr)); }

@@ -160,8 +160,16 @@ Kısayola ikinci kez tıklamak ikinci bir Takvim açmıyor, var olan pencereyi �
 alıyor.
 
 Veriler `%LOCALAPPDATA%\Takvim\takvim.db` içinde. Kurulum klasörü yazılabilir
-olmayabileceği (Program Files) için orada değil. Yedeklemek için uygulamadan
-**Dışa aktar**'a bas; `.ics` dosyası her takvim uygulamasında açılır.
+olmayabileceği (Program Files) için orada değil.
+
+**Yedek kendiliğinden alınıyor:** her açılışta veritabanının gerçek bir kopyası
+`%LOCALAPPDATA%\Takvim\yedek\takvim-YYYY-AA-GG.db` olarak yazılıyor ve son 7 gün
+saklanıyor. Bir şey ters giderse uygulamayı kapat, bozulan `takvim.db` dosyasını
+bir kenara al, yedeklerden birini `takvim.db` adıyla kopyala.
+
+**Dışa aktar** bir yedek DEĞİL, dışa aktarmadır: ürettiği `.ics` başka takvim
+uygulamalarında açılır ama hatırlatıcıları ve hangi etkinliğin hangi takvime ait
+olduğunu taşımaz.
 
 ### Neler yapabilirsin
 
@@ -175,6 +183,10 @@ olmayabileceği (Program Files) için orada değil. Yedeklemek için uygulamadan
 | Süre değiştirme | Bloğun alt kenarını sürükle |
 | Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |
 | Ayrıntı / işlem | Bloğa tıkla, sağda panel açılır |
+| Tekrarlı etkinlik | "her salı 10:00 ders" yaz, ya da ızgaraya tıklayıp açılan kutuda tekrar seç |
+| Düzenleme | Etkinliğe tıkla → **Düzenle**: başlık, tarih, saat, konum, açıklama tek formda |
+| Takvimler | Kenar çubuğundaki **+** ile yeni takvim; satırdaki ✎ düzenle, × sil |
+| Geri alma | Silme bildiriminde 10 saniye duran **Geri al** |
 | Klavyeyle silme | Etkinlik seçiliyken <kbd>Del</kbd> bu örneği, <kbd>Shift</kbd>+<kbd>Del</kbd> tüm seriyi siler (ikisi de onay sorar) |
 | Yeniden adlandırma | Etkinlik seçiliyken <kbd>F2</kbd> |
 | Hatırlatıcı | Panelden ekle (0 = tam başlarken, 1440 = 1 gün önce) |
@@ -209,6 +221,12 @@ Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı pencer
 - **Sağ tık menüsü yok.** Pencerede tarayıcının menüsü kapalı (uygulama gibi
   dursun diye). Kopyala/yapıştır klavyeyle çalışıyor: `Ctrl+C`, `Ctrl+V`.
 - **`.ics` içe aktarma arayüzde yok**, yalnızca API'de (`POST /api/import`).
+- **Seri düzenleme sınırlı.** Tekrarlı bir etkinliğin başlığını/konumunu
+  değiştirmek TÜM seriyi, tarih/saatini değiştirmek yalnızca o örneği etkiler.
+  "Bundan sonrası için değiştir" yok.
+- **Geri alma tek adımlık.** Bildirimdeki "Geri al" yalnızca son silmeyi ve
+  10 saniye içinde geri alır. Seri silmede geri alma yok; onay kutusu bu yüzden
+  ne olacağını açıkça yazıyor.
 
 ### Geliştirme
 

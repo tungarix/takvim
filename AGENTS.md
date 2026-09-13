@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı.**
 
-**286 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**313 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -332,6 +332,31 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     kutusunda DEĞİLKEN çalışır.** Hızlı ekleme kutusunda yazarken Del harf
     silmeli, etkinlik değil. `Shift+Del` seriyi siler; ikisi de onay sorar --
     klavye silmeyi hızlandırır, geri alınamaz hâle getirmez.
+
+### Silme, tekrar, takvim
+
+49. **Tekrarsız etkinlikte "bu örneği sil" KAYDI SİLER.** Eskiden orada da
+    iptal override'ı yazılıyordu: etkinlik ızgaradan kayboluyor ama aramada
+    çıkıyor ve `.ics` dışa aktarmasına ETKİN yazılıyordu -- yedekten dönünce
+    diriliyordu. Ayrımı `Occurrence.recurring` taşıyor.
+50. **Tekrar kuralı KAPALI bir kümeden geliyor** (`TEKRAR_SECENEKLERI`),
+    serbest RRULE metni değil. Tanınmayan değer sessizce "tekrarsız"a
+    düşmüyor, 400 veriyor: sessizce tek seferlik olan bir ders programı hiç
+    oluşturulmamış olandan kötü.
+51. **"her salı"da yalnızca "her" yutulur**, gün adı tarih çözücüye kalır.
+    Gün adını da yutarsak başlangıç bugüne düşer ve seri yanlış günde tekrarlar.
+52. **Yeni etkinlik GÖRÜNÜR takvime yazılır.** `list_calendars()` gizlileri de
+    veriyor ve ada göre sıralı; alfabede başa düşen gizli bir takvim varsayılan
+    olunca "Eklendi" bildirimi çıkıp ekranda hiçbir şey belirmiyordu.
+53. **Son takvim silinemez.** Takvimsiz veritabanında hızlı ekleme "önce bir
+    takvim oluşturulmalı" diye reddediyor; kullanıcı çıkışsız kalır.
+54. **Takvim rengi `#rrggbb` olarak DOĞRULANIR.** Değer doğrudan
+    `style.background` içine yazılıyor; doğrulanmazsa oraya CSS enjekte edilir.
+55. **Yedek migration'dan ÖNCE alınır** ve geçici ada yazılıp taşınır. Yarım
+    bir "yedek" yedeksizlikten kötüdür: insan ona güvenir.
+56. **Arayüzde tek bir `setInterval` var** (`canliBaslat`): şimdi çizgisini
+    tazeliyor ve gün değişince yeniden çiziyor. Sürükleme ya da açık kutu
+    varsa dokunmuyor, `durum.anchor`a da dokunmuyor.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

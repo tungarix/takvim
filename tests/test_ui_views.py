@@ -858,3 +858,143 @@ def test_bilinmeyen_tekrar_reddedilir(sunucu):
         )
 
     assert hata.value.code == 400
+
+
+# ---------------------------------------------------------------------------
+# Takvim yönetimi
+# ---------------------------------------------------------------------------
+
+def _sil(temel: str, yol: str) -> int:
+    """DELETE isteği; HTTP durum kodunu döndürür."""
+    req = urllib.request.Request(temel + yol, method="DELETE")
+    try:
+        with urllib.request.urlopen(req) as yanit:
+            return yanit.status
+    except urllib.error.HTTPError as hata:
+        return hata.code
+
+
+def test_takvim_olusturulabiliyor(sunucu):
+    """İkinci takvim oluşturmanın yolu yoktu.
+
+    Kullanıcı ilk açılışta oluşan tek takvime mahkûmdu; renk ve gizle/göster
+    özellikleri de bu yüzden pratikte ölüydü.
+    """
+    sonuc = _post(sunucu, "/api/calendars", {"name": "İş", "color": "#22c55e"})
+
+    assert sonuc["calendar"]["name"] == "İş"
+    adlar = [c["name"] for c in _get(sunucu, "/api/calendars")["calendars"]]
+    assert "İş" in adlar
+
+
+def test_takvim_adi_bos_olamaz(sunucu):
+    """Adsız takvim kenar çubuğunda görünmez bir satır olurdu."""
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(sunucu, "/api/calendars", {"name": "   ", "color": "#22c55e"})
+
+    assert hata.value.code == 400
+
+
+def test_gecersiz_renk_reddedilir(sunucu):
+    """Renk doğrudan `style.background` içine yazılıyor.
+
+    Doğrulanmazsa oraya CSS enjekte edilebilir; ayrıca bozuk renk görünmez
+    blok demek.
+    """
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(sunucu, "/api/calendars", {"name": "x", "color": "red; background:url(x)"})
+
+    assert hata.value.code == 400
+
+
+def test_takvim_adi_ve_rengi_guncellenebiliyor(sunucu):
+    """Yanlış isimle açılan takvim düzeltilebilmeli."""
+    olusan = _post(sunucu, "/api/calendars", {"name": "Gecici", "color": "#22c55e"})["calendar"]
+
+    guncel = _post(
+        sunucu, f"/api/calendars/{olusan['id']}",
+        {"name": "Kalıcı", "color": "#eab308"}, method="PATCH",
+    )["calendar"]
+
+    assert (guncel["name"], guncel["color"]) == ("Kalıcı", "#eab308")
+
+
+def test_takvim_silinince_etkinlikleri_de_gidiyor(sunucu):
+    """Takvim silmek içindeki etkinlikleri de siler (CASCADE)."""
+    takvim = _post(sunucu, "/api/calendars", {"name": "Silinecek", "color": "#22c55e"})["calendar"]
+    _post(
+        sunucu, "/api/events",
+        {"title": "silinecek etkinlik", "date": "2026-09-24", "minutes": 600,
+         "calendarId": takvim["id"]},
+    )
+
+    assert _sil(sunucu, f"/api/calendars/{takvim['id']}") == 200
+    assert _get(sunucu, "/api/search?q=silinecek")["results"] == []
+
+
+def test_son_takvim_silinemez(sunucu):
+    """Takvimsiz veritabanında kullanıcı hiçbir şey yapamaz hâle gelir.
+
+    Hızlı ekleme "önce bir takvim oluşturulmalı" diye reddediyor ve arayüzde
+    takvim oluşturmanın tek yolu da kenar çubuğu -- çıkışsız bir döngü.
+    """
+    takvimler = _get(sunucu, "/api/calendars")["calendars"]
+    for c in takvimler[:-1]:
+        _sil(sunucu, f"/api/calendars/{c['id']}")
+
+    kalan = _get(sunucu, "/api/calendars")["calendars"]
+    assert len(kalan) == 1
+    assert _sil(sunucu, f"/api/calendars/{kalan[0]['id']}") == 400
+
+
+def test_yeni_etkinlik_GORUNUR_takvime_yazilir(sunucu):
+    """Gizli takvime yazılan etkinlik ekranda hiç belirmiyordu.
+
+    `list_calendars()` gizlileri de veriyor ve ADA GÖRE sıralı: alfabede başa
+    düşen gizli bir takvim varsayılan olunca kullanıcı "Eklendi" bildirimini
+    görüyor ama ızgarada hiçbir şey çıkmıyordu.
+    """
+    gizli = _post(sunucu, "/api/calendars", {"name": "Aaa gizli", "color": "#22c55e"})["calendar"]
+    _post(sunucu, f"/api/calendars/{gizli['id']}/visible", {"visible": False})
+
+    olusan = _post(
+        sunucu, "/api/events", {"title": "nereye gitti", "date": "2026-09-24", "minutes": 600}
+    )["event"]
+
+    assert olusan["calendarId"] != gizli["id"]
+
+
+# ---------------------------------------------------------------------------
+# Geri al
+# ---------------------------------------------------------------------------
+
+def test_iptal_edilen_ornek_geri_alinabiliyor(sunucu):
+    """Silme geri alınamaz bir işlem; onay kutusu refleksle onaylanıyor.
+
+    Tekrarlı seride kayıt hiç silinmiyor, yalnızca iptal override'ı yazılıyor;
+    geri alma o override'ı kaldırmak demek.
+    """
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    ornek = next(o for g in hafta["days"] for o in g["timed"] if o["title"] == "Algoritma")
+    anahtar = {"eventId": ornek["eventId"], "originalStartUtc": ornek["originalStartUtc"]}
+
+    _post(sunucu, "/api/occurrences/cancel", anahtar)
+    gitti = _get(sunucu, "/api/week?date=2026-09-07")
+    assert not [o for g in gitti["days"] for o in g["timed"] if o["title"] == "Algoritma"]
+
+    _post(sunucu, "/api/occurrences/restore", anahtar)
+
+    geldi = _get(sunucu, "/api/week?date=2026-09-07")
+    assert [o for g in geldi["days"] for o in g["timed"] if o["title"] == "Algoritma"]
+
+
+def test_olmayan_etkinligi_geri_almak_404(sunucu):
+    """Bozuk bir geri alma isteği sessizce başarılı görünmemeli."""
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(
+            sunucu,
+            "/api/occurrences/restore",
+            {"eventId": 999999, "originalStartUtc": "2026-09-07T07:00:00+00:00"},
+        )
+
+    assert hata.value.code == 404

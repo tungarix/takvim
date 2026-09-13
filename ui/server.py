@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import re
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -201,8 +202,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._etkinlik_olustur()
                 return
 
+            if parcalar == ["api", "calendars"]:
+                self._takvim_olustur()
+                return
+
             if parcalar == ["api", "occurrences", "cancel"]:
                 self._ornek_iptal()
+                return
+
+            if parcalar == ["api", "occurrences", "restore"]:
+                self._ornek_geri_al()
                 return
 
             if parcalar == ["api", "occurrences", "move"]:
@@ -246,6 +255,9 @@ class _Handler(BaseHTTPRequestHandler):
             if len(parcalar) == 3 and parcalar[:2] == ["api", "events"]:
                 self._etkinlik_guncelle(int(parcalar[2]))
                 return
+            if len(parcalar) == 3 and parcalar[:2] == ["api", "calendars"]:
+                self._takvim_guncelle(int(parcalar[2]))
+                return
             self._hata("bulunamadı", 404)
         except (ValueError, KeyError) as exc:
             self._hata(str(exc))
@@ -267,6 +279,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._hata("geçersiz id")
                 return
             self._json({"deleted": parcalar[2]})
+            return
+
+        if len(parcalar) == 3 and parcalar[:2] == ["api", "calendars"]:
+            try:
+                self._takvim_sil(int(parcalar[2]))
+            except ValueError as exc:
+                self._hata(str(exc))
+            except LookupError as exc:
+                self._hata(str(exc), 404)
             return
 
         if len(parcalar) == 3 and parcalar[:2] == ["api", "events"]:
@@ -300,7 +321,13 @@ class _Handler(BaseHTTPRequestHandler):
         takvimler = self.repo.list_calendars()
         if not takvimler:
             raise ValueError("önce bir takvim oluşturulmalı")
-        takvim_id = govde.get("calendarId") or takvimler[0].id
+        # Varsayılan takvim GÖRÜNÜR olanlardan seçiliyor. `list_calendars()`
+        # gizlileri de veriyor ve ada göre sıralı: gizli bir takvim alfabede
+        # başa düşerse etkinlik oraya yazılıyor, "Eklendi" bildirimi çıkıyor ve
+        # ekranda hiçbir şey belirmiyordu. Tam da README §8'in "sessizce yanlış
+        # yere kaydedilen randevu" dediği hata sınıfı.
+        gorunurler = [c for c in takvimler if c.visible]
+        takvim_id = govde.get("calendarId") or (gorunurler or takvimler)[0].id
 
         if govde.get("date") is not None:
             self._etkinlik_olustur_acik(govde, int(takvim_id))
@@ -432,6 +459,22 @@ class _Handler(BaseHTTPRequestHandler):
         self.repo.cancel_occurrence(event_id, orijinal)
         self._json({"cancelled": govde["originalStartUtc"]})
 
+    def _ornek_geri_al(self) -> None:
+        """İptal edilmiş bir örneği seriye geri döndürür ("Geri al").
+
+        Yalnızca tekrarlı seri için anlamlı: orada kayıt hiç silinmiyor,
+        yalnızca bir iptal override'ı yazılıyor ve onu kaldırmak yetiyor.
+        Tekrarsız etkinlikte kayıt gerçekten silindiği için geri alma
+        arayüz tarafında etkinliği YENİDEN oluşturuyor.
+        """
+        govde = self._govde()
+        event_id = int(govde["eventId"])
+        orijinal = parse_iso(govde["originalStartUtc"])
+        if self.repo.get_event(event_id) is None:
+            raise LookupError("etkinlik bulunamadı")
+        self.repo.delete_override(event_id, orijinal)
+        self._json({"restored": govde["originalStartUtc"]})
+
     def _ornek_kaydir(self) -> None:
         """Serinin TEK örneğini başka bir ana taşır.
 
@@ -514,6 +557,50 @@ class _Handler(BaseHTTPRequestHandler):
             {"reminder": {"id": kayit.id, "minutesBefore": kayit.minutes_before}}, 201
         )
 
+    def _takvim_olustur(self) -> None:
+        """Yeni takvim ekler.
+
+        Bu uç uzun süre yoktu: kullanıcı ilk açılışta oluşan tek "Kişisel"
+        takvimine mahkûmdu, dolayısıyla renk ve gizle/göster özellikleri de
+        pratikte ölüydü ("birden çok takvim" README §1'de kapsam İÇİ olmasına
+        rağmen).
+        """
+        govde = self._govde()
+        ad = (govde.get("name") or "").strip()
+        if not ad:
+            raise ValueError("takvim adı boş")
+        renk = _renk_dogrula(govde.get("color"))
+        self._json({"calendar": _takvim(self.repo.add_calendar(ad, renk))}, 201)
+
+    def _takvim_guncelle(self, takvim_id: int) -> None:
+        """Takvimin adını ve/veya rengini günceller."""
+        takvim = self.repo.get_calendar(takvim_id)
+        if takvim is None:
+            raise LookupError("takvim bulunamadı")
+        govde = self._govde()
+        ad = takvim.name if govde.get("name") is None else (govde["name"] or "").strip()
+        if not ad:
+            raise ValueError("takvim adı boş")
+        renk = takvim.color if govde.get("color") is None else _renk_dogrula(govde["color"])
+        yeni = replace(takvim, name=ad, color=renk)
+        self.repo.update_calendar(yeni)
+        self._json({"calendar": _takvim(yeni)})
+
+    def _takvim_sil(self, takvim_id: int) -> None:
+        """Takvimi ve İÇİNDEKİ TÜM ETKİNLİKLERİ siler.
+
+        SON takvim silinemez: takvimsiz bir veritabanında hızlı ekleme "önce
+        bir takvim oluşturulmalı" diye reddediyor ve kullanıcı hiçbir şey
+        yapamaz hâle geliyor (bkz. `varsayilan_takvim_saglat`).
+        """
+        takvim = self.repo.get_calendar(takvim_id)
+        if takvim is None:
+            raise LookupError("takvim bulunamadı")
+        if len(self.repo.list_calendars()) <= 1:
+            raise ValueError("son takvim silinemez")
+        self.repo.delete_calendar(takvim_id)
+        self._json({"deleted": takvim_id})
+
     def _gorunurluk(self, takvim_id: int) -> None:
         """Takvim görünürlüğünü değiştirir."""
         takvim = self.repo.get_calendar(takvim_id)
@@ -531,6 +618,23 @@ def _tasima(kayit) -> dict:
         "newStartUtc": kayit.new_start_utc.isoformat() if kayit.new_start_utc else None,
         "newEndUtc": kayit.new_end_utc.isoformat() if kayit.new_end_utc else None,
     }
+
+
+# Takvim renkleri arayüzde doğrudan `style.background` içine yazılıyor.
+# Doğrulanmamış bir değer oraya CSS enjekte edebilir; ayrıca bozuk renk
+# görünmez bir blok demek. Kabul edilen tek biçim `#rrggbb`.
+_RENK_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+_VARSAYILAN_RENK = "#3b82f6"
+
+
+def _renk_dogrula(deger) -> str:
+    """Renk kodunu doğrular; verilmemişse varsayılanı döndürür."""
+    if deger is None or deger == "":
+        return _VARSAYILAN_RENK
+    renk = str(deger).strip()
+    if not _RENK_RE.match(renk):
+        raise ValueError(f"renk #rrggbb biçiminde olmalı: {renk}")
+    return renk.lower()
 
 
 def _takvim(c) -> dict:
