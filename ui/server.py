@@ -275,21 +275,29 @@ class _Handler(BaseHTTPRequestHandler):
     # -- işlem gövdeleri ----------------------------------------------------
 
     def _etkinlik_olustur(self) -> None:
-        """Hızlı ekleme metninden etkinlik yaratır.
+        """Etkinlik yaratır. İki biçim var:
 
-        Ayrıştırma sonucunu da geri gönderiyoruz (`matched`): kullanıcı neyin
-        zaman olarak tanındığını görsün. Tanınmayan ifade sessizce yanlış saate
-        kaydedilmiş bir randevuya dönüşmesin.
+        - `{"text": "yarın 14:00 diş hekimi"}` — hızlı ekleme, metinden
+          ayrıştırılır. Ayrıştırma sonucunu da geri gönderiyoruz (`matched`):
+          kullanıcı neyin zaman olarak tanındığını görsün, tanınmayan ifade
+          sessizce yanlış saate kaydedilmiş bir randevuya dönüşmesin.
+        - `{"title", "date", "minutes"}` — ızgarada boş bir saate tıklayarak
+          oluşturma. Tarih ve saat zaten belli, ayrıştırma YAPILMAZ.
         """
         govde = self._govde()
-        metin = (govde.get("text") or "").strip()
-        if not metin:
-            raise ValueError("metin boş")
 
         takvimler = self.repo.list_calendars()
         if not takvimler:
             raise ValueError("önce bir takvim oluşturulmalı")
         takvim_id = govde.get("calendarId") or takvimler[0].id
+
+        if govde.get("date") is not None:
+            self._etkinlik_olustur_acik(govde, int(takvim_id))
+            return
+
+        metin = (govde.get("text") or "").strip()
+        if not metin:
+            raise ValueError("metin boş")
 
         cozum = parse_quick_add(metin, now=datetime.now(UTC), tzid=self.tzid)
         kaydedilen = self.repo.add_event(
@@ -317,6 +325,48 @@ class _Handler(BaseHTTPRequestHandler):
             },
             201,
         )
+
+    def _etkinlik_olustur_acik(self, govde: dict, takvim_id: int) -> None:
+        """Tarihi ve saati BELLİ etkinlik yaratır (boş saate tıklama).
+
+        Burada metin ayrıştırması yok ve olmamalı: kullanıcı günü ve saati
+        zaten tıklayarak seçti. Başlığı ayrıştırmaya kalkmak yalnızca hata
+        kaynağı olurdu -- adında "3 ekim" geçen bir etkinlik başka güne kaçardı.
+
+        Saat dilimi matematiği yine sunucuda (`from_wall_clock`): ön yüzün
+        elinde yerel tarih ve gün başından dakika var, JavaScript'te "şu IANA
+        diliminde şu duvar saati" kurmak güvenilir değil.
+        """
+        baslik = (govde.get("title") or "").strip()
+        if not baslik:
+            raise ValueError("başlık boş")
+
+        hedef_gun = date.fromisoformat(govde["date"])
+        dakika = int(govde["minutes"])
+        if not 0 <= dakika < 24 * 60:
+            raise ValueError(f"minutes gün içinde olmalı: {dakika}")
+
+        # Varsayılan süre bir saat. Gece yarısını aşabilir (23:30'a tıklanırsa),
+        # bu yüzden üst sınır 24 saat değil.
+        bitis = int(govde.get("endMinutes") or dakika + 60)
+        if bitis <= dakika:
+            raise ValueError("endMinutes, minutes'tan büyük olmalı")
+        if bitis > 48 * 60:
+            raise ValueError("endMinutes iki günü aşamaz")
+
+        gun_basi = datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
+        kaydedilen = self.repo.add_event(
+            Event(
+                id=None,
+                uid=new_uid(),
+                calendar_id=takvim_id,
+                title=baslik,
+                start_utc=from_wall_clock(gun_basi + timedelta(minutes=dakika), self.tzid),
+                end_utc=from_wall_clock(gun_basi + timedelta(minutes=bitis), self.tzid),
+                tzid=self.tzid,
+            )
+        )
+        self._json({"event": _event_ozet(kaydedilen)}, 201)
 
     def _etkinlik_guncelle(self, event_id: int) -> None:
         """Metin alanlarını günceller; zaman alanlarına dokunmaz."""

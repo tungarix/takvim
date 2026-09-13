@@ -169,7 +169,8 @@ olmayabileceği (Program Files) için orada değil. Yedeklemek için uygulamadan
 |---|---|
 | Görünümler | Gün / Hafta / Ay — `G` `H` `A` kısayolları |
 | Gezinme | `←` `→` ileri-geri, `T` bugün |
-| Etkinlik ekleme | Üstteki kutuya "yarın 14:00 diş hekimi" yaz |
+| Etkinlik ekleme | **Izgarada boş bir saate tıkla**, başlığı yaz — hangi haftaya bakıyorsan oraya eklenir |
+| Hızlı ekleme | Üstteki kutuya "yarın 14:00 diş hekimi" yaz. Bu kutu her zaman BUGÜNÜ referans alır: ileri hafta için "haftaya salı 14:00 ..." ya da "22 eylül 14:00 ..." yaz |
 | Taşıma | Bloğu sürükle (15 dk'ya yuvarlanır, günler arası serbest) |
 | Süre değiştirme | Bloğun alt kenarını sürükle |
 | Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |

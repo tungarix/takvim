@@ -284,3 +284,51 @@ def test_bitisik_ek_hala_saat_isareti():
 
     assert _yerel(_coz("yarın saat 9 toplantı").start_utc) == "2026-09-14 09:00"
     assert _coz("yarın saat 9 toplantı").title == "toplantı"
+
+
+# ---------------------------------------------------------------------------
+# "gelecek hafta salı" ailesi (elle kullanırken çıktı)
+# ---------------------------------------------------------------------------
+
+def test_gelecek_hafta_sali_sonraki_haftaya_duser():
+    """'gelecek hafta salı' bu haftanın salısına DEĞİL, sonrakine.
+
+    Desende niteleyiciden sonra 'hafta' yoktu: ifade hiç tanınmıyor, tarih
+    sessizce bu haftanın salısına düşüyor ve 'gelecek hafta' başlıkta
+    kalıyordu. Kullanıcı 22 Eylül'e yazdığını sanıp 15 Eylül'e yazıyordu.
+    """
+    r = _coz("gelecek hafta salı 14:00 toplantı")
+
+    assert _yerel(r.start_utc) == "2026-09-22 14:00"
+    assert r.title == "toplantı"
+
+
+def test_onumuzdeki_hafta_da_ayni():
+    """'önümüzdeki hafta salı' de aynı şekilde çözülmeli."""
+    assert _yerel(_coz("önümüzdeki hafta salı 14:00 x").start_utc) == "2026-09-22 14:00"
+
+
+def test_bu_hafta_sali_ayni_haftada_kalir():
+    """'bu hafta salı' yakındaki salı; 'hafta' eklenmesi anlamı kaydırmasın."""
+    assert _yerel(_coz("bu hafta salı 14:00 x").start_utc) == "2026-09-15 14:00"
+
+
+def test_turkce_harfsiz_onumuzdeki():
+    """Şapkasız yazan kullanıcı da doğru güne yazabilmeli.
+
+    'haftaya sali' ve 'gelecek carsamba' zaten çalışıyordu ama 'onumuzdeki'
+    desende yoktu: tarih bir hafta geriye kayıyor, üstelik kelime başlıkta
+    kalıyordu ("onumuzdeki toplanti").
+    """
+    r = _coz("onumuzdeki sali 14:00 toplanti")
+
+    assert _yerel(r.start_utc) == "2026-09-22 14:00"
+    assert r.title == "toplanti"
+
+
+def test_hafta_kelimesi_tek_basina_baslikta_kalir():
+    """'hafta' yalnızca niteleyiciyle birlikte yutulur, tek başına değil."""
+    r = _coz("salı 14:00 hafta değerlendirmesi")
+
+    assert _yerel(r.start_utc) == "2026-09-15 14:00"
+    assert r.title == "hafta değerlendirmesi"

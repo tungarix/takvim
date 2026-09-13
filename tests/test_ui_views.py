@@ -666,3 +666,89 @@ def test_basliksiz_istek_gecer(sunucu):
 def test_gorunum_okumasi_denetimden_etkilenmez(sunucu):
     """Denetim yalnızca YAZMA yollarında; görünüm sorguları eskisi gibi."""
     assert _get(sunucu, "/api/week?date=2026-09-08")["view"] == "week"
+
+
+# ---------------------------------------------------------------------------
+# Izgarada boş saate tıklayarak oluşturma (tarih ve saat belli)
+# ---------------------------------------------------------------------------
+
+def test_tiklayarak_olusturma_tam_o_gune_yazar(sunucu):
+    """Boş saate tıklama ayrıştırma YAPMADAN verilen güne ve saate yazar.
+
+    Hızlı ekleme kutusu her zaman BUGÜNÜ referans alıyor; ızgarada başka bir
+    haftaya bakan kullanıcı oraya etkinlik ekleyemiyordu. Tıklama yolunda gün
+    ve dakika zaten belli, metinden tarih çıkarmaya çalışmıyoruz.
+    """
+    sonuc = _post(
+        sunucu,
+        "/api/events",
+        {"title": "diş hekimi", "date": "2026-09-24", "minutes": 14 * 60},
+    )
+
+    assert sonuc["event"]["title"] == "diş hekimi"
+    assert sonuc["event"]["startUtc"].startswith("2026-09-24T11:00")  # 14:00 İstanbul
+    assert sonuc["event"]["endUtc"].startswith("2026-09-24T12:00"), "varsayılan 1 saat"
+
+
+def test_tiklayarak_olusturmada_baslik_ayristirilmaz(sunucu):
+    """Başlıkta tarih geçse bile etkinlik TIKLANAN güne yazılır.
+
+    Metni ayrıştırsaydık "3 ekim toplantısı" adlı bir etkinlik 3 Ekim'e
+    kaçardı; kullanıcı ise 24 Eylül'e tıklamıştı.
+    """
+    sonuc = _post(
+        sunucu,
+        "/api/events",
+        {"title": "3 ekim toplantısı", "date": "2026-09-24", "minutes": 9 * 60},
+    )
+
+    assert sonuc["event"]["title"] == "3 ekim toplantısı"
+    assert sonuc["event"]["startUtc"].startswith("2026-09-24")
+
+
+def test_tiklayarak_olusturmada_bitis_verilebilir(sunucu):
+    """Sürükleyerek değil, tıklayarak da uzun etkinlik oluşturulabilsin."""
+    sonuc = _post(
+        sunucu,
+        "/api/events",
+        {"title": "atölye", "date": "2026-09-24", "minutes": 600, "endMinutes": 780},
+    )
+
+    assert sonuc["event"]["startUtc"].startswith("2026-09-24T07:00")  # 10:00
+    assert sonuc["event"]["endUtc"].startswith("2026-09-24T10:00")   # 13:00
+
+
+def test_tiklayarak_olusturmada_baslik_zorunlu(sunucu):
+    """Boş başlıkla "adsız" bir etkinlik oluşmasın."""
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(sunucu, "/api/events", {"title": "   ", "date": "2026-09-24", "minutes": 600})
+
+    assert hata.value.code == 400
+
+
+def test_tiklayarak_olusturmada_dakika_gun_icinde_olmali(sunucu):
+    """Bozuk bir dakika değeri sessizce başka güne taşmasın."""
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(sunucu, "/api/events", {"title": "x", "date": "2026-09-24", "minutes": 2000})
+
+    assert hata.value.code == 400
+
+
+def test_tiklayarak_olusturmada_bitis_baslangictan_sonra_olmali(sunucu):
+    """Ters aralık reddedilir."""
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(
+            sunucu,
+            "/api/events",
+            {"title": "x", "date": "2026-09-24", "minutes": 600, "endMinutes": 500},
+        )
+
+    assert hata.value.code == 400
+
+
+def test_hizli_ekleme_yolu_bozulmadi(sunucu):
+    """`text` biçimi eskisi gibi çalışıyor (iki yol aynı uçta)."""
+    sonuc = _post(sunucu, "/api/events", {"text": "haftaya salı 14:00 toplantı"})
+
+    assert sonuc["event"]["title"] == "toplantı"
+    assert "salı" in sonuc["parsed"]["matched"]

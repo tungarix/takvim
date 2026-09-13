@@ -51,8 +51,16 @@ _GUN_SAYI_AY_RE = re.compile(
     rf"\b(\d{{1,2}})\s+({'|'.join(_AYLAR)})(?:\s+(\d{{4}}))?\b", re.I
 )
 _SAYISAL_TARIH_RE = re.compile(r"\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b")
+# Niteleyiciden sonra "hafta" İSTEĞE BAĞLI: insanlar hem "gelecek salı" hem
+# "gelecek hafta salı" diyor. Desende yokken ikincisi tanınmıyordu ve sonuç
+# sessizce YANLIŞ güne düşüyordu: "gelecek hafta salı 14:00 toplantı" bu
+# haftanın salısına kaydediliyor, üstelik "gelecek hafta" başlıkta kalıyordu.
+# "onumuzdeki" de burada: Türkçe karakter yazmadan yazanlar için diğer
+# niteleyiciler (haftaya, gelecek) zaten şapkasız çalışıyordu, bu çalışmıyordu.
 _GUN_ADI_RE = re.compile(
-    rf"\b(?:(önümüzdeki|gelecek|haftaya|bu)\s+)?({'|'.join(_GUNLER)})\b", re.I
+    rf"\b(?:(önümüzdeki|onumuzdeki|gelecek|haftaya|bu)(?:\s+hafta)?\s+)?"
+    rf"({'|'.join(_GUNLER)})\b",
+    re.I,
 )
 _GORECELI_RE = re.compile(r"\b(bugün|bugun|yarın|yarin|öbür gün|obur gun|dün|dun)\b", re.I)
 
@@ -149,7 +157,7 @@ def _tarih_coz(metin: str, bugun: date) -> tuple[date | None, tuple[int, int] | 
         hedef = _GUNLER[_kucult(m.group(2))]
         ileri = (hedef - bugun.weekday()) % 7
         nitel = _kucult(m.group(1) or "")
-        if nitel in ("önümüzdeki", "gelecek", "haftaya"):
+        if nitel in ("önümüzdeki", "onumuzdeki", "gelecek", "haftaya"):
             # "önümüzdeki salı": bu hafta salıysa bile BİR SONRAKİ salı.
             ileri = ileri + 7 if ileri != 0 else 7
         elif ileri == 0:

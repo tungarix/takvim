@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı.**
 
-**273 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**286 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -309,6 +309,22 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     `.perde { display: flex }` tarayıcının `[hidden] { display: none }`
     kuralını EZİYOR; `.perde[hidden] { display: none }` olmadan soru kutusu
     uygulama açılırken ekranda duruyordu. Elle çalıştırınca görüldü.
+
+### Etkinlik oluşturmanın İKİ yolu var
+
+44. **`POST /api/events` iki biçim kabul ediyor ve karıştırılmamalı.**
+    `{"text": ...}` hızlı ekleme: metin ayrıştırılır ve referans BUGÜNDÜR.
+    `{"title", "date", "minutes"}` ızgarada boş saate tıklama: gün ve saat
+    zaten belli, AYRIŞTIRMA YAPILMAZ. İkincisinde başlığı ayrıştırmak
+    "3 ekim toplantısı" adlı etkinliği 3 Ekim'e kaçırırdı; oysa kullanıcı
+    başka bir güne tıklamıştı.
+45. **Hızlı ekleme kutusu ekrandaki haftayı DEĞİL bugünü referans alır.**
+    Bilinçli: "yarın" her yerde yarın demek. Başka bir haftaya eklemenin yolu
+    ızgaraya tıklamak ya da "haftaya salı" / "22 eylül" gibi açık ifade.
+46. **Niteleyiciden sonra "hafta" isteğe bağlı** (`gelecek hafta salı`).
+    Desende yokken ifade hiç tanınmıyor, tarih sessizce BU haftanın salısına
+    düşüyor ve "gelecek hafta" başlıkta kalıyordu. Aynı yerde `onumuzdeki`
+    (şapkasız) da var: `haftaya`/`gelecek` şapkasız çalışırken o çalışmıyordu.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

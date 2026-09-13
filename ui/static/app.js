@@ -294,6 +294,11 @@ function zamanCiz(veri) {
       sutun.appendChild(c);
     }
 
+    // Boş bir saate tıklamak etkinlik oluşturur. Hangi haftaya bakıyorsan
+    // etkinlik ORAYA düşer; hızlı ekleme kutusu ise her zaman bugünü referans
+    // alıyor ve "sonraki haftaya nasıl eklerim" sorusu buradan çıkmıştı.
+    sutun.addEventListener("click", (e) => izgaraTik(e, sutun, g));
+
     g.timed.filter(gorunurMu).forEach((occ) => sutun.appendChild(blokYap(occ, g)));
 
     if (g.date === bugun) {
@@ -349,6 +354,49 @@ function blokYap(occ, gun) {
   blok.appendChild(tutamak);
 
   return blok;
+}
+
+/* ---------- boş saate tıklayarak oluşturma ---------- */
+
+// Oluştururken yarım saate yuvarlıyoruz. Sürüklemedeki 15 dakikadan kaba,
+// çünkü burada niyet "şu civarda bir şey" -- saati sonradan sürükleyerek
+// ince ayarlamak zaten mümkün.
+const OLUSTUR_SNAP = 30;
+const OLUSTUR_SURE = 60; // dakika
+
+async function izgaraTik(e, sutun, gun) {
+  // Etkinliğin üstüne tıklandıysa burası karışmasın: panel açılacak.
+  if (e.target.closest(".blok")) return;
+  // Sürüklemeden SONRA da bir tık olayı geliyor; onu oluşturma sanmayalım.
+  if (surukleme.tasindi || tumgunSurukleme.tasindi) return;
+
+  const kutu = sutun.getBoundingClientRect();
+  const oran = (e.clientY - kutu.top) / kutu.height;
+  let dakika = Math.floor((oran * gun.dayMinutes) / OLUSTUR_SNAP) * OLUSTUR_SNAP;
+  dakika = Math.max(0, Math.min(dakika, gun.dayMinutes - OLUSTUR_SNAP));
+  const bitis = Math.min(dakika + OLUSTUR_SURE, gun.dayMinutes);
+
+  const baslik = await sor(
+    "Yeni etkinlik",
+    `${gun.dayNumber} ${gun.monthName} ${gun.dayName} · ${dakikaSaat(dakika)}–${dakikaSaat(bitis)}`,
+    "",
+  );
+  if (baslik === null || !baslik.trim()) return;
+
+  await eylem(
+    () => istek("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      // Tarih ve saat BURADA belli; sunucu metin ayrıştırmasın.
+      body: JSON.stringify({
+        title: baslik.trim(),
+        date: gun.date,
+        minutes: dakika,
+        endMinutes: bitis,
+      }),
+    }),
+    `Eklendi: ${baslik.trim()} (${gun.dayNumber} ${gun.monthName} ${dakikaSaat(dakika)})`,
+  );
 }
 
 /* ---------- sürükle-bırak ---------- */
