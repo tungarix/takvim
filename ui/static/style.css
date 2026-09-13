@@ -358,7 +358,7 @@ html, body {
 .gorunum-dugme:hover { background: #252a35; color: var(--metin); }
 .gorunum-dugme.secili { background: var(--vurgu); color: #fff; }
 
-.hizli-form { flex: 0 1 280px; }
+.hizli-form { flex: 0 1 300px; display: flex; gap: 6px; }
 .hizli-girdi, .arama {
   width: 100%;
   background: var(--yuzey-2);
@@ -369,6 +369,21 @@ html, body {
   padding: 6px 11px;
 }
 .arama { flex: 0 1 150px; }
+
+.hizli-dugme {
+  flex: none;
+  width: 32px;
+  background: var(--yuzey-2);
+  border: 1px solid var(--cizgi);
+  border-radius: 7px;
+  color: var(--metin);
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hizli-dugme:hover { background: var(--vurgu); border-color: var(--vurgu); color: #fff; }
+.hizli-dugme:active { transform: translateY(1px); }
 .hizli-girdi:focus, .arama:focus { outline: none; border-color: var(--vurgu); }
 .hizli-girdi::placeholder, .arama::placeholder { color: var(--metin-silik); }
 

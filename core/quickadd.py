@@ -32,14 +32,18 @@ _AYLAR = {
 }
 
 # Saat: "14:00", "14.30", "9da", "14'te", "saat 9"
-_SAAT = r"(?:saat\s*)?(\d{1,2})(?:[:.](\d{2}))?(?:\s*['’]?\s*(?:de|da|te|ta))?"
+# Bulunma eki rakama BİTİŞİK olmak zorunda ("9da", "14'te"). Araya boşluk
+# koyarsak desen, ardından gelen kelimenin ilk iki harfini ek sanıp yiyor:
+# "11:30 tasarim" -> saat 11:30 + ek "ta", başlık "sarim" kalıyordu. "test",
+# "deneme", "davet", "tatil" gibi çok yaygın kelimeler de bozuluyordu.
+_SAAT = r"(?:saat\s*)?(\d{1,2})(?:[:.](\d{2}))?(?:['’]?(?:de|da|te|ta)\b)?"
 _ARALIK_RE = re.compile(rf"\b{_SAAT}\s*(?:-|–|—|ile)\s*{_SAAT}(?:\s*arası)?", re.I)
 # Tek saat: işaret ŞART (iki nokta, nokta, ek, veya "saat" öneki).
 # İşaretsiz çıplak sayıyı saat saymıyoruz; "3 ekim" gibi ifadelerle çakışır.
 _TEK_SAAT_RE = re.compile(
     r"\b(?:saat\s*(\d{1,2})(?:[:.](\d{2}))?"
     r"|(\d{1,2})[:.](\d{2})"
-    r"|(\d{1,2})\s*['’]?\s*(?:de|da|te|ta))\b",
+    r"|(\d{1,2})['’]?(?:de|da|te|ta))\b",
     re.I,
 )
 _SURE_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(saat|saatlik|dakika|dk|dakikalık)\b", re.I)

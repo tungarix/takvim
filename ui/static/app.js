@@ -777,6 +777,20 @@ function panelKapat() {
 
 /* ---------- hızlı ekleme ---------- */
 
+/* Enter'ı AÇIKÇA ele alıyoruz. Tek girdili bir formda tarayıcının "örtük
+ * submit" davranışı garanti değil ve bu kutuda Enter birincil etkileşim --
+ * yazıp Enter'a basınca hiçbir şey olmaması, uygulamanın bozuk olduğu
+ * anlamına gelir. `requestSubmit()` normal submit olayını tetikliyor, yani
+ * iş yine tek yerde: aşağıdaki `onsubmit`.
+ */
+el("hizli-girdi").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  e.preventDefault(); // örtük submit de ateşlenip iki kez göndermesin
+  const form = el("hizli-form");
+  if (form.requestSubmit) form.requestSubmit();
+  else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+});
+
 el("hizli-form").onsubmit = async (e) => {
   e.preventDefault();
   const girdi = el("hizli-girdi");

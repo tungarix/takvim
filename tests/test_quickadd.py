@@ -237,3 +237,50 @@ def test_gecersiz_dilim_reddedilir():
     """Bozuk tzid erken patlar."""
     with pytest.raises(ValueError):
         parse_quick_add("yarın 14:00 x", now=SIMDI, tzid="Mars/Olympus")
+
+
+# ---------------------------------------------------------------------------
+# Bulunma eki başlığı yemesin
+# ---------------------------------------------------------------------------
+
+def test_saat_eki_sonraki_kelimeyi_yemez():
+    """Regresyon: "11:30 tasarim" -> başlık "sarim" oluyordu.
+
+    Bulunma eki deseni (`de|da|te|ta`) rakamla arasında boşluğa izin verince,
+    ardından gelen kelimenin ilk iki harfini ek sanıp yiyordu. Türkçede bu
+    harflerle başlayan kelime bol: tasarım, test, deneme, davet, tatil...
+    Uygulamayı elle denerken çıktı.
+    """
+    r = _coz("yarın 10:00-11:30 tasarım görüşmesi")
+
+    assert r.title == "tasarım görüşmesi"
+    assert _yerel(r.start_utc) == "2026-09-14 10:00"
+    assert _yerel(r.end_utc) == "2026-09-14 11:30"
+
+
+@pytest.mark.parametrize(
+    "metin, beklenen",
+    [
+        ("yarın 14:00 test", "test"),
+        ("yarın 14:00 deneme", "deneme"),
+        ("yarın 14:00 davet yemeği", "davet yemeği"),
+        ("yarın 14:00 tatil planı", "tatil planı"),
+        ("bugün 13:00-14:00 dava hazırlığı", "dava hazırlığı"),
+        ("bugün 09:00-10:00 değerlendirme", "değerlendirme"),
+    ],
+)
+def test_de_da_te_ta_ile_baslayan_basliklar(metin, beklenen):
+    """Bu harflerle başlayan başlıklar bozulmadan geçmeli."""
+    assert _coz(metin).title == beklenen
+
+
+def test_bitisik_ek_hala_saat_isareti():
+    """Düzeltme, gerçek ekleri bozmamalı: ek rakama BİTİŞİK olduğunda geçerli."""
+    assert _yerel(_coz("yarın 9da toplantı").start_utc) == "2026-09-14 09:00"
+    assert _coz("yarın 9da toplantı").title == "toplantı"
+
+    assert _yerel(_coz("yarın 14'te diş hekimi").start_utc) == "2026-09-14 14:00"
+    assert _coz("yarın 14'te diş hekimi").title == "diş hekimi"
+
+    assert _yerel(_coz("yarın saat 9 toplantı").start_utc) == "2026-09-14 09:00"
+    assert _coz("yarın saat 9 toplantı").title == "toplantı"

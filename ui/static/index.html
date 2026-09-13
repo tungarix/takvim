@@ -27,9 +27,12 @@
 
   <div class="bosluk"></div>
 
+  <!-- Submit düğmesi ŞART: düğmesiz tek girdili formda Enter'ın örtük submit
+       tetiklemesi garanti değil. Ayrıca fare kullanıcısına karşılık veriyor. -->
   <form id="hizli-form" class="hizli-form" autocomplete="off">
     <input id="hizli-girdi" class="hizli-girdi" type="text"
            placeholder="Hızlı ekle: yarın 14:00 diş hekimi" aria-label="Hızlı ekleme">
+    <button type="submit" class="hizli-dugme" title="Ekle" aria-label="Ekle">+</button>
   </form>
 
   <input id="arama" class="arama" type="search" placeholder="Ara…" aria-label="Ara">

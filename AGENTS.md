@@ -22,7 +22,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı.**
 
-**222 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**233 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -226,6 +226,16 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
 29. **Port sondası BAĞLANARAK yapılır, bind ile DEĞİL.** Windows'ta
     `SO_REUSEADDR`, Unix'in aksine dinlenen bir porta bind etmeye de izin
     veriyor; bind sondası dolu portu "boş" sanıyordu.
+
+30. **Hızlı eklemede bulunma eki rakama BİTİŞİK olmalı** (`9da`, `14'te`).
+    Araya boşluk izni veren desen, ardından gelen kelimenin ilk iki
+    harfini ek sanıp yiyordu: "11:30 tasarım" -> başlık "sarım". Türkçede
+    bu harflerle başlayan kelime bol (test, deneme, davet, tatil, dava).
+    Uygulamayı ELLE denerken çıktı, testler görmemişti.
+31. **Enter açıkça ele alınıyor** (`hizli-girdi` keydown -> `requestSubmit`).
+    Tek girdili formda tarayıcının örtük submit davranışına güvenmiyoruz;
+    yazıp Enter'a basınca hiçbir şey olmaması "uygulama bozuk" demek.
+    Formda ayrıca görünür bir + düğmesi var.
 
 ---
 
