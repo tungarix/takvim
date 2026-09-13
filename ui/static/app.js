@@ -558,9 +558,24 @@ async function izgaraTik(e, sutun, gun) {
   dakika = Math.max(0, Math.min(dakika, gun.dayMinutes - OLUSTUR_SNAP));
   const bitis = Math.min(dakika + OLUSTUR_SURE, gun.dayMinutes);
 
+  /* Çakışma uyarısı ENGELLEMEZ, BİLGİLENDİRİR: kullanıcı saati bilerek
+   * üst üste koyuyor olabilir. Tekrarlı seçimde yalnızca İLK aralık
+   * denetleniyor; serinin devamı kullanıcının sorumluluğunda. */
+  let uyari = "";
+  try {
+    const c = await istek(`/api/conflicts?date=${gun.date}&start=${dakika}&end=${bitis}`);
+    if (c.conflicts.length) {
+      uyari = "⚠ Çakışma: " + c.conflicts.map((x) =>
+        `${x.title} (${saatBicim(x.startUtc, x.tzid)}–${saatBicim(x.endUtc, x.tzid)})`
+      ).join(", ") + "\n";
+    }
+  } catch {
+    // Uyarı alınamazsa oluşturma engellenmez; sessiz devam.
+  }
+
   const s = await modalForm(
     "Yeni etkinlik",
-    `${gun.dayNumber} ${gun.monthName} ${gun.dayName} · ${dakikaSaat(dakika)}–${dakikaSaat(bitis)}`,
+    uyari + `${gun.dayNumber} ${gun.monthName} ${gun.dayName} · ${dakikaSaat(dakika)}–${dakikaSaat(bitis)}`,
     [
       { ad: "baslik", etiket: "Başlık", tur: "metin", deger: "" },
       /* Tekrar KAPALI bir liste: tekrar motoru baştan beri vardı ama
@@ -1415,12 +1430,38 @@ el("hizli-form").onsubmit = async (e) => {
     const p = sonuc.parsed;
     // Neyin zaman olarak tanındığını SÖYLÜYORUZ. Tanınmayan ifade sessizce
     // yanlış saate kaydedilmiş bir randevuya dönüşmesin.
-    bildir(
-      p.matched
-        ? `Eklendi: ${p.title} (${p.matched})`
-        : `Eklendi: ${p.title} — zaman ifadesi tanınmadı, tüm gün olarak kaydedildi`,
-      !p.matched,
-    );
+    if (!p.matched) {
+      bildir(
+        `Eklendi: ${p.title} — zaman ifadesi tanınmadı, tüm gün olarak kaydedildi`,
+        true,
+      );
+    } else {
+      // Çakışma kontrolü yalnızca İLK örnek için (tekrarlı serinin devamı
+      // denetlenmiyor) ve kendi kaydımız hariç. Engellemiyor: bilgi + geri al.
+      let cakisma = [];
+      if (!p.allDay) {
+        try {
+          const c = await istek(
+            `/api/conflicts?startUtc=${encodeURIComponent(p.startUtc)}` +
+            `&endUtc=${encodeURIComponent(p.endUtc)}`,
+          );
+          cakisma = c.conflicts.filter((x) => x.eventId !== sonuc.event.id);
+        } catch {
+          // Uyarı alınamazsa ekleme haberi yine verilir.
+        }
+      }
+      if (!cakisma.length) {
+        bildir(`Eklendi: ${p.title} (${p.matched})`);
+      } else {
+        const adlar = cakisma.map((x) =>
+          `${x.title} (${saatBicim(x.startUtc, x.tzid)}–${saatBicim(x.endUtc, x.tzid)})`
+        ).join(", ");
+        bildir(`Eklendi ama çakışıyor: ${adlar}`, false, () => eylem(
+          () => istek(`/api/events/${sonuc.event.id}`, { method: "DELETE" }),
+          "Geri alındı",
+        ));
+      }
+    }
     await yukle();
   } catch (hata) {
     bildir(hata.message, true);
@@ -1490,6 +1531,63 @@ el("takvim-ekle").onclick = takvimEkle;
 el("panel-kapat").onclick = panelKapat;
 el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
 el("yedekler").onclick = yedekleriAc;
+el("ice-aktar").onclick = () => el("ice-aktar-dosya").click();
+el("ice-aktar-dosya").onchange = (e) => {
+  const dosya = e.target.files[0];
+  // Aynı dosya üst üste seçilebilsin diye sıfırla; yoksa change ateşlenmez.
+  e.target.value = "";
+  if (dosya) iceAktar(dosya);
+};
+
+/* `.ics` içe aktarma: önce ÖNİZLEME (`dry_run`), sonra gerçek yazma.
+ * İki aşama ŞART: dosyanın kaç kayıt ekleyeceğini/güncelleyeceğini görmeden
+ * yazmak, "bilgisayarımdaki her şey iki kere oldu" demek. */
+async function iceAktar(dosya) {
+  let metin;
+  try {
+    metin = await dosya.text();
+  } catch {
+    bildir("Dosya okunamadı", true);
+    return;
+  }
+  const baslik = { "Content-Type": "text/calendar; charset=utf-8" };
+  let onizleme;
+  try {
+    onizleme = await istek("/api/import?dry_run=1", {
+      method: "POST", headers: baslik, body: metin,
+    });
+  } catch (hata) {
+    bildir(hata.message, true);
+    return;
+  }
+  const parcalar = [
+    `${onizleme.added} yeni`,
+    `${onizleme.updated} güncellenecek`,
+    `${onizleme.skipped} atlanacak`,
+    `${onizleme.overrides} örnek değişikliği`,
+  ];
+  if (onizleme.errors.length) {
+    parcalar.push(`${onizleme.errors.length} hatalı kayıt YOK SAYILACAK`);
+  }
+  if (onizleme.warnings.length) {
+    parcalar.push(`Uyarılar: ${onizleme.warnings.slice(0, 3).join("; ")}`);
+  }
+  const tamam = await onayla(
+    "İçe aktar",
+    `"${dosya.name}" → "${onizleme.calendar}" takvimi — ${parcalar.join(", ")}.`,
+    "İçe aktar",
+  );
+  if (!tamam) return;
+  try {
+    const rapor = await istek("/api/import", {
+      method: "POST", headers: baslik, body: metin,
+    });
+    bildir(`İçe aktarıldı: ${rapor.added} yeni, ${rapor.updated} güncellendi`);
+    await yukle();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+}
 
 document.querySelectorAll(".gorunum-dugme").forEach((b) => {
   b.onclick = () => { durum.gorunum = b.dataset.gorunum; yukle(); };

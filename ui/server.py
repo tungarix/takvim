@@ -163,6 +163,63 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._json({"restored_id": diriltilen.id, "title": diriltilen.title})
 
+    def _cakisma(self, sorgu: dict) -> None:
+        """GET /api/conflicts — verilen aralıkla kesişen SAATLİ örnekler.
+
+        İki çağrı biçimi (oluşturma akışlarının ikisine karşılık):
+        - `?date=2026-09-08&start=600&end=660` — ızgara tıklaması; duvar saati
+          sunucuda `from_wall_clock` ile kuruluyor (oluşturmayla AYNI yol).
+        - `?startUtc=...&endUtc=...` — hızlı ekleme; saatler yanıtta hazır.
+        `ignoreId` hariç tutulur (düzenlemede kendisiyle çakışma olmasın diye;
+        şimdilik passthrough, düzenleme akışı kullanmıyor).
+
+        Tüm gün etkinlikler DIŞARIDA: günü kaplıyorlar ama saati tıkamıyorlar;
+        her kayda uyarı çıkarmak uyarıyı gürültüye çevirirdi. Yalnızca görünür
+        takvimler (gizli takvim "görmek istemiyorum" demek).
+        """
+        try:
+            if "date" in sorgu:
+                hedef_gun = date.fromisoformat((sorgu.get("date") or [""])[0])
+                bas_dk = int((sorgu.get("start") or [""])[0])
+                bit_dk = sorgu.get("end", [None])[0]
+                bit_dk = int(bit_dk) if bit_dk is not None else bas_dk + 60
+                if not 0 <= bas_dk < 24 * 60:
+                    raise ValueError(f"start gün içinde olmalı: {bas_dk}")
+                bas = from_wall_clock(
+                    datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
+                    + timedelta(minutes=bas_dk),
+                    self.tzid,
+                )
+                bit = from_wall_clock(
+                    datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
+                    + timedelta(minutes=bit_dk),
+                    self.tzid,
+                )
+            else:
+                bas = parse_iso((sorgu.get("startUtc") or [""])[0])
+                bit = parse_iso((sorgu.get("endUtc") or [""])[0])
+            if bit <= bas:
+                raise ValueError("bitiş başlangıçtan sonra olmalı")
+            ignore = sorgu.get("ignoreId", [None])[0]
+            ignore_id = int(ignore) if ignore is not None else None
+        except (ValueError, KeyError, IndexError) as exc:
+            self._hata(f"geçersiz aralık: {exc}")
+            return
+        bulunan = []
+        for occ in self.repo.occurrences(bas, bit):
+            if occ.all_day or (ignore_id is not None and occ.event_id == ignore_id):
+                continue
+            bulunan.append(
+                {
+                    "eventId": occ.event_id,
+                    "title": occ.title,
+                    "startUtc": occ.start_utc.isoformat(),
+                    "endUtc": occ.end_utc.isoformat(),
+                    "tzid": occ.tzid,
+                }
+            )
+        self._json({"conflicts": bulunan})
+
     def _yedekten_don(self) -> None:
         """POST /api/backups/restore {"ad"} — dosyayı değiştirir, depoyu yeniler.
 
@@ -244,6 +301,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._seri_bilgisi(sorgu)
                 return
 
+            if yol == "/api/conflicts":
+                self._cakisma(sorgu)
+                return
+
             if yol.startswith("/api/"):
                 self._hata("bulunamadı", 404)
                 return
@@ -284,7 +345,7 @@ class _Handler(BaseHTTPRequestHandler):
                 return
 
             if parcalar == ["api", "import"]:
-                self._ics_iceri()
+                self._ics_iceri(parse_qs(parsed.query))
                 return
 
             if parcalar == ["api", "backups", "restore"]:
@@ -601,16 +662,26 @@ class _Handler(BaseHTTPRequestHandler):
         kayit = self.repo.move_occurrence(event_id, orijinal, yeni_bas, yeni_bit)
         self._json({"moved": _tasima(kayit)})
 
-    def _ics_iceri(self) -> None:
-        """Gövdedeki `.ics` metnini içe aktarır."""
+    def _ics_iceri(self, sorgu: dict | None = None) -> None:
+        """Gövdedeki `.ics` metnini içe aktarır.
+
+        `?dry_run=1`: DB'ye DOKUNMADAN rapor üretir; arayüz önizlemeyi buradan
+        alıyor, kullanıcı onaylayınca aynı gövdeyle gerçek çağrı yapılıyor.
+        """
         takvimler = self.repo.list_calendars()
         if not takvimler:
             raise ValueError("önce bir takvim oluşturulmalı")
+        onizleme = (sorgu or {}).get("dry_run") == ["1"]
+        # Hedef GÖRÜNÜR takvimlerden: ada göre ilk takvim gizliyse içe aktarılan
+        # her şey görünmez bir yere yazılır (oluşturmadaki AGENTS 52 tuzağı).
+        gorunurler = [c for c in takvimler if c.visible]
+        hedef = (gorunurler or takvimler)[0]
         rapor = import_ics(
             self.repo,
             self._metin_govde(),
-            calendar_id=takvimler[0].id,
+            calendar_id=hedef.id,
             default_tzid=self.tzid,
+            dry_run=onizleme,
         )
         self._json(
             {
@@ -620,6 +691,8 @@ class _Handler(BaseHTTPRequestHandler):
                 "overrides": rapor.overrides,
                 "errors": [{"uid": u, "reason": r} for u, r in rapor.errors],
                 "warnings": list(rapor.warnings),
+                "dry_run": onizleme,
+                "calendar": hedef.name,
             }
         )
 

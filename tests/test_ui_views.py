@@ -338,6 +338,75 @@ def test_api_statik_dosya_disina_cikamaz(sunucu):
     assert hata.value.code == 404
 
 
+def test_api_cakisma_kesiseni_bildirir(sunucu, repo, ders):
+    """10:00-11:00 kaydına 10:30-11:30 sorulunca çakışma dönüyor."""
+    _ekle(repo, ders, "Dişçi", ist(2026, 9, 8, 10, 0), ist(2026, 9, 8, 11, 0))
+    sonuc = _get(sunucu, "/api/conflicts?date=2026-09-08&start=630&end=690")
+    assert [c["title"] for c in sonuc["conflicts"]] == ["Dişçi"]
+    assert sonuc["conflicts"][0]["tzid"] == IST
+
+
+def test_api_cakisma_uc_uca_degildir(sunucu, repo, ders):
+    """Bitiş == başlangıç çakışma DEĞİL (yarı açık aralık)."""
+    _ekle(repo, ders, "Dişçi", ist(2026, 9, 8, 10, 0), ist(2026, 9, 8, 11, 0))
+    assert _get(sunucu, "/api/conflicts?date=2026-09-08&start=660&end=720")["conflicts"] == []
+
+
+def test_api_cakisma_tum_gunu_sayar(sunucu, repo, ders):
+    """Tüm gün etkinlik saat kaydını tıkamıyor: listede yok."""
+    _ekle(repo, ders, "Tatil", ist(2026, 9, 8, 0, 0), ist(2026, 9, 9, 0, 0), all_day=True)
+    assert _get(sunucu, "/api/conflicts?date=2026-09-08&start=600&end=660")["conflicts"] == []
+
+
+def test_api_cakisma_iso_bicimi(sunucu, repo, ders):
+    """Hızlı ekleme akışı ISO UTC ile soruyor."""
+    _ekle(repo, ders, "Dişçi", ist(2026, 9, 8, 10, 0), ist(2026, 9, 8, 11, 0))
+    sonuc = _get(
+        sunucu,
+        "/api/conflicts?startUtc=2026-09-08T07:30:00Z&endUtc=2026-09-08T08:30:00Z",
+    )
+    assert [c["title"] for c in sonuc["conflicts"]] == ["Dişçi"]
+
+
+def test_api_cakisma_tekrarliyi_bulur(sunucu, repo, ders):
+    """Tekrarlı serinin örneği de çakışma sayılıyor (genişletme devrede)."""
+    _ekle(repo, ders, "Ders", ist(2026, 9, 7, 9, 0), ist(2026, 9, 7, 10, 0),
+          rrule="FREQ=WEEKLY;BYDAY=MO")
+    # 09:00-09:30: yalnızca Ders (fixture'daki Pazartesi 10:00 serisi değmiyor).
+    sonuc = _get(sunucu, "/api/conflicts?date=2026-09-14&start=540&end=570")
+    assert [c["title"] for c in sonuc["conflicts"]] == ["Ders"]
+
+
+def test_api_cakisma_bozuk_aralik_400(sunucu):
+    """Ters aralık ve bozuk tarih 400."""
+    for yol in ("/api/conflicts?date=2026-09-08&start=660&end=600",
+                "/api/conflicts?date=bozuk&start=600"):
+        with pytest.raises(urllib.error.HTTPError) as hata:
+            _get(sunucu, yol)
+        assert hata.value.code == 400
+
+
+def test_api_import_onizleme_yazmaz(sunucu, repo):
+    """`?dry_run=1` rapor üretiyor ama DB'ye dokunmuyor."""
+    ics_metni = (
+        "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\n"
+        "UID:onizleme-1\r\n"
+        "DTSTART;TZID=Europe/Istanbul:20260908T140000\r\n"
+        "DTEND;TZID=Europe/Istanbul:20260908T150000\r\n"
+        "SUMMARY:Önizleme\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+    )
+    req = urllib.request.Request(
+        sunucu + "/api/import?dry_run=1", method="POST",
+        data=ics_metni.encode("utf-8"),
+        headers={"Content-Type": "text/calendar; charset=utf-8"},
+    )
+    with urllib.request.urlopen(req) as yanit:
+        rapor = json.loads(yanit.read().decode("utf-8"))
+
+    assert rapor["added"] == 1 and rapor["dry_run"] is True
+    assert _get(sunucu, "/api/search?q=" + urllib.parse.quote("Önizleme"))["results"] == []
+
+
 # ---------------------------------------------------------------------------
 # Override anahtarı: taşınmış örneği yeniden taşımak
 # ---------------------------------------------------------------------------
