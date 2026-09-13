@@ -147,13 +147,17 @@ Migration yazılmadı — sessizce geçilmedi, uyarıyla gözetim altına alınd
 
 ## 5. Kullanım
 
-Masaüstündeki **Takvim** kısayoluna çift tıkla. Tarayıcıda açılır, hatırlatıcı
-arka planda başlar. Kapatmak için görev çubuğundaki küçük konsol penceresini
-kapat.
+Masaüstündeki **Takvim** kısayoluna çift tıkla. Uygulama **kendi
+penceresinde** açılır: tarayıcı yok, adres çubuğu yok, sekme yok; görev
+çubuğunda kendi ikonu var. Kapatmak için pencereyi kapat, hepsi bu.
 
 Kısayol `dist\Takvim.exe` dosyasını çalıştırıyor. Bu **tek dosyalık, bağımsız
 bir uygulama** — Python ya da başka bir kurulum gerektirmiyor, başka bir
 bilgisayara kopyalayıp çalıştırabilirsin.
+
+Pencerenin boyutu ve konumu hatırlanıyor (`%LOCALAPPDATA%\Takvim\pencere.json`).
+Kısayola ikinci kez tıklamak ikinci bir Takvim açmıyor, var olan pencereyi öne
+alıyor.
 
 Veriler `%LOCALAPPDATA%\Takvim\takvim.db` içinde. Kurulum klasörü yazılabilir
 olmayabileceği (Program Files) için orada değil. Yedeklemek için uygulamadan
@@ -182,10 +186,26 @@ günü kaldırır, "Seriyi tamamen sil" hepsini. İkisi de onay ister.
 Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı penceresi
 çıkar. Sık karşılaşılanlar:
 
-- **Port dolu** — Takvim zaten açıksa ikinci kopya kendiliğinden bir sonraki
-  boş portu kullanır, bir şey yapman gerekmez.
+- **Pencere açılmıyor, tarayıcı açılıyor** — WebView2 çalışma zamanı yoksa
+  uygulama tarayıcıya düşüyor ve sebebini küçük bir pencerede yazıyor.
+  Windows 11'de WebView2 hazır gelir; eski Windows 10'da
+  <https://go.microsoft.com/fwlink/p/?LinkId=2124703> adresinden kurulur.
 - **Bildirim görünmüyor** — Odaklanma Yardımı toast'ları bastırıyor olabilir.
-  Konsoldan sınamak için: `Takvim.exe` yerine `python -m remind --test`.
+  Sınamak için: `Takvim.exe` yerine `python -m remind --test`.
+- **Hiçbir şey olmuyor** — `.exe` artık penceresiz derlendiği için ekranda
+  konsol yok; ne olduğu `%LOCALAPPDATA%\Takvim	akvim.log` dosyasında yazıyor.
+- **"Windows bilgisayarınızı korudu"** — `.exe` imzasız olduğu için SmartScreen
+  ilk çalıştırmada uyarabilir: *Ek bilgi* → *Yine de çalıştır*.
+
+### Bilinçli sınırlar
+
+- **Hatırlatıcı yalnızca uygulama AÇIKKEN çalışıyor.** Pencereyi kapatmak
+  uygulamayı kapatıyor; arkada görünmez bir süreç bırakmıyoruz. Bilgisayar
+  açıkken sürekli hatırlatma isteniyorsa hatırlatıcıyı ayrı çalıştır
+  (`python -m remind`) — bkz. §9.
+- **Sağ tık menüsü yok.** Pencerede tarayıcının menüsü kapalı (uygulama gibi
+  dursun diye). Kopyala/yapıştır klavyeyle çalışıyor: `Ctrl+C`, `Ctrl+V`.
+- **`.ics` içe aktarma arayüzde yok**, yalnızca API'de (`POST /api/import`).
 
 ### Geliştirme
 
@@ -207,9 +227,18 @@ python -m venv .venv
 
 `takvim.spec` içindeki `datas` listesi önemli: `ui/static/*` ve
 `store/migrations/*.sql` dosya olarak okunuyor, PyInstaller onları kendiliğinden
-bulmuyor. Unutulurlarsa uygulama açılır ama boş sayfa gösterir.
+bulmuyor. Unutulurlarsa uygulama açılır ama boş sayfa gösterir. pywebview'in
+WebView2 köprü DLL'leri ise ELLE eklenmiyor: paket kendi hook'unu getiriyor.
 
-**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (`.ics`), `pytest`
+Arayüzü tarayıcıda açmak (hata ayıklarken DevTools için pratik):
+
+```powershell
+.venv\Scripts\python.exe -m ui --demo --tarayici
+.venv\Scripts\python.exe -m ui --demo --no-browser   # yalnızca sunucu
+```
+
+**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (`.ics`),
+`pywebview` (masaüstü penceresi; yanında `pythonnet` geliyor), `pytest`
 (test), `pyinstaller` (yalnızca paketleme). Windows'ta ayrıca `tzdata` —
 işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç
 çalışmıyor (`ZoneInfoNotFoundError`). Opsiyonel kolaylık değil, zorunluluk.
@@ -505,10 +534,68 @@ kurulumu kullanıcının kararı.
 
 Bunlar Faz 1'e geçmeden cevaplanmalı değil ama Faz 3'ten önce cevaplanmalı:
 
-1. **Arayüz kararı.** Blueprint FastAPI + yerel web ön yüz öneriyor (CSS Grid ve
-   sürükle-bırak bedava). Ölçüt hız mı, yoksa Qt öğrenmek mi? İkincisiyse
-   PySide6 + v1 kapsamını ay görünümüyle sınırla.
+1. **Arayüz kararı.** ✅ Cevaplandı: yerel web ön yüz + masaüstü penceresi
+   (§12). Qt'ye geçilmedi; HTML/CSS korunup pencereye alındı.
 2. **Hatırlatıcı gerekiyor mu?** Gerekiyorsa uygulama kapalıyken de çalışmalı mı?
    (→ arka plan servisi, ayrı bir proje kadar iş.)
 3. **Etkinlik–görev ilişkisi.** Takvimde "yapılacak" kavramı olacak mı, yoksa
    sadece zaman blokları mı?
+
+
+---
+
+## 12. Masaüstü penceresi
+
+Uygulama önce tarayıcıda açılıyordu: `webbrowser.open("http://127.0.0.1:8765")`.
+Çalışıyordu ama kullanıcı için "uygulama" gibi durmuyordu — adres çubuğu,
+sekmeler, arkada duran siyah konsol penceresi ve tarayıcı kapanınca giden
+takvim. Artık uygulama **kendi penceresinde** açılıyor.
+
+### Neden Qt değil
+
+Arayüz zaten HTML/CSS/JS: zaman ızgarası, çakışma yerleşimi ve sürükle-bırak
+CSS'in doğal işi (blueprint §5). Qt'ye geçmek bu işi sıfırdan yazmak demekti.
+Bunun yerine aynı HTML, **Windows'un kendi WebView2 bileşeninde**, kendi
+penceresinde gösteriliyor (`pywebview`). Uygulamaya tarayıcı motoru
+gömülmüyor, işletim sistemindeki kullanılıyor: `.exe` 15 MB'tan 20 MB'a
+çıktı, 150 MB'a değil.
+
+WebView2 yoksa (eski Windows 10) uygulama ölmüyor, tarayıcıya düşüyor ve
+sebebini yazıyor. Bu kontrol kayıt defterinden ELLE yapılıyor: pywebview
+çalışma zamanını bulamayınca istisna atmıyor, sessizce eski Internet Explorer
+motoruna düşüp bembeyaz bir pencere gösteriyor.
+
+### Değişen mimari
+
+```
+önce:  ana thread = HTTP sunucusu           tarayıcı ayrı süreç
+sonra: ana thread = pencere (WebView2)      HTTP sunucusu arka plan thread'i
+```
+
+`webview.start()` ana thread'de çalışmak zorunda ve pencere kapanana kadar
+dönmüyor. Sunucu bu yüzden thread'e taşındı; `Repo` `check_same_thread=False`
+ile açılıyor ama sunucu hâlâ TEK THREAD'li, yani erişim yine sıralı.
+
+### Pencereye özgü davranışlar
+
+| | |
+|---|---|
+| Boyut/konum | Kapanışta kaydediliyor, açılışta geri yükleniyor |
+| Ekran değişmiş | Kayıtlı konum artık hiçbir monitörde değilse pencere ortalanıyor |
+| Tek örnek | Kısayola ikinci tık yeni pencere açmıyor, var olanı öne alıyor |
+| Soru kutuları | `prompt()`/`confirm()` yerine uygulama içi modal |
+| Dışa aktarma | Windows'un kendi "Farklı Kaydet" penceresi |
+| Günlük | `%LOCALAPPDATA%\Takvim\takvim.log` (konsol yok artık) |
+
+### Üç tuzak
+
+1. **`ALLOW_DOWNLOADS` varsayılan olarak kapalı.** Açılmazsa "Dışa aktar"
+   düğmesi hiçbir şey yapmıyor — ne dosya, ne hata. Tarayıcıda çalışan bir
+   özelliğin pencerede sessizce ölmesi en sinsi hata türü.
+2. **Kısayol pencereyi küçültülmüş açıyordu.** `.lnk` dosyası "küçültülmüş"
+   başlatma stiliyle kurulmuştu (eskiden konsol göze batmasın diye) ve o stil
+   uygulama penceresine de uygulanıyor: tıklıyorsun, ekranda hiçbir şey yok.
+   Hem kısayol düzeltildi hem de uygulama kendini geri yüklüyor.
+3. **`hidden` özniteliği `display: flex`'i yenemiyor.** Modal katmanı daha
+   uygulama açılırken ekranda duruyordu; `.perde[hidden] { display: none }`
+   gerekti. İkisi de ancak uygulamayı ELLE açınca görüldü — testler görmedi.

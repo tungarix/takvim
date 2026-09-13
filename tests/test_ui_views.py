@@ -612,3 +612,57 @@ def test_tarayici_soket_baglandiktan_sonra_acilir(repo, ders):
 
     assert sonuc["dinliyor"] is True, "on_ready anında port dinlemiyordu"
     assert sonuc["port"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Kaynak denetimi (yalnızca Takvim penceresinden gelen yazma istekleri)
+# ---------------------------------------------------------------------------
+
+def _yazma_istegi(temel: str, basliklar: dict):
+    """Verilen başlıklarla bir POST dener; HTTP durum kodunu döndürür."""
+    req = urllib.request.Request(
+        temel + "/api/events",
+        method="POST",
+        data=json.dumps({"text": "yarın 10:00 deneme"}).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8", **basliklar},
+    )
+    try:
+        with urllib.request.urlopen(req) as yanit:
+            return yanit.status
+    except urllib.error.HTTPError as hata:
+        return hata.code
+
+
+def test_baska_siteden_gelen_yazma_reddedilir(sunucu):
+    """Kullanıcının açtığı bir web sayfası takvime etkinlik EKLEYEMEZ.
+
+    Sunucu yalnızca 127.0.0.1'i dinliyor ama bu yetmiyor: tarayıcı, hedef
+    localhost olsa bile isteği GÖNDERİYOR (CORS yalnızca yanıtı okumayı
+    engelliyor). Uygulama artık kendi penceresinde çalıştığına göre meşru
+    yazma istekleri yalnızca oradan gelir.
+    """
+    assert _yazma_istegi(sunucu, {"Origin": "https://kotu-site.example"}) == 403
+
+
+def test_capraz_site_isaretli_istek_reddedilir(sunucu):
+    """`Sec-Fetch-Site: cross-site` tek başına yeter."""
+    assert _yazma_istegi(sunucu, {"Sec-Fetch-Site": "cross-site"}) == 403
+
+
+def test_kendi_penceremizden_gelen_yazma_gecer(sunucu):
+    """Uygulamanın kendi istekleri (aynı kaynak) engellenmiyor."""
+    durum = _yazma_istegi(
+        sunucu, {"Origin": sunucu, "Sec-Fetch-Site": "same-origin"}
+    )
+
+    assert durum == 201  # oluşturuldu
+
+
+def test_basliksiz_istek_gecer(sunucu):
+    """Testler ve komut satırı araçları bu başlıkları göndermiyor."""
+    assert _yazma_istegi(sunucu, {}) == 201
+
+
+def test_gorunum_okumasi_denetimden_etkilenmez(sunucu):
+    """Denetim yalnızca YAZMA yollarında; görünüm sorguları eskisi gibi."""
+    assert _get(sunucu, "/api/week?date=2026-09-08")["view"] == "week"

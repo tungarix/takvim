@@ -67,6 +67,19 @@ def _ps_kacir(metin: str) -> str:
     return metin.replace("'", "''")
 
 
+def _pencere_gizle() -> dict:
+    """PowerShell'i GÖRÜNMEZ çalıştırmak için `subprocess` bayrakları.
+
+    Uygulama penceresiz paketleniyor (`console=False`). O derlemede bir alt
+    süreç başlatmak kendi konsol penceresini açar: her hatırlatıcıda ekranın
+    ortasında bir anlığına siyah bir kare çakar. Kullanıcı bunu "bir şey ters
+    gitti" diye okur. `CREATE_NO_WINDOW` bunu engelliyor.
+    """
+    if platform.system() != "Windows":
+        return {}
+    return {"creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)}
+
+
 class WindowsToastNotifier:
     """Windows toast bildirimi, PowerShell + WinRT ile.
 
@@ -99,6 +112,7 @@ $toast = New-Object Windows.UI.Notifications.ToastNotification $xml
                 capture_output=True,
                 text=True,
                 timeout=20,
+                **_pencere_gizle(),
             )
             return sonuc.returncode == 0
         except (OSError, subprocess.SubprocessError):

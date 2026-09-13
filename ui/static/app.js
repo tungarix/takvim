@@ -81,6 +81,81 @@ async function istek(yol, secenekler = {}) {
   return govde;
 }
 
+/* ---------- uygulama içi soru/onay penceresi ---------- */
+
+/* Tarayıcının `prompt()` ve `confirm()` kutuları yerine. Uygulama kendi
+ * masaüstü penceresinde çalışıyor ve orada tarayıcı kutusu "Bu sayfayı şunu
+ * diyor:" başlığıyla çıkıyor -- "bu bir uygulama" hissini bozan tek şey buydu.
+ * Kendi kutumuz ayrıca hangi kabukta çalıştığımızdan bağımsız: WebView2,
+ * tarayıcı geri düşüşü, hepsinde aynı davranıyor.
+ *
+ * Söz (Promise) döndürüyor; çağrı yerleri zaten `async`.
+ */
+let modalDurum = null;
+
+function modalAcik() {
+  return modalDurum !== null;
+}
+
+function modalSor({ baslik, metin = "", varsayilan = null, onay = "Tamam", tehlike = false }) {
+  const perde = el("perde");
+  const girdi = el("modal-girdi");
+  const tamam = el("modal-tamam");
+  const iptal = el("modal-iptal");
+  const oncekiOdak = document.activeElement;
+  const metinKipi = varsayilan !== null; // metin sorusu mu, evet/hayır mı
+
+  el("modal-baslik").textContent = baslik;
+  el("modal-metin").textContent = metin;
+  girdi.hidden = !metinKipi;
+  girdi.value = metinKipi ? varsayilan : "";
+  tamam.textContent = onay;
+  tamam.classList.toggle("tehlike", tehlike);
+  tamam.classList.toggle("birincil", !tehlike);
+  perde.hidden = false;
+
+  if (metinKipi) { girdi.focus(); girdi.select(); } else { tamam.focus(); }
+
+  return new Promise((cozumle) => {
+    const bitir = (deger) => {
+      perde.hidden = true;
+      perde.removeEventListener("click", perdeTik);
+      document.removeEventListener("keydown", tus, true);
+      tamam.onclick = null;
+      iptal.onclick = null;
+      modalDurum = null;
+      // Odağı geri ver: kutu kapanınca klavye kısayolları yine çalışsın.
+      if (oncekiOdak && oncekiOdak.focus) oncekiOdak.focus();
+      cozumle(deger);
+    };
+    const iptalDeger = () => (metinKipi ? null : false);
+    const onayDeger = () => (metinKipi ? girdi.value : true);
+    const perdeTik = (e) => { if (e.target === perde) bitir(iptalDeger()); };
+    /* YAKALAMA aşamasında dinliyoruz: aşağıdaki genel kısayol dinleyicisi
+     * (g/h/a/t) modal açıkken arkadaki görünümü değiştirmesin. */
+    const tus = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); bitir(iptalDeger()); }
+      else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); bitir(onayDeger()); }
+    };
+
+    modalDurum = { kapat: () => bitir(iptalDeger()) };
+    perde.addEventListener("click", perdeTik);
+    document.addEventListener("keydown", tus, true);
+    tamam.onclick = () => bitir(onayDeger());
+    iptal.onclick = () => bitir(iptalDeger());
+  });
+}
+
+/** Metin sorar; iptal edilirse null döner (prompt() ile aynı sözleşme). */
+function sor(baslik, metin, varsayilan = "") {
+  return modalSor({ baslik, metin, varsayilan });
+}
+
+/** Evet/hayır sorar; confirm() ile aynı sözleşme. */
+function onayla(baslik, metin, onay = "Tamam", tehlike = false) {
+  return modalSor({ baslik, metin, onay, tehlike });
+}
+
 let bildirimZaman = null;
 function bildir(mesaj, hata = false) {
   const kutu = el("bildirim");
@@ -307,6 +382,16 @@ function surukleBasla(e, blok, occ, gun, kip = "tasi") {
     hedefDakika: occ.startMin,
     hedefBitisDakika: occ.endMin,
   });
+  /* İmleç pencereden ÇIKSA da olayları almaya devam et. Yakalama olmadan
+   * kullanıcı fareyi pencerenin dışında bırakırsa `pointerup` hiç gelmiyor ve
+   * blok imlece yapışıp kalıyor. Uygulama artık kendi penceresinde ve o
+   * pencere tam ekran bir tarayıcı sekmesinden küçük; imlecin dışarı çıkması
+   * çok daha kolay. */
+  try {
+    blok.setPointerCapture(e.pointerId);
+  } catch {
+    // Yakalama desteklenmiyorsa sürükleme eskisi gibi çalışsın, engellemesin.
+  }
   e.stopPropagation();
 }
 
@@ -448,6 +533,12 @@ function tumgunBasla(e, blok, occ) {
     aktif: true, tasindi: false, blok, occ,
     baslangicX: e.clientX, hedefTarih: null,
   });
+  // Bkz. `surukleBasla`: imleç pencereden çıkınca blok yapışıp kalmasın.
+  try {
+    blok.setPointerCapture(e.pointerId);
+  } catch {
+    // desteklenmiyorsa eski davranış
+  }
 }
 
 function tumgunHareket(e) {
@@ -686,7 +777,7 @@ function islemleriCiz(occ) {
   };
 
   ekle("Başlığı değiştir", false, async () => {
-    const yeni = prompt("Yeni başlık:", occ.title);
+    const yeni = await sor("Başlığı değiştir", "Yeni başlık", occ.title);
     if (yeni === null || !yeni.trim()) return;
     await eylem(
       () => istek(`/api/events/${occ.eventId}`, {
@@ -708,7 +799,8 @@ function islemleriCiz(occ) {
   });
 
   ekle("Hatırlatıcı ekle", false, async () => {
-    const ham = prompt(
+    const ham = await sor(
+      "Hatırlatıcı ekle",
       "Kaç dakika önce hatırlatılsın?\n(0 = tam başlarken, 1440 = 1 gün önce)",
       "15",
     );
@@ -731,7 +823,13 @@ function islemleriCiz(occ) {
   // Tekrarlı serilerde tek örnek / tüm seri ayrımı kritik: kullanıcı bir
   // dersi bu haftalık iptal etmekle dönem boyunca silmeyi karıştırmamalı.
   ekle("Bu örneği sil", true, async () => {
-    if (!confirm(`"${occ.title}" — yalnızca bu örnek silinecek. Devam?`)) return;
+    const tamam = await onayla(
+      "Bu örneği sil",
+      `"${occ.title}" — yalnızca bu örnek silinecek, serinin geri kalanı kalır.`,
+      "Sil",
+      true,
+    );
+    if (!tamam) return;
     await eylem(
       () => istek("/api/occurrences/cancel", {
         method: "POST",
@@ -743,7 +841,13 @@ function islemleriCiz(occ) {
   });
 
   ekle("Seriyi tamamen sil", true, async () => {
-    if (!confirm(`"${occ.title}" — TÜM seri silinecek. Bu geri alınamaz. Devam?`)) return;
+    const tamam = await onayla(
+      "Seriyi tamamen sil",
+      `"${occ.title}" — TÜM seri silinecek. Bu geri alınamaz.`,
+      "Seriyi sil",
+      true,
+    );
+    if (!tamam) return;
     await eylem(
       () => istek(`/api/events/${occ.eventId}`, { method: "DELETE" }),
       "Seri silindi",
@@ -886,6 +990,16 @@ document.querySelectorAll(".gorunum-dugme").forEach((b) => {
 });
 
 document.addEventListener("keydown", (e) => {
+  // Soru kutusu açıkken arkadaki görünüm değişmesin: "Sil?" kutusundayken
+  // "a" harfine basmak ay görünümüne atlıyordu.
+  if (modalAcik()) return;
+
+  /* Değiştirici tuşlu birleşimler bizim değil: Ctrl+A (tümünü seç),
+   * Ctrl+H, Ctrl+T gibi birleşimleri kaçırırsak kullanıcı metni seçemez
+   * ya da beklediği davranış yerine görünüm değişir. Tek harflik
+   * kısayollar yalnızca ÇIPLAK basıldığında geçerli. */
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+
   // Yazarken kısayollar devreye girmesin
   if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
     if (e.key === "Escape") e.target.blur();

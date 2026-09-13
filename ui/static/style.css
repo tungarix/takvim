@@ -595,3 +595,59 @@ kbd {
   cursor: pointer;
 }
 .gl-gun-dugme:hover { background: #252a35; color: var(--metin); }
+
+/* ---------- uygulama içi soru/onay penceresi ---------- */
+
+/* Tarayıcının prompt()/confirm() kutuları masaüstü penceresinde "Bu sayfayı
+   şunu diyor:" başlığıyla çıkıyor ve uygulamayı bir web sayfası gibi
+   gösteriyor. Aynı işi uygulamanın kendi diliyle yapan bir pencere. */
+.perde {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(6, 8, 12, .62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* ŞART: `hidden` özniteliğinin getirdiği `display: none` tarayıcının kendi
+   stilinden geliyor ve yukarıdaki `display: flex` onu EZİYOR. Bu satır
+   olmadan soru kutusu daha uygulama açılırken boş boş ekranda duruyor. */
+.perde[hidden] { display: none; }
+.modal {
+  width: min(420px, calc(100vw - 48px));
+  background: var(--yuzey);
+  border: 1px solid var(--cizgi);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .6);
+}
+.modal-baslik { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.modal-metin {
+  margin: 0;
+  font-size: 13px;
+  color: var(--metin-soluk);
+  white-space: pre-line; /* mesajlardaki \n gerçek satır sonu olsun */
+}
+.modal-metin:empty { display: none; }
+.modal-girdi {
+  width: 100%;
+  margin-top: 14px;
+  background: var(--zemin);
+  border: 1px solid var(--cizgi);
+  border-radius: 7px;
+  color: var(--metin);
+  font: inherit;
+  padding: 8px 10px;
+}
+.modal-girdi:focus { outline: none; border-color: var(--vurgu); }
+.modal-islemler {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dugme.birincil { background: var(--vurgu); border-color: var(--vurgu); color: #fff; }
+.dugme.birincil:hover { background: #3f7cf0; border-color: #3f7cf0; }
+.dugme.tehlike { background: #7f2727; border-color: #8d2f2f; color: #ffd9d9; }
+.dugme.tehlike:hover { background: #8f2d2d; }

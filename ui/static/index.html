@@ -89,6 +89,21 @@
 
 <div class="bildirim" id="bildirim" hidden></div>
 
+<!-- Uygulama içi soru/onay penceresi. Tarayıcının prompt()/confirm()'ü yerine
+     bunu kullanıyoruz: onlar masaüstü penceresinde "Bu sayfayı şunu diyor:"
+     başlığıyla çıkıyor ve uygulamayı web sayfası gibi gösteriyor. -->
+<div class="perde" id="perde" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-baslik">
+    <h2 class="modal-baslik" id="modal-baslik"></h2>
+    <p class="modal-metin" id="modal-metin"></p>
+    <input class="modal-girdi" id="modal-girdi" type="text" autocomplete="off" hidden>
+    <div class="modal-islemler">
+      <button type="button" class="dugme" id="modal-iptal">İptal</button>
+      <button type="button" class="dugme birincil" id="modal-tamam">Tamam</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

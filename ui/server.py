@@ -93,6 +93,28 @@ class _Handler(BaseHTTPRequestHandler):
             raise ValueError("gövde çok büyük")
         return self.rfile.read(uzunluk).decode("utf-8", errors="replace")
 
+    def _kaynak_guvenli(self) -> bool:
+        """İsteğin BU uygulamadan geldiğini doğrular.
+
+        Sunucu yalnızca 127.0.0.1'i dinliyor ama bu, kullanıcının tarayıcıda
+        açtığı BAŞKA bir sayfanın buraya istek göndermesini engellemiyor:
+        tarayıcı hedef localhost olsa da isteği gönderir, CORS yalnızca
+        YANITI okumayı engeller. Yani ziyaret edilen bir sayfa sessizce
+        etkinlik ekleyebilir ya da silebilir. Uygulama artık kendi
+        penceresinde çalıştığına göre, meşru istekler yalnızca oradan gelir.
+
+        Başlık HİÇ YOKSA geçiyoruz: testler ve komut satırı araçları bunları
+        göndermiyor, saldırı yüzeyi ise tarayıcı ve o her ikisini de gönderiyor.
+        """
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site not in ("same-origin", "none"):
+            return False
+        kaynak = self.headers.get("Origin")
+        if kaynak is None:
+            return True
+        host, port = self.server.server_address[0], self.server.server_address[1]
+        return kaynak in (f"http://{host}:{port}", f"http://localhost:{port}")
+
     def _tarih(self, sorgu: dict) -> date:
         """`?date=` parametresini çözer; yoksa bugün."""
         ham = (sorgu.get("date") or [date.today().isoformat()])[0]
@@ -157,6 +179,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """Oluşturma, örnek düzeyi işlemler, görünürlük ve içe aktarma."""
+        if not self._kaynak_guvenli():
+            self._hata("bu istek Takvim penceresinden gelmiyor", 403)
+            return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
 
@@ -201,6 +226,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self) -> None:  # noqa: N802
         """PATCH /api/events/<id> — başlık/konum/açıklama günceller."""
+        if not self._kaynak_guvenli():
+            self._hata("bu istek Takvim penceresinden gelmiyor", 403)
+            return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
         try:
@@ -215,6 +243,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:  # noqa: N802
         """DELETE /api/events/<id> — SERİNİN TAMAMINI siler."""
+        if not self._kaynak_guvenli():
+            self._hata("bu istek Takvim penceresinden gelmiyor", 403)
+            return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
 

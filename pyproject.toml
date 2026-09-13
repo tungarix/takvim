@@ -15,6 +15,12 @@ dependencies = [
     "tzdata>=2024.1; sys_platform == 'win32'",
     # Faz 2 (.ics içe aktarma) için önceden onaylı bağımlılık.
     "icalendar>=6",
+    # Masaüstü penceresi. Uygulama tarayıcıda değil kendi penceresinde açılıyor
+    # ve bunu Windows'un KENDİ WebView2 bileşeniyle yapıyor -- yani uygulamanın
+    # içine bir tarayıcı motoru gömülmüyor, işletim sistemindeki kullanılıyor.
+    # Yanında pythonnet geliyor (WebView2'nin .NET arayüzü için); ikisi de
+    # yalnızca Windows'ta gerekli.
+    "pywebview>=6.2; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

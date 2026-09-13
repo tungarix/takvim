@@ -3,9 +3,21 @@
 Örnek:
     .venv/Scripts/python.exe -m ui --demo
     .venv/Scripts/python.exe -m ui --db takvim.db --reminder
+    .venv/Scripts/python.exe -m ui --tarayici      # pencere yerine tarayıcı
+    .venv/Scripts/python.exe -m ui --no-browser    # yalnızca sunucu
 
-Son kullanıcı bunu masaüstündeki kısayoldan çalıştırıyor. Buradaki hata
-yönetimi buna göre: pencere sessizce kapanıp geriye hiçbir şey bırakmasın.
+Son kullanıcı bunu masaüstündeki kısayoldan çalıştırıyor ve uygulama KENDİ
+PENCERESİNDE açılıyor (bkz. `ui/pencere.py`). Buradaki hata yönetimi buna göre:
+pencere sessizce kapanıp geriye hiçbir şey bırakmasın.
+
+Sıralama önemli ve bilinçli:
+
+    tek örnek kilidi -> depo -> hatırlatıcı -> sunucu (arka plan thread) -> pencere (ana thread)
+
+`webview.start()` ana thread'de çalışmak ZORUNDA ve pencere kapanana kadar geri
+dönmüyor; bu yüzden HTTP sunucusu arka plana taşındı. Depo `check_same_thread=
+False` ile açılıyor, çünkü bağlantıyı burada kurup sunucu thread'inde
+kullanıyoruz — erişim yine SIRALI, sunucu tek thread'li (bkz. `make_server`).
 """
 
 from __future__ import annotations
@@ -23,7 +35,10 @@ from core.console import guvenli_konsol
 from store import Repo
 
 from .demo import TZID, seed
-from .server import bos_port_bul, serve
+from .pencere import BASLIK, pencere_ac
+from .server import bos_port_bul, make_server, serve
+from .tek_ornek import kilit_adi, kilit_al, pencereyi_one_al, pid_oku, pid_yaz
+
 
 def varsayilan_db() -> str:
     """Veritabanının varsayılan yeri.
@@ -35,9 +50,31 @@ def varsayilan_db() -> str:
     """
     if getattr(sys, "frozen", False):
         kok = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Takvim"
-        kok.mkdir(parents=True, exist_ok=True)
+        try:
+            kok.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Veri klasörü oluşturulamıyor: yönlendirilmiş LOCALAPPDATA, disk
+            # kotası, kurum ilkesi. Uygulamayı hiç açmamaktansa geçici klasöre
+            # düşüyoruz -- veri kalıcı olmaz ama takvim çalışır ve kullanıcı
+            # neden olduğunu günlükte görür.
+            import tempfile
+
+            print("Veri klasörü açılamadı; geçici klasöre düşülüyor.", flush=True)
+            kok = Path(tempfile.gettempdir()) / "Takvim"
+            kok.mkdir(parents=True, exist_ok=True)
         return str(kok / "takvim.db")
     return "takvim.db"
+
+
+def veri_dizini(db: str) -> Path:
+    """Pencere konumu ve WebView2 önbelleği için yazılabilir klasör.
+
+    Veritabanının YANINDA: ikisi de "bu kullanıcının Takvim durumu" ve o klasör
+    yazılabilir olduğu zaten kanıtlanmış oluyor (DB oraya yazılıyor).
+    """
+    if db == ":memory:":
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Takvim"
+    return Path(db).resolve().parent
 
 
 def _hatirlatici_baslat(db: str, tzid: str) -> threading.Thread:
@@ -84,9 +121,9 @@ def varsayilan_takvim_saglat(repo) -> bool:
 def _olumcul_hata(mesaj: str) -> None:
     """Kapanmadan önce hatayı GÖRÜNÜR kılar.
 
-    Kısayol pencereyi küçültülmüş açıyor; bir istisna pencereyi kapatırsa
-    kullanıcı ekranda hiçbir şey görmez ve haklı olarak "çalışmıyor" der.
-    Konsola yazmak yetmediği için ayrıca bir uyarı penceresi gösteriyoruz.
+    Uygulama penceresiz (`console=False`) paketleniyor; bir istisna açılışı
+    keserse kullanıcı ekranda HİÇBİR ŞEY görmez ve haklı olarak "çalışmıyor"
+    der. Konsola yazmak yetmediği için ayrıca bir uyarı penceresi gösteriyoruz.
     """
     print(f"\nHATA: {mesaj}\n", flush=True)
     try:
@@ -99,14 +136,17 @@ def _olumcul_hata(mesaj: str) -> None:
         kok.destroy()
     except Exception:
         # Ekran yoksa konsol çıktısı elimizdeki tek şey; kapanmadan bekletelim.
+        # `Exception`ın tamamı yakalanıyor: penceresiz paketlenmiş uygulamada
+        # `input()` stdin olmadığı için `RuntimeError` atıyor ve o hata buradan
+        # kaçarsa hata mesajını göstermeye çalışırken yeni bir hata doğuyor.
         try:
             input("Kapatmak için Enter'a bas...")
-        except (EOFError, OSError):
+        except Exception:
             pass
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Komut satırını çözer ve sunucuyu başlatır."""
+    """Komut satırını çözer ve uygulamayı başlatır."""
     guvenli_konsol()
     ayristirici = argparse.ArgumentParser(prog="ui", description="Takvim")
     ayristirici.add_argument(
@@ -119,7 +159,19 @@ def main(argv: list[str] | None = None) -> int:
     ayristirici.add_argument(
         "--reminder", action="store_true", help="hatırlatıcıyı da başlat"
     )
-    ayristirici.add_argument("--no-browser", action="store_true", help="tarayıcıyı açma")
+    ayristirici.add_argument(
+        "--tarayici", action="store_true", help="masaüstü penceresi yerine tarayıcıda aç"
+    )
+    ayristirici.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="ne pencere ne tarayıcı; yalnızca sunucuyu çalıştır",
+    )
+    ayristirici.add_argument(
+        "--coklu",
+        action="store_true",
+        help="tek örnek kilidini atla (aynı anda ikinci bir örnek aç)",
+    )
     ayristirici.add_argument("--verbose", action="store_true")
     args = ayristirici.parse_args(argv)
     if args.db is None:
@@ -140,7 +192,24 @@ def _calistir(args) -> int:
         # hangi dosyanın açıldığını kesinleştiriyoruz.
         args.db = str(Path(args.db).resolve())
 
-    repo = Repo.open(args.db)
+    # Mutex tutamağı işletim sistemine ait; süreç bitene kadar açık kalıyor ve
+    # kilidi o tutuyor. Burada bir değişkende tutmamızın tek sebebi, gerekirse
+    # açıkça kapatabilmek ve kilidin nerede alındığının okunur olması.
+    if not args.coklu and args.db != ":memory:":
+        alindi, _kilit = kilit_al(kilit_adi(args.db))
+        if not alindi:
+            print("Takvim zaten açık; var olan pencere öne alınıyor.", flush=True)
+            # Süreç numarasıyla arıyoruz: aynı başlığı taşıyan başka bir
+            # pencereyi (örneğin veri klasörünü açan Explorer) öne almayalım.
+            pencereyi_one_al(BASLIK, pid=pid_oku(veri_dizini(args.db)))
+            return 0
+        pid_yaz(veri_dizini(args.db))
+
+    # Sunucu yalnızca `--no-browser`da ana thread'de çalışıyor; pencereli
+    # çalıştırmada arka plan thread'ine geçiyor ve bağlantı burada kurulduğu
+    # için sqlite3'ün thread kontrolünü kapatmamız gerekiyor. Sunucu TEK
+    # THREAD'li olduğundan erişim yine sıralı (bkz. `make_server`).
+    repo = Repo.open(args.db, check_same_thread=args.no_browser)
     try:
         if args.demo:
             if repo.list_calendars():
@@ -167,21 +236,99 @@ def _calistir(args) -> int:
         if port != args.port:
             print(f"{args.port} portu dolu, {port} kullanılıyor.", flush=True)
 
-        def hazir(gercek_port: int) -> None:
-            """Soket DİNLEMEYE BAŞLADIKTAN sonra tarayıcıyı aç.
-
-            Daha önce tarayıcı `serve()` çağrılmadan açılıyordu; hızlı bir
-            makinede henüz dinlemeyen porta gidip "siteye ulaşılamıyor"
-            gösteriyordu. Son kullanıcı için bu "uygulama çalışmıyor" demek.
-            """
-            if not args.no_browser:
-                webbrowser.open(f"http://{args.host}:{gercek_port}")
-
         print(f"Veritabanı: {args.db}", flush=True)
-        serve(repo, args.tz, args.host, port, args.verbose, on_ready=hazir)
+
+        if args.no_browser:
+            # Ön yüz yok: sunucu ana thread'de, Ctrl+C'ye kadar. Testler ve
+            # "başka bir tarayıcıdan bağlanayım" durumu için.
+            serve(repo, args.tz, args.host, port, args.verbose)
+            return 0
+
+        return _onyuzle_calistir(args, repo, port)
     finally:
         repo.close()
+
+
+def _onyuzle_calistir(args, repo, port: int) -> int:
+    """Sunucuyu arka planda, ön yüzü ana thread'de çalıştırır.
+
+    Ön yüz (pencere ya da tarayıcı) kapanınca sunucu durduruluyor ve süreç
+    bitiyor. Sıra önemli: sunucu DİNLEMEYE başlamadan pencereyi açarsak
+    WebView2 boş sayfa gösterir ve kullanıcı "açılmıyor" der.
+    """
+    httpd = make_server(repo, args.tz, args.host, port, args.verbose)
+    gercek_port = httpd.server_address[1]
+    url = f"http://{args.host}:{gercek_port}"
+    print(f"Takvim: {url}", flush=True)
+
+    sunucu = threading.Thread(target=httpd.serve_forever, name="sunucu", daemon=True)
+    sunucu.start()
+    try:
+        _onyuz_ac(url, veri_dizini(args.db), args.tarayici)
+    finally:
+        # `shutdown()` BAŞKA bir thread'den çağrılmalı — serve_forever döngüsü
+        # sunucu thread'inde dönüyor, oradan çağırmak kilitlenirdi.
+        httpd.shutdown()
+        httpd.server_close()
+        sunucu.join(timeout=3)
     return 0
+
+
+def _onyuz_ac(url: str, dizin: Path, tarayici_zorla: bool) -> None:
+    """Ön yüzü açar ve KAPANANA kadar bloklar.
+
+    Pencere açılamazsa (WebView2 çalışma zamanı yok, eski Windows, bozuk
+    kurulum) uygulamayı ölü bırakmıyoruz: tarayıcıya düşüyoruz. Kullanıcı için
+    "çirkin ama çalışıyor", "hiç açılmıyor"dan iyidir.
+    """
+    sebep = ""
+    if not tarayici_zorla:
+        try:
+            pencere_ac(url, dizin)
+            return
+        except Exception as hata:
+            traceback.print_exc()
+            sebep = str(hata) or type(hata).__name__
+            print(f"Masaüstü penceresi açılamadı; tarayıcıya düşülüyor. ({sebep})", flush=True)
+
+    webbrowser.open(url)
+    _tarayici_bekle(url, sebep)
+
+
+def _tarayici_bekle(url: str, sebep: str = "") -> None:
+    """Tarayıcı geri düşüşünde süreci ayakta tutar.
+
+    Tarayıcı ayrı bir süreç: sekmeyi kapatmak sunucuyu durdurmaz. Penceresiz
+    paketlenmiş uygulamada geriye görünmez bir süreç kalmasın diye küçük bir
+    denetim penceresi gösteriyoruz — kapatınca uygulama da kapanıyor.
+    """
+    try:
+        import tkinter as tk
+
+        kok = tk.Tk()
+        kok.title(BASLIK)
+        kok.resizable(False, False)
+        tk.Label(
+            kok,
+            padx=24,
+            pady=16,
+            justify="left",
+            text=(
+                "Takvim tarayıcıda açıldı:\n"
+                f"{url}\n\n"
+                + (f"Sebep: {sebep}\n\n" if sebep else "")
+                + "Bu pencereyi kapatınca uygulama da kapanır."
+            ),
+        ).pack()
+        tk.Button(kok, text="Takvim'i kapat", command=kok.destroy, padx=12).pack(pady=(0, 16))
+        kok.mainloop()
+    except Exception:
+        # Ekran/tkinter yoksa (başsız çalıştırma) sonsuza kadar bekle: Ctrl+C
+        # ya da süreci sonlandırmak tek çıkış.
+        try:
+            threading.Event().wait()
+        except KeyboardInterrupt:
+            print("\nkapatılıyor...", flush=True)
 
 
 if __name__ == "__main__":

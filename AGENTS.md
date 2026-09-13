@@ -19,10 +19,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Faz 5 — `.ics` dışa aktarma | ✅ bitti |
 | Hatırlatıcı (`remind/`) + sürükle-bırak | ✅ bitti |
 | Boyutlandırma, tüm gün taşıma, ay açılır listesi | ✅ bitti |
+| Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
 
 **v1 kapsamı tamamlandı.**
 
-**233 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**273 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -38,8 +39,14 @@ Windows 11, **PowerShell 5.1**. Python 3.14.7, proje kökünde `.venv`.
 
 Kullanıcı uygulamayı masaüstündeki **Takvim** kısayoluyla açıyor; kısayol
 `dist/Takvim.exe` (PyInstaller ile paketlenmiş, Python gerektirmiyor)
-dosyasını çalıştırıyor. Gerçek veri `%LOCALAPPDATA%/Takvim/takvim.db`
-içinde -- testlerde ASLA kullanma, `:memory:` ya da `--demo` kullan.
+dosyasını çalıştırıyor. Uygulama TARAYICIDA DEĞİL, kendi masaüstü
+penceresinde açılıyor (pywebview + Windows'un WebView2 bileşeni). Gerçek veri
+`%LOCALAPPDATA%/Takvim/takvim.db` içinde -- testlerde ASLA kullanma,
+`:memory:` ya da `--demo` kullan. Aynı klasörde `pencere.json` (pencere
+boyutu/konumu), `ornek.pid` ve `takvim.log` var.
+
+Geliştirirken arayüzü tarayıcıda açmak istersen `--tarayici`, hiç ön yüz
+istemiyorsan `--no-browser` bayrağı var.
 
 Kodu değiştirdikten sonra `.exe` ESKİ KALIR; yeniden derlemeden
 "kullanıcıda çalışıyor" deme:
@@ -67,6 +74,11 @@ Sistem Python'unu değil **her zaman `.venv\Scripts\python.exe`** kullan.
 
 `icalendar` Faz 2 ile eklendi (`.ics` ayrıştırma).
 
+`pywebview` masaüstü penceresi için eklendi (kullanıcı onayıyla). Yanında
+`pythonnet`, `clr_loader`, `cffi`, `bottle`, `proxy_tools` geliyor. Windows'un
+KENDİ WebView2 bileşenini kullanıyor: uygulamaya tarayıcı motoru gömülmüyor,
+bu yüzden `.exe` 15 MB'tan ~20 MB'a çıkıyor, 150 MB'a değil.
+
 Yeni bağımlılık eklemeden önce gerekçelendir ve önce sor.
 
 ---
@@ -77,7 +89,7 @@ Yeni bağımlılık eklemeden önce gerekçelendir ve önce sor.
 core/   saf mantık — DB, dosya, ekran bilmez
 store/  kalıcılık (SQLite)
 ics/    içe/dışa aktarma
-ui/     arayüz (yerel web, stdlib http.server)
+ui/     arayüz (masaüstü penceresi + yerel http.server)
 remind/ hatırlatıcı arka plan süreci
 ```
 
@@ -237,6 +249,66 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     yazıp Enter'a basınca hiçbir şey olmaması "uygulama bozuk" demek.
     Formda ayrıca görünür bir + düğmesi var.
 
+
+### ui/pencere.py (masaüstü penceresi)
+
+32. **`webview.start()` ANA THREAD'de çalışır ve pencere kapanana kadar
+    DÖNMEZ.** Bu yüzden HTTP sunucusu arka plan thread'ine taşındı ve `Repo`
+    `check_same_thread=False` ile açılıyor. Sunucu hâlâ TEK THREAD'li (kural
+    16 duruyor); değişen tek şey o tek thread'in artık ana thread olmaması.
+    `make_server()` doğrudan çağrılıyor ki pencere kapanınca `shutdown()`
+    edilecek bir tutamak elimizde olsun.
+33. **`webview.settings["ALLOW_DOWNLOADS"] = True` ŞART.** pywebview
+    indirmeleri varsayılan olarak İPTAL ediyor. Kapalıyken "Dışa aktar"
+    düğmesi hiçbir şey yapmıyor: ne dosya, ne hata, ne mesaj. Ölçüldü:
+    açıkken Windows'un kendi "Farklı Kaydet" penceresi çıkıyor.
+34. **`private_mode=True` ile `storage_path` BİRLİKTE VERİLMEZ.** O bileşimde
+    pywebview verilen klasörü `shutil.rmtree` ile SİLİYOR. Kod bu yüzden
+    ikisini birbirinin tersi olarak kuruyor.
+35. **Pencere ölçüsü `closing` olayında okunur, `closed`'da DEĞİL.** `closed`
+    anında pencere yok olmuş oluyor ve `pencere.width` hata veriyor. `closing`
+    senkron çalışıyor; oradan `False` DÖNDÜRME, kapanmayı iptal eder.
+36. **Küçültülmüş başlatma stiline karşı `shown` olayında `restore()`.**
+    Kısayol süreci "küçültülmüş" stille başlatabiliyor (eski sürümde konsol
+    göze batmasın diye böyle kurulmuştu) ve o stil uygulama penceresine de
+    uygulanıyor: kullanıcı tıklıyor, ekranda hiçbir şey açılmıyor. Gerçekten
+    yaşandı; kısayolu düzeltmek yetmez, kopyalanan kısayol aynı tuzağa düşer.
+37. **WebView2 yoksa pywebview İSTİSNA ATMAZ**, sessizce eski Internet
+    Explorer motoruna düşüp bembeyaz bir pencere gösterir. Bu yüzden
+    `pencere_ac()` en başta kayıt defterinden sürümü soruyor ve yoksa kendisi
+    `RuntimeError` fırlatıyor — ancak o zaman tarayıcı geri düşüşü çalışıyor.
+38. **Geri düşüş yalnızca pencere GÖRÜNMEDEN önceki hatalar için.**
+    `webview.start()` pencerenin tüm ömrü boyunca bloklar; onu saran
+    `except` kapanış hatalarını da yakalar ve kullanıcı uygulamayı
+    kapattıktan sonra karşısında bir tarayıcı sekmesi bulurdu.
+39. **Tek örnek: mutex + SÜREÇ NUMARASI.** Pencereyi yalnızca başlıktan
+    aramak yanlış pencereyi öne alıyor: veri klasörünün adı da "Takvim" ve
+    Explorer'da açılınca pencere başlığı da tam olarak "Takvim" oluyor.
+
+### ui/server.py (kaynak denetimi)
+
+40. **Durum değiştiren isteklerde `Origin`/`Sec-Fetch-Site` denetimi.**
+    Sunucu yalnızca 127.0.0.1'i dinliyor ama bu, kullanıcının tarayıcıda
+    açtığı başka bir sayfanın buraya POST etmesini engellemiyor (CORS
+    yalnızca YANITI okumayı engeller). Başlık hiç yoksa geçiyoruz: testler ve
+    komut satırı araçları göndermiyor, saldırı yüzeyi tarayıcı.
+
+### Paketleme
+
+41. **pywebview'in WebView2 DLL'lerini ELLE EKLEME.** Paket kendi PyInstaller
+    hook'unu getiriyor (`webview/__pyinstaller/hook-webview.py`) ve
+    `webview/lib` + `webview/js` klasörlerini topluyor; elle eklemek mükerrer
+    dosya üretir.
+42. **`console=False` ile `stdout`/`stderr` None oluyor.** `takvim_app.py`
+    bunları `%LOCALAPPDATA%/Takvim/takvim.log` dosyasına yönlendiriyor:
+    penceresiz uygulamada kullanıcıya "ekranda ne yazıyordu" diye
+    soramıyoruz. Aynı sebeple hatırlatıcının PowerShell toast'ı
+    `CREATE_NO_WINDOW` ile çalışıyor — yoksa her bildirimde siyah bir konsol
+    çakıyor.
+43. **Arayüz dosyalarında `hidden` özniteliğine güvenirken CSS'e dikkat.**
+    `.perde { display: flex }` tarayıcının `[hidden] { display: none }`
+    kuralını EZİYOR; `.perde[hidden] { display: none }` olmadan soru kutusu
+    uygulama açılırken ekranda duruyordu. Elle çalıştırınca görüldü.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -302,6 +374,18 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 **v1 kapsamı tamamlandı** (README §1). Yeni özellik eklemeden önce SOR --
 kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+Masaüstü penceresine geçişte BİLİNÇLİ OLARAK yapılmayanlar:
+
+- **Sistem tepsisi simgesi.** Pencere kapanınca uygulama kapanıyor, yani
+  hatırlatıcı da susuyor. Kapatınca tepsiye küçülmek isteniyorsa bu ayrı bir
+  iş ve kullanıcıya sorulmalı.
+- **`.ics` içe aktarma arayüzü.** Sunucuda `POST /api/import` hazır, ön yüzde
+  düğmesi yok.
+- **Kendi sağ tık menümüz.** WebView2'nin menüsü kapalı (uygulama gibi dursun
+  diye); kopyala/yapıştır klavyeyle çalışıyor.
+- **Monitör başına DPI farkındalığı.** pywebview yalnızca sistem DPI'ını
+  ayarlıyor; farklı ölçekli ikinci monitörde yazı bulanıklaşabilir.
 
 Bilinçli olarak yapılmamış olanlar README §10'da: blok yeniden
 boyutlandırma, tüm gün şeridinde sürükleme, ay görünümünde açılır liste,
