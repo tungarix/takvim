@@ -61,3 +61,23 @@ CREATE TABLE event_overrides (
 
 CREATE INDEX idx_events_window ON events(start_utc, series_end_utc);
 CREATE INDEX idx_events_calendar ON events(calendar_id);
+
+-- 003 ile eklendi. Hatırlatıcı SERİYE bağlanır, her ÖRNEK için ayrı tetiklenir;
+-- reminder_fired mükerrer bildirimi veritabanı düzeyinde imkânsız kılar.
+CREATE TABLE reminders (
+    id              INTEGER PRIMARY KEY,
+    event_id        INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    minutes_before  INTEGER NOT NULL,
+    created_at      TEXT NOT NULL,
+    UNIQUE(event_id, minutes_before)
+);
+
+CREATE TABLE reminder_fired (
+    id                    INTEGER PRIMARY KEY,
+    reminder_id           INTEGER NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+    occurrence_start_utc  TEXT NOT NULL,
+    fired_at_utc          TEXT NOT NULL,
+    UNIQUE(reminder_id, occurrence_start_utc)
+);
+
+CREATE INDEX idx_reminders_event ON reminders(event_id);

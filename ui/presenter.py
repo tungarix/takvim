@@ -75,9 +75,21 @@ def _dakika(an: datetime, gun_baslangici: datetime) -> int:
     )
 
 
-def _occ_sozluk(occ: Occurrence, renkler: dict[int, str]) -> dict:
-    """Occurrence'ın ekrana taşınacak alanları."""
+def _occ_sozluk(
+    occ: Occurrence,
+    renkler: dict[int, str],
+    hatirlaticilar: dict[int, list] | None = None,
+) -> dict:
+    """Occurrence'ın ekrana taşınacak alanları.
+
+    `reminderMinutes` seriye bağlı hatırlatıcıların dakika listesi; panel
+    mevcut hatırlatıcıları göstermek için kullanıyor.
+    """
+    kayitli = (hatirlaticilar or {}).get(occ.event_id, [])
     return {
+        "reminders": [
+            {"id": r.id, "minutesBefore": r.minutes_before} for r in kayitli
+        ],
         "uid": occ.uid,
         "eventId": occ.event_id,
         "title": occ.title,
@@ -90,6 +102,8 @@ def _occ_sozluk(occ: Occurrence, renkler: dict[int, str]) -> dict:
         "tzid": occ.tzid,
         "startUtc": occ.start_utc.isoformat(),
         "endUtc": occ.end_utc.isoformat(),
+        # Override anahtarı: taşınmış örnekte startUtc ile AYNI DEĞİL.
+        "originalStartUtc": occ.series_slot_utc.isoformat(),
     }
 
 
@@ -139,6 +153,7 @@ def month_payload(
 
     takvimler = repo.list_calendars()
     renkler = {c.id: c.color for c in takvimler}
+    hatirlaticilar = repo.all_reminders()
     occurrences = repo.occurrences(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
@@ -160,7 +175,7 @@ def month_payload(
                 "inMonth": gun.month == ilk.month,
                 "events": [
                     dict(
-                        _occ_sozluk(o, renkler),
+                        _occ_sozluk(o, renkler, hatirlaticilar),
                         startMin=_dakika(max(o.start_utc, gun_baslangic), gun_baslangic),
                     )
                     for o in icerik
@@ -234,6 +249,7 @@ def _izgara_payload(
 
     takvimler = repo.list_calendars()
     renkler = {c.id: c.color for c in takvimler}
+    hatirlaticilar = repo.all_reminders()
 
     occurrences = repo.occurrences(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
@@ -256,7 +272,7 @@ def _izgara_payload(
             if not (occ.start_utc < gun_bitis and occ.end_utc > gun_baslangic):
                 continue
             if occ.all_day:
-                tum_gun.append(_occ_sozluk(occ, renkler))
+                tum_gun.append(_occ_sozluk(occ, renkler, hatirlaticilar))
                 continue
             # Saatli etkinliği güne kırp; layout() kırpılmış hâl üzerinden çalışsın,
             # yoksa gece yarısını aşan bir etkinlik ertesi sabahı boşuna daraltır.
@@ -273,7 +289,7 @@ def _izgara_payload(
             occ = orijinali[id(parca)]
             # Sözlük GERÇEK sınırları taşır (panel doğru saati göstersin);
             # yalnızca ızgara konumu kırpılmış parçadan gelir.
-            veri = _occ_sozluk(occ, renkler)
+            veri = _occ_sozluk(occ, renkler, hatirlaticilar)
             veri.update(
                 {
                     "col": kolon,

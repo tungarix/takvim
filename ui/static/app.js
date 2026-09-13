@@ -260,9 +260,124 @@ function blokYap(occ, gun) {
     `${occ.clipped ? " ⇥" : ""}</div>` +
     (occ.isOverride ? `<div class="b-rozet">· taşındı</div>` : "");
 
-  blok.onclick = () => panelAc(occ);
+  blok.onclick = () => { if (!surukleme.tasindi) panelAc(occ); };
+  blok.addEventListener("pointerdown", (e) => surukleBasla(e, blok, occ, gun));
   return blok;
 }
+
+/* ---------- sürükle-bırak ---------- */
+
+/* Hedef, SUNUCUYA tarih + gün başından dakika olarak gönderilir. JS'te
+ * "şu IANA diliminde şu duvar saati" kurmak güvenilir değil; sunucuda
+ * from_wall_clock zaten var ve test edilmiş. Izgara da zaten yerel dakika ile
+ * çalıştığı için elimizdeki iki değer doğrudan bunlar.
+ */
+
+const SNAP = 15; // dakika
+const ESIK = 4;  // px: bu kadar oynamadan sürükleme başlamaz (tık kaybolmasın)
+
+const surukleme = { aktif: false, tasindi: false };
+
+function surukleBasla(e, blok, occ, gun) {
+  if (e.button !== 0 || occ.allDay) return;
+  const blokKutu = blok.getBoundingClientRect();
+  Object.assign(surukleme, {
+    aktif: true,
+    tasindi: false,
+    blok,
+    occ,
+    kaynakGun: gun,
+    baslangicX: e.clientX,
+    baslangicY: e.clientY,
+    tutmaOfseti: e.clientY - blokKutu.top,
+    sure: occ.endMin - occ.startMin,
+    hedefGun: gun,
+    hedefDakika: occ.startMin,
+  });
+  e.stopPropagation();
+}
+
+function dakikaSaat(dk) {
+  const s = Math.floor(dk / 60) % 24;
+  return `${String(s).padStart(2, "0")}:${String(dk % 60).padStart(2, "0")}`;
+}
+
+function surukleHareket(e) {
+  if (!surukleme.aktif) return;
+  if (
+    !surukleme.tasindi &&
+    Math.abs(e.clientY - surukleme.baslangicY) < ESIK &&
+    Math.abs(e.clientX - surukleme.baslangicX) < ESIK
+  ) {
+    return;
+  }
+  surukleme.tasindi = true;
+  surukleme.blok.classList.add("suruklenen");
+
+  const sutunlar = [...document.querySelectorAll(".gun-sutun")];
+  let indeks = sutunlar.findIndex((s) => {
+    const k = s.getBoundingClientRect();
+    return e.clientX >= k.left && e.clientX < k.right;
+  });
+  if (indeks < 0) indeks = sutunlar.indexOf(surukleme.blok.parentElement);
+  const hedefGun = durum.veri.days[indeks];
+  if (!hedefGun) return;
+
+  const kutu = sutunlar[indeks].getBoundingClientRect();
+  const oran = (e.clientY - kutu.top - surukleme.tutmaOfseti) / kutu.height;
+  let dakika = Math.round((oran * hedefGun.dayMinutes) / SNAP) * SNAP;
+  dakika = Math.max(0, Math.min(dakika, hedefGun.dayMinutes - SNAP));
+
+  surukleme.hedefGun = hedefGun;
+  surukleme.hedefDakika = dakika;
+
+  if (surukleme.blok.parentElement !== sutunlar[indeks]) {
+    sutunlar[indeks].appendChild(surukleme.blok);
+  }
+  surukleme.blok.style.top = `${(dakika / hedefGun.dayMinutes) * 100}%`;
+  const saatEl = surukleme.blok.querySelector(".b-saat");
+  if (saatEl) {
+    saatEl.textContent = `${dakikaSaat(dakika)}–${dakikaSaat(dakika + surukleme.sure)}`;
+  }
+}
+
+async function surukleBitir() {
+  if (!surukleme.aktif) return;
+  const { tasindi, occ, kaynakGun, hedefGun, hedefDakika } = surukleme;
+  surukleme.aktif = false;
+  if (surukleme.blok) surukleme.blok.classList.remove("suruklenen");
+  if (!tasindi) return;
+
+  // Tık olayı sürüklemeden SONRA da ateşleniyor; panel açılmasın diye bayrağı
+  // bir tur sonra temizliyoruz.
+  setTimeout(() => { surukleme.tasindi = false; }, 0);
+
+  if (hedefGun.date === kaynakGun.date && hedefDakika === occ.startMin) {
+    await yukle(); // yer değişmedi, önizlemeyi geri al
+    return;
+  }
+
+  try {
+    await istek("/api/occurrences/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventId: occ.eventId,
+        originalStartUtc: occ.originalStartUtc,
+        newDate: hedefGun.date,
+        newMinutes: hedefDakika,
+      }),
+    });
+    bildir(`Taşındı: ${occ.title} → ${dakikaSaat(hedefDakika)}`);
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+  await yukle();
+}
+
+document.addEventListener("pointermove", surukleHareket);
+document.addEventListener("pointerup", surukleBitir);
+document.addEventListener("pointercancel", surukleBitir);
 
 /* ---------- ay görünümü ---------- */
 
@@ -343,6 +458,15 @@ function panelAc(occ) {
   if (occ.clipped) rozetler.push(`<span class="rozet">gece yarısını aşıyor</span>`);
   if (rozetler.length) satirlar.push(["Durum", rozetler.join(" ")]);
 
+  if (occ.reminders && occ.reminders.length) {
+    satirlar.push([
+      "Hatırlatıcı",
+      occ.reminders
+        .map((r) => `<span class="rozet">${hatirlaticiMetni(r.minutesBefore)}</span>`)
+        .join(" "),
+    ]);
+  }
+
   let html = `<div class="p-baslik">${kacir(occ.title)}</div>`;
   html += satirlar
     .map(([e, d]) => `<div class="p-satir"><div class="p-etiket">${e}</div><div class="p-deger">${d}</div></div>`)
@@ -382,6 +506,36 @@ function islemleriCiz(occ) {
     );
   });
 
+  (occ.reminders || []).forEach((r) => {
+    ekle(`⏰ ${hatirlaticiMetni(r.minutesBefore)} — kaldır`, false, async () => {
+      await eylem(
+        () => istek(`/api/reminders/${r.id}`, { method: "DELETE" }),
+        "Hatırlatıcı kaldırıldı",
+      );
+    });
+  });
+
+  ekle("Hatırlatıcı ekle", false, async () => {
+    const ham = prompt(
+      "Kaç dakika önce hatırlatılsın?\n(0 = tam başlarken, 1440 = 1 gün önce)",
+      "15",
+    );
+    if (ham === null) return;
+    const dakika = parseInt(ham, 10);
+    if (Number.isNaN(dakika) || dakika < 0) {
+      bildir("Geçerli bir dakika değeri gir", true);
+      return;
+    }
+    await eylem(
+      () => istek(`/api/events/${occ.eventId}/reminders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ minutesBefore: dakika }),
+      }),
+      `Hatırlatıcı eklendi: ${hatirlaticiMetni(dakika)}`,
+    );
+  });
+
   // Tekrarlı serilerde tek örnek / tüm seri ayrımı kritik: kullanıcı bir
   // dersi bu haftalık iptal etmekle dönem boyunca silmeyi karıştırmamalı.
   ekle("Bu örneği sil", true, async () => {
@@ -390,7 +544,7 @@ function islemleriCiz(occ) {
       () => istek("/api/occurrences/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.startUtc }),
+        body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
       }),
       "Bu örnek silindi",
     );
@@ -403,6 +557,13 @@ function islemleriCiz(occ) {
       "Seri silindi",
     );
   });
+}
+
+function hatirlaticiMetni(dakika) {
+  if (dakika === 0) return "tam başlarken";
+  if (dakika % 1440 === 0) return `${dakika / 1440} gün önce`;
+  if (dakika % 60 === 0) return `${dakika / 60} saat önce`;
+  return `${dakika} dakika önce`;
 }
 
 async function eylem(islev, basariMesaji) {

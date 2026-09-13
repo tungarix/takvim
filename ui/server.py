@@ -14,12 +14,12 @@ from __future__ import annotations
 import json
 import mimetypes
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from core import UTC, Event, parse_iso
+from core import UTC, Event, from_wall_clock, parse_iso
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
 from store import Repo, new_uid
@@ -179,6 +179,14 @@ class _Handler(BaseHTTPRequestHandler):
 
             if (
                 len(parcalar) == 4
+                and parcalar[:2] == ["api", "events"]
+                and parcalar[3] == "reminders"
+            ):
+                self._hatirlatici_ekle(int(parcalar[2]))
+                return
+
+            if (
+                len(parcalar) == 4
                 and parcalar[:2] == ["api", "calendars"]
                 and parcalar[3] == "visible"
             ):
@@ -209,6 +217,16 @@ class _Handler(BaseHTTPRequestHandler):
         """DELETE /api/events/<id> — SERİNİN TAMAMINI siler."""
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
+
+        if len(parcalar) == 3 and parcalar[:2] == ["api", "reminders"]:
+            try:
+                self.repo.delete_reminder(int(parcalar[2]))
+            except ValueError:
+                self._hata("geçersiz id")
+                return
+            self._json({"deleted": parcalar[2]})
+            return
+
         if len(parcalar) == 3 and parcalar[:2] == ["api", "events"]:
             try:
                 event_id = int(parcalar[2])
@@ -295,11 +313,34 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"cancelled": govde["originalStartUtc"]})
 
     def _ornek_kaydir(self) -> None:
-        """Serinin TEK örneğini başka bir ana taşır."""
+        """Serinin TEK örneğini başka bir ana taşır.
+
+        Hedef iki biçimde verilebilir:
+        - `newStartUtc`: hazır ISO an (API kullanıcıları için)
+        - `newDate` + `newMinutes`: yerel tarih + gün başından dakika
+
+        İkincisi sürükle-bırak için. Ön yüzün saat dilimi matematiği yapmasını
+        istemiyoruz: JavaScript'te "şu IANA diliminde şu duvar saati" kurmak
+        güvenilir değil, ama sunucuda `from_wall_clock` zaten var ve test
+        edilmiş. Izgara zaten yerel dakika ile çalıştığı için ön yüzün elinde
+        doğrudan bu iki değer var.
+        """
         govde = self._govde()
         event_id = int(govde["eventId"])
         orijinal = parse_iso(govde["originalStartUtc"])
-        yeni_bas = parse_iso(govde["newStartUtc"])
+
+        if govde.get("newDate") is not None:
+            hedef_gun = date.fromisoformat(govde["newDate"])
+            dakika = int(govde["newMinutes"])
+            if not 0 <= dakika < 24 * 60:
+                raise ValueError(f"newMinutes gün içinde olmalı: {dakika}")
+            yeni_bas = from_wall_clock(
+                datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
+                + timedelta(minutes=dakika),
+                self.tzid,
+            )
+        else:
+            yeni_bas = parse_iso(govde["newStartUtc"])
         yeni_bit = parse_iso(govde["newEndUtc"]) if govde.get("newEndUtc") else None
         if self.repo.get_event(event_id) is None:
             raise LookupError("etkinlik bulunamadı")
@@ -334,6 +375,17 @@ class _Handler(BaseHTTPRequestHandler):
                 "errors": [{"uid": u, "reason": r} for u, r in rapor.errors],
                 "warnings": list(rapor.warnings),
             }
+        )
+
+    def _hatirlatici_ekle(self, event_id: int) -> None:
+        """Seriye hatırlatıcı ekler."""
+        govde = self._govde()
+        dakika = govde.get("minutesBefore")
+        if dakika is None:
+            raise ValueError("minutesBefore gerekli")
+        kayit = self.repo.add_reminder(event_id, int(dakika))
+        self._json(
+            {"reminder": {"id": kayit.id, "minutesBefore": kayit.minutes_before}}, 201
         )
 
     def _gorunurluk(self, takvim_id: int) -> None:

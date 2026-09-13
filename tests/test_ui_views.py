@@ -18,7 +18,7 @@ import pytest
 from core import Event
 from store import Repo, new_uid
 from tests.helpers import IST, ist
-from ui.presenter import day_payload, month_payload
+from ui.presenter import day_payload, month_payload, week_payload
 from ui.server import make_server
 
 
@@ -336,3 +336,120 @@ def test_api_statik_dosya_disina_cikamaz(sunucu):
     with pytest.raises(urllib.error.HTTPError) as hata:
         _get(sunucu, "/../pyproject.toml")
     assert hata.value.code == 404
+
+
+# ---------------------------------------------------------------------------
+# Override anahtarı: taşınmış örneği yeniden taşımak
+# ---------------------------------------------------------------------------
+
+def test_tasinmis_ornegin_orijinal_anahtari_korunur(repo, ders):
+    """Override'lı örnekte `originalStartUtc`, `startUtc`'den FARKLIDIR.
+
+    Regresyon: ön yüz `startUtc` gönderiyordu. Bir kez taşınmış örneği tekrar
+    taşımak, var olan override'ı güncellemek yerine seriye ait olmayan ikinci
+    bir kayıt yaratıyordu; `expand` onu hayalet sayıp atıyor ve kullanıcının
+    değişikliği SESSİZCE kayboluyordu.
+    """
+    event = _ekle(
+        repo, ders, "Ders", ist(2026, 9, 7, 9, 0), ist(2026, 9, 7, 10, 0),
+        rrule="FREQ=WEEKLY;BYDAY=MO",
+    )
+    repo.move_occurrence(event.id, ist(2026, 9, 7, 9, 0), ist(2026, 9, 7, 15, 0))
+
+    payload = week_payload(repo, date(2026, 9, 7), IST)
+    occ = payload["days"][0]["timed"][0]
+
+    assert occ["isOverride"] is True
+    assert occ["startUtc"] != occ["originalStartUtc"], "taşınmış saat ile anahtar aynı olamaz"
+    assert occ["originalStartUtc"] == ist(2026, 9, 7, 9, 0).isoformat()
+
+
+def test_tasinmis_ornek_tekrar_tasinabilir(sunucu):
+    """İki kez üst üste taşımak ikinci override yaratmaz, mevcudu günceller."""
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"] if o["title"] == "Algoritma")
+
+    _post(sunucu, "/api/occurrences/move", {
+        "eventId": occ["eventId"],
+        "originalStartUtc": occ["originalStartUtc"],
+        "newDate": "2026-09-07", "newMinutes": 15 * 60,
+    })
+    ara = _get(sunucu, "/api/week?date=2026-09-07")
+    tasinan = next(o for g in ara["days"] for o in g["timed"] if o["title"] == "Algoritma")
+    assert tasinan["startMin"] == 15 * 60
+
+    # İkinci taşıma: anahtar hâlâ ORİJİNAL başlangıç
+    _post(sunucu, "/api/occurrences/move", {
+        "eventId": tasinan["eventId"],
+        "originalStartUtc": tasinan["originalStartUtc"],
+        "newDate": "2026-09-07", "newMinutes": 18 * 60,
+    })
+    son = _get(sunucu, "/api/week?date=2026-09-07")
+    bloklar = [o for g in son["days"] for o in g["timed"] if o["title"] == "Algoritma"]
+
+    assert len(bloklar) == 1, "ikinci override yaratılmamalı"
+    assert bloklar[0]["startMin"] == 18 * 60
+
+
+def test_tasinmis_ornek_iptal_edilebilir(sunucu):
+    """Taşınmış örneği iptal etmek de orijinal anahtarla çalışır."""
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"] if o["title"] == "Algoritma")
+
+    _post(sunucu, "/api/occurrences/move", {
+        "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+        "newDate": "2026-09-07", "newMinutes": 15 * 60,
+    })
+    ara = _get(sunucu, "/api/week?date=2026-09-07")
+    tasinan = next(o for g in ara["days"] for o in g["timed"] if o["title"] == "Algoritma")
+
+    _post(sunucu, "/api/occurrences/cancel", {
+        "eventId": tasinan["eventId"],
+        "originalStartUtc": tasinan["originalStartUtc"],
+    })
+    son = _get(sunucu, "/api/week?date=2026-09-07")
+    assert not any(o["title"] == "Algoritma" for g in son["days"] for o in g["timed"])
+
+
+def test_surukleme_hedefi_tarih_dakika_ile_verilebilir(sunucu):
+    """newDate + newMinutes sunucuda yerel saate çevrilir.
+
+    Ön yüz saat dilimi matematiği yapmasın diye; JS'te "şu IANA diliminde şu
+    duvar saati" kurmak güvenilir değil.
+    """
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"])
+
+    sonuc = _post(sunucu, "/api/occurrences/move", {
+        "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+        "newDate": "2026-09-09", "newMinutes": 13 * 60 + 30,
+    })
+    # 13:30 Europe/Istanbul = 10:30 UTC
+    assert sonuc["moved"]["newStartUtc"].startswith("2026-09-09T10:30")
+
+    import pytest as _pytest
+    with _pytest.raises(urllib.error.HTTPError):
+        _post(sunucu, "/api/occurrences/move", {
+            "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+            "newDate": "2026-09-09", "newMinutes": 2000,
+        })
+
+
+def test_hatirlatici_uclari(sunucu):
+    """Hatırlatıcı eklenir, payload'da görünür, silinir."""
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"])
+    assert occ["reminders"] == []
+
+    sonuc = _post(sunucu, f"/api/events/{occ['eventId']}/reminders", {"minutesBefore": 15})
+    rid = sonuc["reminder"]["id"]
+
+    sonra = _get(sunucu, "/api/week?date=2026-09-07")
+    occ2 = next(o for g in sonra["days"] for o in g["timed"])
+    assert occ2["reminders"] == [{"id": rid, "minutesBefore": 15}]
+
+    req = urllib.request.Request(f"{sunucu}/api/reminders/{rid}", method="DELETE")
+    urllib.request.urlopen(req).read()
+
+    son = _get(sunucu, "/api/week?date=2026-09-07")
+    assert next(o for g in son["days"] for o in g["timed"])["reminders"] == []

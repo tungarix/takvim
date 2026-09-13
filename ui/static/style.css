@@ -510,3 +510,13 @@ kbd {
 .gunler { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .izgara-baslik.tek-gun, .tumgun-serit.tek-gun { grid-template-columns: var(--saat-genislik) minmax(0, 1fr); }
 .gunler.tek-gun { grid-template-columns: minmax(0, 1fr); }
+
+/* Sürüklenen blok üstte dursun ve kendi altındaki sütunu gizlemesin */
+.blok { cursor: grab; touch-action: none; }
+.blok.suruklenen {
+  opacity: .85;
+  z-index: 30;
+  cursor: grabbing;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+  pointer-events: none;
+}

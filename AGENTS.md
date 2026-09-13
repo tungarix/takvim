@@ -17,10 +17,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Faz 3 — UI, gün/hafta/ay (`ui/`) | ✅ bitti |
 | Faz 4 — konfor (hızlı ekleme, arama, kısayollar) | ✅ bitti |
 | Faz 5 — `.ics` dışa aktarma | ✅ bitti |
+| Hatırlatıcı (`remind/`) + sürükle-bırak | ✅ bitti |
 
 **v1 kapsamı tamamlandı.**
 
-**185 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**216 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -67,6 +68,7 @@ core/   saf mantık — DB, dosya, ekran bilmez
 store/  kalıcılık (SQLite)
 ics/    içe/dışa aktarma
 ui/     arayüz (yerel web, stdlib http.server)
+remind/ hatırlatıcı arka plan süreci
 ```
 
 **`core/` hiçbir zaman `store/`, `ics/` veya `ui/` import etmez. Tersi serbest.**
@@ -172,6 +174,30 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     bulamaz. `_arama_anahtari` I ailesini (I/İ/ı/i) tek harfe indirir ve
     şapkaları düzler. Arama niyet eşleştirir, dil kuralı uygulamaz.
 
+### core/models.py + arayüz
+
+21. **`Occurrence.start_utc` ile `series_slot_utc` AYNI ŞEY DEĞİL.** Taşınmış
+    bir örnekte `start_utc` yeni saati, `series_slot_utc` (yani
+    `original_start_utc`) override kaydının ANAHTARINI gösterir. API'ye
+    gönderilecek olan ikincisidir. Karıştırmak, mevcut override'ı güncellemek
+    yerine seriye ait olmayan ikinci bir kayıt yaratır; `expand` onu hayalet
+    sayıp atar ve kullanıcının değişikliği SESSİZCE kaybolur. Bu bir kez oldu.
+
+### remind/
+
+22. **Ölçüt "ne kadar geciktik" değil, "etkinlik hâlâ güncel mi".**
+    `fire_at <= now` VE `occurrence.end > now`. Uygulama bir hafta kapalı
+    kalıp açıldığında geçmiş bildirim seli olmasın, ama 5 dakika sonra
+    başlayacak toplantı yine bildirilsin diye.
+23. **`mark_fired` bildirimden ÖNCE çağrılır ve dönüş değeri KONTROL EDİLİR.**
+    `due_reminders`'ın elemesi tek başına yetmez: iki `remind` süreci aynı anda
+    çalışıyorsa ikisinin de anlık görüntüsü bayattır. İkinci hat
+    `reminder_fired` UNIQUE kısıtı. Sıra da bilinçli: çöküşte nadiren bir
+    bildirimi kaçırmak, kullanıcıyı bildirim döngüsüne sokmaktan yeğdir.
+24. **Otomatik başlatma KURULMAZ.** Başlangıç klasörü kısayolu / Görev
+    Zamanlayıcı kaydı sistem düzeyinde değişiklik. Komut README §9'da; kurmak
+    kullanıcının kararı, kendi başına yapma.
+
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -238,6 +264,6 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 **v1 kapsamı tamamlandı** (README §1). Yeni özellik eklemeden önce SOR --
 kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-Bilinçli olarak yapılmamış olanlar README §9'da. Hatırlatıcı kararı hâlâ
-açık (README §10): uygulama kapalıyken de çalışacaksa arka plan servisi
-gerekir ve bu ayrı bir proje kadar iş -- kendi başına başlama.
+Bilinçli olarak yapılmamış olanlar README §10'da: blok yeniden
+boyutlandırma, tüm gün şeridinde sürükleme, ay görünümünde açılır liste,
+otomatik başlatma kaydı.

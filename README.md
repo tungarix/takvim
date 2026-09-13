@@ -2,8 +2,8 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1 tamamlandı (Faz 0-5). Gün/hafta/ay görünümleri, hızlı ekleme,
-arama, `.ics` içe ve dışa aktarma çalışıyor.
+**Durum:** v1 tamamlandı. Gün/hafta/ay görünümleri, sürükle-bırak, hızlı ekleme,
+arama, hatırlatıcı ve `.ics` içe/dışa aktarma çalışıyor.
 
 > Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
 
@@ -39,6 +39,7 @@ core/     saf mantık — DB ve GUI bilmez          ✓ Faz 0
 store/    kalıcılık (SQLite)                      ✓ Faz 1
 ics/      içe/dışa aktarma                        ✓ Faz 2 + 5
 ui/       arayüz (yerel web)                      ✓ Faz 3 + 4
+remind/   hatırlatıcı (ayrı süreç)               ✓
 ```
 
 **`core/` hiçbir zaman `store/` veya `ui/` import etmez. Tersi serbest.**
@@ -163,7 +164,7 @@ IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 
 ## 6. Kabul kriterleri
 
-**185 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**216 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -367,17 +368,86 @@ etmekle dönem boyunca silmek karıştırılmamalı. Tek örnek iptali override 
 
 ---
 
-## 9. Sonraki fazlar
+## 9. Hatırlatıcı ve sürükle-bırak
 
-v1 kapsamı tamamlandı. Kalanlar bilinçli olarak dışarıda:
+### Hatırlatıcı ayrı bir süreç
 
-- **Sürükle-bırak** ile blok taşıma (override altyapısı hazır, yalnızca ön yüz işi)
-- **Hatırlatıcı** — bkz. §10, karara bağlı
-- **Ay görünümünde "+N daha"** tıklanınca gün görünümüne geçiyor; açılır liste yok
+```powershell
+.venv\Scripts\python.exe -m remind --db takvim.db
+```
+
+Uygulama kapalıyken de çalışması istendiği için arayüzden ayrı: `remind/`
+kendi bağlantısını açar, aynı veritabanını okur. Bildirimleri sınamak için
+`-m remind --test`.
+
+**Otomatik başlatmayı KURMADIK.** Başlangıç klasörüne kısayol koymak ya da
+Görev Zamanlayıcı kaydı açmak sistem düzeyinde bir değişiklik; bunu sormadan
+yapmıyoruz. İstersen tek seferlik:
+
+```powershell
+$hedef = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Takvim Hatirlatici.lnk"
+$kok = "C:\Users\Arda\Desktop\Aktenak\Projeler\takvim"
+$w = New-Object -ComObject WScript.Shell
+$k = $w.CreateShortcut($hedef)
+$k.TargetPath = "$kok\.venv\Scripts\pythonw.exe"
+$k.Arguments = "-m remind --db $kok\takvim.db"
+$k.WorkingDirectory = $kok
+$k.Save()
+```
+
+`pythonw.exe` konsol penceresi açmaz. Kaldırmak için o `.lnk` dosyasını sil.
+
+### İki kural
+
+**"Geçmiş bildirim seli" yok.** Uygulama bir hafta kapalı kalıp açıldığında
+geçen haftanın bütün hatırlatıcılarını arka arkaya göstermek işe yaramaz,
+sadece rahatsız eder. Ölçüt "ne kadar geciktik" değil, **"etkinlik hâlâ
+güncel mi"**: `fire_at <= now` VE `occurrence.end > now`. Böylece 5 dakika
+sonra başlayacak bir toplantı, uygulama az önce açılmış olsa bile bildiriliyor.
+
+**Mükerrer bildirim iki katmanda engelleniyor.** `due_reminders` tetiklenmiş
+olanları eliyor, ama o anlık görüntü bayat olabilir: iki `remind` süreci aynı
+anda çalışıyorsa ikisi de "tetiklenmemiş" görür. İkinci hat `reminder_fired`
+tablosunun UNIQUE kısıtı — `mark_fired` yalnızca bir süreçte `True` döner.
+İşaretleme bildirimden ÖNCE yapılıyor: çöküş hâlinde nadiren bir bildirimi
+kaçırmak, kullanıcıyı bildirim döngüsüne sokmaktan yeğdir.
+
+Bildirim arka uçları sırayla deneniyor: `WindowsToastNotifier` (PowerShell +
+WinRT, ek bağımlılık yok) → `TkNotifier` (stdlib tkinter) → `ConsoleNotifier`.
+Toast, PowerShell'in kayıtlı AUMID'iyle gönderiliyor; kendi uygulamamızı
+Başlat menüsüne kaydetmek yine sistem düzeyinde bir değişiklik olurdu. Bedeli:
+bildirim "Windows PowerShell" adıyla görünüyor.
+
+### Sürükle-bırak ve bulduğu hata
+
+Bloğu sürükleyip bırakmak örneği taşıyor — 15 dakikaya yuvarlanır, günler
+arası serbest. Hedef sunucuya **tarih + gün başından dakika** olarak
+gönderiliyor: JS'te "şu IANA diliminde şu duvar saati" kurmak güvenilir değil,
+sunucuda `from_wall_clock` zaten var ve test edilmiş.
+
+Bunu yaparken sessiz bir hata çıktı. Ön yüz override anahtarı olarak
+`occ.startUtc` gönderiyordu; taşınmış bir örnekte bu **yeni** saat, oysa
+override kaydının anahtarı **orijinal** saat. Yani bir kez taşınmış bir dersi
+tekrar taşımak (veya iptal etmek) mevcut override'ı güncellemek yerine seriye
+ait olmayan ikinci bir kayıt yaratıyor, `expand` onu hayalet sayıp atıyor ve
+kullanıcının değişikliği **sessizce kayboluyordu**. `Occurrence` artık
+`original_start_utc` taşıyor, `series_slot_utc` özelliğiyle sunuluyor ve API
+onu kullanıyor. Üç regresyon testi ekli.
 
 ---
 
-## 10. Açık sorular
+## 10. Sonraki fazlar
+
+v1 kapsamı tamamlandı. Bilinçli olarak dışarıda kalanlar:
+
+- **Blok yeniden boyutlandırma** (süre değiştirme) — taşıma var, uzatma yok
+- **Tüm gün şeridinde sürükleme** — yalnızca saatli bloklar taşınabiliyor
+- **Ay görünümünde "+N daha"** açılır liste yerine gün görünümüne geçiyor
+- **Otomatik başlatma kaydı** — komutu yukarıda, kurulumu kullanıcıya ait
+
+---
+
+## 11. Açık sorular
 
 Bunlar Faz 1'e geçmeden cevaplanmalı değil ama Faz 3'ten önce cevaplanmalı:
 

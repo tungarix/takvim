@@ -23,6 +23,7 @@ from core import (
     Event,
     Occurrence,
     Override,
+    Reminder,
     ensure_aware,
     expand,
     parse_iso,
@@ -155,6 +156,15 @@ def _row_to_event(row: sqlite3.Row) -> Event:
         exdate=_split_dates(row["exdate"]),
         description=row["description"],
         location=row["location"],
+    )
+
+
+def _row_to_reminder(row: sqlite3.Row) -> Reminder:
+    """reminders satırı -> Reminder."""
+    return Reminder(
+        id=row["id"],
+        event_id=row["event_id"],
+        minutes_before=row["minutes_before"],
     )
 
 
@@ -494,6 +504,83 @@ class Repo:
                 new_end_utc=new_end_utc,
             )
         )
+
+    # ------------------------------------------------------------ hatırlatıcı
+
+    def add_reminder(self, event_id: int, minutes_before: int) -> Reminder:
+        """Seriye hatırlatıcı ekler; aynısı varsa mevcudu döndürür."""
+        if minutes_before < 0:
+            raise ValueError("minutes_before negatif olamaz")
+        if self.get_event(event_id) is None:
+            raise LookupError(f"Etkinlik bulunamadı: id={event_id}")
+        self.conn.execute(
+            "INSERT OR IGNORE INTO reminders (event_id, minutes_before, created_at) "
+            "VALUES (?, ?, ?)",
+            (event_id, int(minutes_before), _now_db()),
+        )
+        row = self.conn.execute(
+            "SELECT * FROM reminders WHERE event_id = ? AND minutes_before = ?",
+            (event_id, int(minutes_before)),
+        ).fetchone()
+        return _row_to_reminder(row)
+
+    def list_reminders(self, event_id: int) -> list[Reminder]:
+        """Bir etkinliğin hatırlatıcıları, en erkenden en geçe."""
+        rows = self.conn.execute(
+            "SELECT * FROM reminders WHERE event_id = ? ORDER BY minutes_before DESC",
+            (event_id,),
+        )
+        return [_row_to_reminder(r) for r in rows]
+
+    def all_reminders(self) -> dict[int, list[Reminder]]:
+        """Tüm hatırlatıcılar, event_id'ye göre gruplu.
+
+        Arka plan süreci her turda bunu bir kez çekiyor; etkinlik başına ayrı
+        sorgu atmak N+1 olurdu.
+        """
+        grouped: dict[int, list[Reminder]] = defaultdict(list)
+        for row in self.conn.execute("SELECT * FROM reminders ORDER BY minutes_before DESC"):
+            grouped[row["event_id"]].append(_row_to_reminder(row))
+        return dict(grouped)
+
+    def delete_reminder(self, reminder_id: int) -> None:
+        """Hatırlatıcıyı ve (CASCADE ile) tetiklenme kayıtlarını siler."""
+        self.conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+
+    def fired_keys(self) -> set[tuple]:
+        """Daha önce tetiklenmiş (reminder_id, örnek başlangıcı) çiftleri."""
+        return {
+            (r["reminder_id"], parse_iso(r["occurrence_start_utc"]))
+            for r in self.conn.execute(
+                "SELECT reminder_id, occurrence_start_utc FROM reminder_fired"
+            )
+        }
+
+    def mark_fired(self, reminder_id: int, occurrence_start_utc: datetime) -> bool:
+        """Tetiklendi olarak işaretler; zaten işaretliyse False döndürür.
+
+        Dönen değer önemli: bildirimi GÖSTERMEDEN ÖNCE bunu çağırıp False
+        alırsak gösterme. UNIQUE kısıtı sayesinde iki süreç aynı anda
+        çalışsa bile yalnızca biri True alabiliyor.
+        """
+        cur = self.conn.execute(
+            "INSERT OR IGNORE INTO reminder_fired "
+            "(reminder_id, occurrence_start_utc, fired_at_utc) VALUES (?, ?, ?)",
+            (reminder_id, _to_db(occurrence_start_utc), _now_db()),
+        )
+        return cur.rowcount > 0
+
+    def prune_fired(self, before: datetime) -> int:
+        """Verilen andan eski tetiklenme kayıtlarını siler; silinen sayıyı döndürür.
+
+        Tablo sonsuza kadar büyümesin diye; tetiklenmiş bir örneğin kaydı
+        örnek geçtikten sonra bir işe yaramıyor.
+        """
+        cur = self.conn.execute(
+            "DELETE FROM reminder_fired WHERE occurrence_start_utc < ?",
+            (_to_db(before),),
+        )
+        return cur.rowcount
 
     # ---------------------------------------------------------- aralık sorgusu
 

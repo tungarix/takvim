@@ -126,6 +126,7 @@ def _plain(event: Event, start_utc: datetime, duration: timedelta) -> Occurrence
         is_override=False,
         location=event.location,
         description=event.description,
+        original_start_utc=start_utc,
     )
 
 
@@ -154,6 +155,7 @@ def _overridden(
         is_override=True,
         location=ov.new_location if ov.new_location is not None else event.location,
         description=event.description,
+        original_start_utc=original_start_utc,
     )
 
 

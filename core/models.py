@@ -167,10 +167,21 @@ class Occurrence:
     is_override: bool = False
     location: str | None = None
     description: str | None = None
+    # Bu örneğin seride karşılık geldiği ORİJİNAL başlangıç. Override'lı
+    # örneklerde start_utc taşınmış saati gösterir; override kaydının anahtarı
+    # ise burasıdır. Karıştırmak, var olan override'ı güncellemek yerine
+    # seriye ait olmayan ikinci bir kayıt yaratır ve değişiklik sessizce kaybolur.
+    original_start_utc: datetime | None = None
 
     def __post_init__(self) -> None:
         set_ = object.__setattr__
         set_(self, "start_utc", ensure_aware(self.start_utc, "start_utc").astimezone(UTC))
+        if self.original_start_utc is not None:
+            set_(
+                self,
+                "original_start_utc",
+                ensure_aware(self.original_start_utc, "original_start_utc").astimezone(UTC),
+            )
         set_(self, "end_utc", ensure_aware(self.end_utc, "end_utc").astimezone(UTC))
         # Event'ten gevşek: bir override sıfır süreli örnek üretebilir,
         # bunu hata sayıp expand()'i patlatmak istemiyoruz.
@@ -184,6 +195,14 @@ class Occurrence:
     def duration(self) -> timedelta:
         """Örneğin süresi."""
         return self.end_utc - self.start_utc
+
+    @property
+    def series_slot_utc(self) -> datetime:
+        """Override kaydının anahtarı: orijinal başlangıç, yoksa start_utc.
+
+        Arayüz ve API bu değeri kullanmalı; `start_utc` taşınmış olabilir.
+        """
+        return self.original_start_utc or self.start_utc
 
     def local_start(self) -> datetime:
         """Başlangıcın etkinliğin kendi saat dilimindeki karşılığı."""
