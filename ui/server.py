@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from core import UTC, Event, from_wall_clock, parse_iso
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
-from store import Repo, new_uid
+from store import Repo, new_uid, yedek_dosyalari, yedek_klasoru, yedekten_don
 
 from .presenter import day_payload, month_payload, week_payload
 
@@ -134,6 +134,59 @@ class _Handler(BaseHTTPRequestHandler):
         ham = (sorgu.get("date") or [date.today().isoformat()])[0]
         return date.fromisoformat(ham)
 
+    @property
+    def _db_yolu(self):
+        """Veritabanı dosyasının yolu; test sunucularında None olabilir."""
+        return getattr(self.server, "db_yolu", None)
+
+    def _seri_bilgisi(self, sorgu: dict) -> None:
+        """GET /api/series_info?event_id= — silme onayı sayıyı buradan alıyor."""
+        try:
+            event_id = int((sorgu.get("event_id") or [""])[0])
+        except ValueError:
+            self._hata("geçersiz event_id")
+            return
+        try:
+            self._json(self.repo.series_info(event_id))
+        except LookupError as exc:
+            self._hata(str(exc), 404)
+
+    def _seri_geri_al(self) -> None:
+        """POST /api/events/restore_last — son silinen seriyi diriltir."""
+        try:
+            diriltilen = self.repo.restore_last_deleted()
+        except LookupError as exc:
+            self._hata(str(exc), 409)
+            return
+        if diriltilen is None:
+            self._hata("geri alınacak silme yok", 404)
+            return
+        self._json({"restored_id": diriltilen.id, "title": diriltilen.title})
+
+    def _yedekten_don(self) -> None:
+        """POST /api/backups/restore {"ad"} — dosyayı değiştirir, depoyu yeniler.
+
+        Bağlantı değiştiği için `self.server.repo` YENİ depoyla değiştiriliyor;
+        sunucu tek thread'li olduğundan arada istek giremez.
+        """
+        govde = self._govde()
+        ad = (govde.get("ad") or "").strip()
+        if not ad:
+            self._hata("ad boş")
+            return
+        try:
+            yeni = yedekten_don(
+                self.repo, self._db_yolu, ad, check_same_thread=False
+            )
+        except ValueError as exc:
+            self._hata(str(exc))
+            return
+        except RuntimeError as exc:
+            self._hata(str(exc), 500)
+            return
+        self.server.repo = yeni
+        self._json({"restored": ad})
+
     def _statik(self, yol: str) -> None:
         """static/ altından dosya sunar; dizin dışına çıkışı engeller."""
         ad = "index.html" if yol in ("", "/") else yol.lstrip("/")
@@ -183,6 +236,14 @@ class _Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if yol == "/api/backups":
+                self._json({"backups": _yedek_listesi(self._db_yolu)})
+                return
+
+            if yol == "/api/series_info":
+                self._seri_bilgisi(sorgu)
+                return
+
             if yol.startswith("/api/"):
                 self._hata("bulunamadı", 404)
                 return
@@ -224,6 +285,14 @@ class _Handler(BaseHTTPRequestHandler):
 
             if parcalar == ["api", "import"]:
                 self._ics_iceri()
+                return
+
+            if parcalar == ["api", "backups", "restore"]:
+                self._yedekten_don()
+                return
+
+            if parcalar == ["api", "events", "restore_last"]:
+                self._seri_geri_al()
                 return
 
             if (
@@ -303,8 +372,12 @@ class _Handler(BaseHTTPRequestHandler):
             if self.repo.get_event(event_id) is None:
                 self._hata("etkinlik bulunamadı", 404)
                 return
-            self.repo.delete_event(event_id)
-            self._json({"deleted": event_id})
+            # Sert silme değil, anlık görüntülü silme: yanıt "Geri al" düğmesini
+            # besliyor, diriltme `POST /api/events/restore_last` ile.
+            bilgi = self.repo.snapshot_and_delete(event_id)
+            self._json(
+                {"deleted": event_id, "title": bilgi["title"], "geri_alinabilir": True}
+            )
             return
         self._hata("bulunamadı", 404)
 
@@ -662,8 +735,32 @@ def _event_ozet(e: Event) -> dict:
     }
 
 
+def _yedek_listesi(db_yolu) -> list:
+    """Yedek dosyaları, YENİDEN ESKİYE sıralı sözlük listesi.
+
+    `yedek_dosyalari` eskiden yeniye veriyor (`takvim-YYYY-AA-GG.db` adı
+    kronolojik sıralanıyor); arayüzde en yeni en üstte olmalı. Boyut da
+    ekleniyor ki kullanıcı boş/şüpheli dosyayı ayırt edebilsin.
+    """
+    if db_yolu is None or str(db_yolu) == ":memory:":
+        return []
+    try:
+        dosyalar = yedek_dosyalari(yedek_klasoru(Path(str(db_yolu)).resolve().parent))
+    except OSError:
+        return []
+    liste = []
+    for yol in dosyalar:
+        try:
+            boyut = yol.stat().st_size
+        except OSError:
+            continue  # arada silinmiş; listede hayalet bırakma
+        liste.append({"ad": yol.name, "boyut": boyut})
+    liste.reverse()
+    return liste
+
+
 def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,
-                verbose: bool = False) -> HTTPServer:
+                verbose: bool = False, db_yolu=None) -> HTTPServer:
     """Sunucuyu kurar ama çalıştırmaz (testler bu hâlini kullanıyor).
 
     TEK THREAD'li `HTTPServer`, `ThreadingHTTPServer` DEĞİL. Sebebi:
@@ -683,6 +780,9 @@ def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765
     httpd.repo = repo  # type: ignore[attr-defined]
     httpd.tzid = tzid  # type: ignore[attr-defined]
     httpd.verbose = verbose  # type: ignore[attr-defined]
+    # Yedekten dönüş dosya değiştirdiği için DB yolunu da taşıyoruz; test
+    # sunucularında None olabilir ve o zaman yedek uçları boş/ret dönüyor.
+    httpd.db_yolu = db_yolu  # type: ignore[attr-defined]
     return httpd
 
 

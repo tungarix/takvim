@@ -18,11 +18,12 @@ günlükte görür.
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
-__all__ = ["SAKLANAN", "yedek_al", "yedek_dosyalari", "yedek_klasoru"]
+__all__ = ["SAKLANAN", "yedek_al", "yedek_dosyalari", "yedek_klasoru", "yedekten_don"]
 
 # Kaç günlük yedek saklanacak. Yedi gün, "geçen hafta yanlışlıkla sildim"
 # senaryosunu kurtarmaya yetiyor; daha fazlası disk ve karmaşa.
@@ -93,3 +94,60 @@ def _budama(klasor: Path) -> list[Path]:
         except OSError:
             pass  # kilitli ya da izin yok; bir dahaki açılışta yine denenir
     return silinen
+
+
+def yedekten_don(repo, db_yolu, ad: str, *, check_same_thread: bool = True):
+    """Seçili yedeği CANLI veritabanının üstüne yazar; açılmış depoyu döndürür.
+
+    Sıra bilinçli: bağlantıyı KAPAT (Windows açık dosyayı değiştirtmez) ->
+    mevcut hâli kenara al (`onceki-takvim-*.db`, `takvim-*.db` örüntüsünün
+    DIŞINDA ki yedek listesini ve budamayı kirletmesin) -> geçiciye kopyala +
+    taşı (yarım yedek kuralı, AGENTS 55) -> yeniden aç.
+
+    Yedek bozuk çıkarsa kenara alınan geri konup o açılıyor; gerçekten
+    açılacak bir şey kalmadıysa RuntimeError. `repo` parametresi kapatılmak
+    için alınıyor; dönüşteki depo YENİ bağlantı.
+    """
+    from .repo import Repo
+
+    if db_yolu is None or str(db_yolu) == ":memory:":
+        raise ValueError("bellek veritabanına yedekten dönülemez")
+    db = Path(db_yolu).resolve()
+    klasor = yedek_klasoru(db.parent)
+    gecerli = {p.name for p in yedek_dosyalari(klasor)}
+    if ad not in gecerli:
+        # Yol geçişine karşı liste-dışı her ad reddedilir (`../x` dahil).
+        raise ValueError(f"yedek bulunamadı: {ad}")
+    kaynak = klasor / ad
+
+    repo.close()
+    kenara: Path | None = None
+    if db.exists():
+        try:
+            damga = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+            kenara = klasor / f"onceki-takvim-{damga}.db"
+            gecici_kenara = kenara.with_name(kenara.name + ".gecici")
+            shutil.copyfile(db, gecici_kenara)
+            gecici_kenara.replace(kenara)
+        except OSError:
+            kenara = None  # kenara alınamadı; geri dönüş yine denenir
+    degisti = False
+    try:
+        gecici = db.with_name(db.name + ".geri-yukleme")
+        shutil.copyfile(kaynak, gecici)
+        gecici.replace(db)
+        degisti = True
+        return Repo.open(db, check_same_thread=check_same_thread)
+    except Exception:
+        if degisti and kenara is not None and kenara.exists():
+            try:
+                shutil.copyfile(kenara, db)
+            except OSError:
+                pass
+        try:
+            return Repo.open(db, check_same_thread=check_same_thread)
+        except Exception:
+            raise RuntimeError(
+                "Yedekten dönülemedi; eldeki kopyalarla devam ediliyor. "
+                f"Yedek klasörü: {klasor}"
+            ) from None

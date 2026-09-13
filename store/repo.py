@@ -9,12 +9,13 @@ başlangıcı üç yıl önce olabilir. Sorgu iki parçalı, ayrıntı orada.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -372,6 +373,196 @@ class Repo:
     def delete_event(self, event_id: int) -> None:
         """Etkinliği ve (CASCADE ile) override'larını siler."""
         self.conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+
+    @staticmethod
+    def _satir_sozluk(row: sqlite3.Row) -> dict:
+        """Satırı JSON'lanabilir sözlüğe çevirir (tarih alanları zaten DB metni)."""
+        return {k: row[k] for k in row.keys()}
+
+    def snapshot_and_delete(self, event_id: int) -> dict:
+        """Seriyi GERİ ALINABİLİR şekilde siler; başlık bilgisini döndürür.
+
+        Satırların tamamı (event + override + hatırlatıcı + fired geçmişi)
+        `silinen_seriler` tablosuna JSON olarak yazılır, SONRA silinir. Yeni bir
+        silme eskisinin üstüne yazar: geri alma tek adımlı ama süresiz.
+        Fired geçmişi de snapshot'ta; yoksa geri alınan serinin o hafta ötmüş
+        örnekleri yeniden bildirilirdi.
+
+        `delete_event` duruyor: takvim silmenin CASCADE'i ve mevcut testler onu
+        kullanıyor; arayüz seri silmede bunu çağırıyor.
+        """
+        event_row = self.conn.execute(
+            "SELECT * FROM events WHERE id = ?", (event_id,)
+        ).fetchone()
+        if event_row is None:
+            raise LookupError(f"Etkinlik bulunamadı: id={event_id}")
+        override_satirlari = self.conn.execute(
+            "SELECT * FROM event_overrides WHERE event_id = ?", (event_id,)
+        ).fetchall()
+        reminder_satirlari = self.conn.execute(
+            "SELECT * FROM reminders WHERE event_id = ?", (event_id,)
+        ).fetchall()
+        fired_satirlari = []
+        if reminder_satirlari:
+            isaretler = ",".join("?" for _ in reminder_satirlari)
+            fired_satirlari = self.conn.execute(
+                f"SELECT * FROM reminder_fired WHERE reminder_id IN ({isaretler})",
+                tuple(r["id"] for r in reminder_satirlari),
+            ).fetchall()
+        anlik = {
+            "event": self._satir_sozluk(event_row),
+            "overrides": [self._satir_sozluk(r) for r in override_satirlari],
+            "reminders": [self._satir_sozluk(r) for r in reminder_satirlari],
+            "fired": [self._satir_sozluk(r) for r in fired_satirlari],
+        }
+        with _tx(self.conn):
+            self.conn.execute("DELETE FROM silinen_seriler")
+            self.conn.execute(
+                "INSERT INTO silinen_seriler (event_id, title, snapshot_json, deleted_at)"
+                " VALUES (?, ?, ?, ?)",
+                (
+                    event_id,
+                    event_row["title"],
+                    json.dumps(anlik, ensure_ascii=False),
+                    _now_db(),
+                ),
+            )
+            self.conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+        return {"id": event_id, "title": event_row["title"]}
+
+    def son_silinen(self) -> dict | None:
+        """Geri alınabilir son silme; yoksa None."""
+        row = self.conn.execute(
+            "SELECT id, event_id, title, deleted_at FROM silinen_seriler"
+            " ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "event_id": row["event_id"],
+            "title": row["title"],
+            "deleted_at": row["deleted_at"],
+        }
+
+    def restore_last_deleted(self) -> Event | None:
+        """Son silinen seriyi diriltir; geri alınacak silme yoksa None.
+
+        Eski id'ler BOŞSA korunur (override/hatırlatıcı eşleşmesi birebir olur);
+        araya yeni kayıt girmişse yenisi verilir ve çocuklar ona bağlanır. UID
+        çakışırsa (aynı UID yeniden içe aktarılmışsa) yenisi üretilir; sessizce
+        UNIQUE patlatmak yerine.
+        Takvim o arada silinmişse LookupError ve snapshot SAKLANIR: başka
+        takvime sessizce yazmak, yazmamaktan kötü.
+        """
+        row = self.conn.execute("SELECT * FROM silinen_seriler ORDER BY id DESC LIMIT 1").fetchone()
+        if row is None:
+            return None
+        anlik = json.loads(row["snapshot_json"])
+        event = anlik["event"]
+        with _tx(self.conn):
+            if (
+                self.conn.execute(
+                    "SELECT 1 FROM calendars WHERE id = ?", (event["calendar_id"],)
+                ).fetchone()
+                is None
+            ):
+                raise LookupError(
+                    "Serinin takvimi silinmiş; önce takvimi oluşturup yeniden dene"
+                )
+            yeni_id = event["id"]
+            if (
+                self.conn.execute("SELECT 1 FROM events WHERE id = ?", (yeni_id,)).fetchone()
+                is not None
+            ):
+                yeni_id = None  # araya yeni kayıt girmiş; otomatik id verilsin
+            uid = event["uid"]
+            if (
+                self.conn.execute("SELECT 1 FROM events WHERE uid = ?", (uid,)).fetchone()
+                is not None
+            ):
+                uid = new_uid()
+            kolonlar = (
+                "uid, calendar_id, title, description, location, start_utc, end_utc,"
+                " tzid, all_day, rrule, rdate, exdate, series_end_utc,"
+                " sequence, created_at, updated_at, ics_sequence"
+            )
+            degerler = (
+                uid, event["calendar_id"], event["title"], event["description"],
+                event["location"], event["start_utc"], event["end_utc"],
+                event["tzid"], event["all_day"], event["rrule"], event["rdate"],
+                event["exdate"], event["series_end_utc"], event["sequence"],
+                event["created_at"], event["updated_at"], event["ics_sequence"],
+            )
+            if yeni_id is None:
+                cur = self.conn.execute(
+                    f"INSERT INTO events ({kolonlar}) VALUES ({','.join('?' * 17)})",
+                    degerler,
+                )
+                yeni_id = cur.lastrowid
+            else:
+                self.conn.execute(
+                    f"INSERT INTO events (id, {kolonlar}) VALUES ({','.join('?' * 18)})",
+                    (yeni_id, *degerler),
+                )
+            esleme: dict[int, int] = {}
+            for hat in anlik["reminders"]:
+                cur = self.conn.execute(
+                    "INSERT INTO reminders (event_id, minutes_before, created_at)"
+                    " VALUES (?, ?, ?)",
+                    (yeni_id, hat["minutes_before"], hat["created_at"]),
+                )
+                yeni_hat = cur.lastrowid
+                if yeni_hat is None:  # INSERT başarılıysa olmamalı
+                    raise RuntimeError("Hatırlatıcı geri yazılamadı")
+                esleme[hat["id"]] = yeni_hat
+            for ov in anlik["overrides"]:
+                self.conn.execute(
+                    "INSERT INTO event_overrides (event_id, original_start_utc,"
+                    " cancelled, new_start_utc, new_end_utc, new_title, new_location)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        yeni_id, ov["original_start_utc"], ov["cancelled"],
+                        ov["new_start_utc"], ov["new_end_utc"],
+                        ov["new_title"], ov["new_location"],
+                    ),
+                )
+            for ates in anlik["fired"]:
+                self.conn.execute(
+                    "INSERT INTO reminder_fired (reminder_id, occurrence_start_utc,"
+                    " fired_at_utc) VALUES (?, ?, ?)",
+                    (
+                        esleme[ates["reminder_id"]],
+                        ates["occurrence_start_utc"],
+                        ates["fired_at_utc"],
+                    ),
+                )
+            self.conn.execute("DELETE FROM silinen_seriler WHERE id = ?", (row["id"],))
+        diriltilen = self.get_event(yeni_id)
+        if diriltilen is None:  # olmamalı; sessiz None dönülmesin
+            raise RuntimeError("Geri alma yazıldı ama okunamadı")
+        return diriltilen
+
+    def series_info(self, event_id: int) -> dict:
+        """Silme ONAY kutusu için: başlık + 2 yıllık penceredeki örnek sayısı.
+
+        Sonsuz seride sayı "önümüzdeki 2 yıl" demek; `sonsuz` bayrağı metne
+        yansıyor ki "104 örnek" sonsuz bir seriyi sınırlı göstermesin.
+        """
+        event = self.get_event(event_id)
+        if event is None:
+            raise LookupError(f"Etkinlik bulunamadı: id={event_id}")
+        simdi = datetime.now(UTC)
+        bas = min(simdi, event.start_utc)
+        bit = simdi + timedelta(days=730)
+        sayi = len(expand(event, self.list_overrides(event_id), bas, bit))
+        return {
+            "id": event.id,
+            "title": event.title,
+            "recurring": event.is_recurring,
+            "ornek_sayisi": sayi,
+            "sonsuz": series_end(event) is None,
+        }
 
     def metadata(self, event_id: int) -> dict | None:
         """Modelde taşınmayan DB alanları: sequence, zaman damgaları, seri sonu."""

@@ -5,7 +5,7 @@
 
 from .migrator import current_version, migrate
 from .repo import Repo, connect, new_uid
-from .yedek import yedek_al, yedek_klasoru
+from .yedek import yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
 
 __all__ = [
     "Repo",
@@ -14,5 +14,7 @@ __all__ = [
     "migrate",
     "current_version",
     "yedek_al",
+    "yedek_dosyalari",
     "yedek_klasoru",
+    "yedekten_don",
 ]

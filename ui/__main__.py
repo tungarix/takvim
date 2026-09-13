@@ -274,7 +274,15 @@ def _onyuzle_calistir(args, repo, port: int) -> int:
     bitiyor. Sıra önemli: sunucu DİNLEMEYE başlamadan pencereyi açarsak
     WebView2 boş sayfa gösterir ve kullanıcı "açılmıyor" der.
     """
-    httpd = make_server(repo, args.tz, args.host, port, args.verbose)
+    httpd = make_server(
+        repo,
+        args.tz,
+        args.host,
+        port,
+        args.verbose,
+        # Bellek DB'sinde yedekten dönüş anlamsız; uçlar boş/ret dönüyor.
+        db_yolu=None if args.db == ":memory:" else args.db,
+    )
     gercek_port = httpd.server_address[1]
     url = f"http://{args.host}:{gercek_port}"
     print(f"Takvim: {url}", flush=True)

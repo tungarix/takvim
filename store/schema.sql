@@ -81,3 +81,13 @@ CREATE TABLE reminder_fired (
 );
 
 CREATE INDEX idx_reminders_event ON reminders(event_id);
+
+-- 004 ile eklendi. Son silinen serinin satırları (JSON anlık görüntü);
+-- geri alma tek adımlı: yeni silme eskisinin üstüne yazar.
+CREATE TABLE silinen_seriler (
+    id              INTEGER PRIMARY KEY,
+    event_id        INTEGER NOT NULL,
+    title           TEXT NOT NULL,
+    snapshot_json   TEXT NOT NULL,
+    deleted_at      TEXT NOT NULL
+);

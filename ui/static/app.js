@@ -1216,19 +1216,87 @@ async function silmeyiGeriAl(occ) {
   }, "Geri alındı");
 }
 
-/** Seriyi tamamen siler. Onay metni bunun geri alınamaz olduğunu söylüyor. */
+/** Seriyi tamamen siler. Sayı ONAYDAN ÖNCE sunucudan geliyor (`series_info`);
+ * geri alma sunucu anlık görüntüsünden diriliyor (override + hatırlatıcı +
+ * fired geçmişi dahil), istemcinin yeniden kurmasından değil. */
 async function seriyiSil(occ) {
+  let bilgi;
+  try {
+    bilgi = await istek(`/api/series_info?event_id=${occ.eventId}`);
+  } catch (hata) {
+    bildir(hata.message, true);
+    return;
+  }
+  const kapsam = bilgi.recurring
+    ? (bilgi.sonsuz
+      ? `Sonsuz seri — önümüzdeki 2 yılda ${bilgi.ornek_sayisi} örnek`
+      : `${bilgi.ornek_sayisi} örnek (2 yıllık pencerede)`)
+    : "Tek seferlik etkinlik";
   const tamam = await onayla(
     "Seriyi tamamen sil",
-    `"${occ.title}" — TÜM seri silinecek. Bu geri alınamaz.`,
+    `"${bilgi.title}" — ${kapsam} silinecek.`,
     "Seriyi sil",
     true,
   );
   if (!tamam) return;
   await eylem(
     () => istek(`/api/events/${occ.eventId}`, { method: "DELETE" }),
-    "Seri silindi",
+    `"${bilgi.title}" silindi`,
+    () => eylem(
+      () => istek("/api/events/restore_last", { method: "POST" }),
+      "Seri geri alındı",
+    ),
   );
+}
+
+/* Yedek listesi + geri yükleme. Seçim kutusu `modalForm`un `secim` türü;
+ * çift onay var (seçim + tehlike onayı): dosyanın üstüne yazma geri alınabilir
+ * olsa da (kenara alınıyor) kullanıcının ne yaptığını bilmesi şart. Sonunda
+ * tam sayfa yenileme: takvimler dahil her şey değişmiş olabilir. */
+async function yedekleriAc() {
+  let veri;
+  try {
+    veri = await istek("/api/backups");
+  } catch (hata) {
+    bildir(hata.message, true);
+    return;
+  }
+  if (!veri.backups.length) {
+    bildir("Henüz yedek yok — yedek her açılışta alınır.");
+    return;
+  }
+  const secim = await modalForm("Yedekten dön",
+    "Seçili yedek CANLI veritabanının üstüne yazılır. Mevcut hâl önce yedek " +
+    "klasörüne kenara alınır (onceki-takvim-….db).",
+    [{
+      ad: "yedek",
+      etiket: "Yedek",
+      tur: "secim",
+      deger: veri.backups[0].ad,
+      secenekler: veri.backups.map((b) => ({
+        deger: b.ad,
+        etiket: `${b.ad} (${(b.boyut / 1024).toFixed(1)} KB)`,
+      })),
+    }],
+    "Geri yükle");
+  if (!secim) return;
+  const tamam = await onayla(
+    "Yedekten dön",
+    `"${secim.yedek}" geri yüklenecek, sayfa yeniden yüklenir.`,
+    "Geri yükle",
+    true,
+  );
+  if (!tamam) return;
+  try {
+    await istek("/api/backups/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ad: secim.yedek }),
+    });
+    window.location.reload();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
 }
 
 function islemleriCiz(occ) {
@@ -1421,6 +1489,7 @@ el("bugun").onclick = () => { durum.anchor = bugunISO(); yukle(); };
 el("takvim-ekle").onclick = takvimEkle;
 el("panel-kapat").onclick = panelKapat;
 el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
+el("yedekler").onclick = yedekleriAc;
 
 document.querySelectorAll(".gorunum-dugme").forEach((b) => {
   b.onclick = () => { durum.gorunum = b.dataset.gorunum; yukle(); };

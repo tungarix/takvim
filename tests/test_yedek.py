@@ -10,7 +10,9 @@ from __future__ import annotations
 import sqlite3
 from datetime import date
 
-from store import Repo, yedek_al, yedek_klasoru
+import pytest
+
+from store import Repo, yedek_al, yedek_klasoru, yedekten_don
 from store.yedek import SAKLANAN, yedek_dosyalari
 
 
@@ -87,3 +89,48 @@ def test_yarim_yedek_birakilmaz(tmp_path):
     assert not list(klasor.glob("*.gecici"))
     for d in yedek_dosyalari(klasor):
         sqlite3.connect(d).execute("PRAGMA quick_check").fetchone()  # bozuksa patlar
+
+
+def test_yedekten_don_eski_hali_getirir(tmp_path):
+    """Dönüş çalışıyor: sonradan eklenen takvim gidiyor, yedekteki duruyor."""
+    db = tmp_path / "takvim.db"
+    with _depo(db) as repo:
+        yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 13))
+        repo.add_calendar("Ders", "#e0524a")
+        repo = yedekten_don(repo, str(db), "takvim-2026-09-13.db")
+        assert [c.name for c in repo.list_calendars()] == ["Kişisel"]
+        repo.close()
+
+
+def test_yedekten_don_mevcut_hali_kenara_alir(tmp_path):
+    """Dönüşten önce mevcut DB kenara alınıyor (dönüşün dönüşü mümkün)."""
+    db = tmp_path / "takvim.db"
+    with _depo(db) as repo:
+        yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 13))
+        repo = yedekten_don(repo, str(db), "takvim-2026-09-13.db")
+        repo.close()
+    kenara = list(yedek_klasoru(tmp_path).glob("onceki-takvim-*.db"))
+    assert len(kenara) == 1
+    with Repo.open(str(kenara[0])) as geri:
+        assert [c.name for c in geri.list_calendars()] == ["Kişisel"]
+
+
+def test_yedekten_don_liste_disi_adi_reddeder(tmp_path):
+    """Yol geçişi (`../`) dahil liste-dışı her ad ValueError."""
+    db = tmp_path / "takvim.db"
+    with _depo(db) as repo:
+        yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 13))
+        for kotu in ("../takvim.db", "takvim-2026-09-13.db.gecici", ""):
+            with pytest.raises(ValueError):
+                yedekten_don(repo, str(db), kotu)
+        repo.close()
+    # Reddedilen denemeler DB'yi bozmadı:
+    with Repo.open(str(db)) as geri:
+        assert [c.name for c in geri.list_calendars()] == ["Kişisel"]
+
+
+def test_yedekten_don_bellekte_reddedilir():
+    """`:memory:`'de dosya yok; dönüş anlamsız."""
+    with Repo.open(":memory:") as repo:
+        with pytest.raises(ValueError):
+            yedekten_don(repo, ":memory:", "takvim-2026-09-13.db")
