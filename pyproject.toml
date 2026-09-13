@@ -19,6 +19,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+# Son kullanıcıya verilecek tek dosyalık .exe için; ÇALIŞMA ZAMANI
+# bağımlılığı değil, yalnızca paketleme aşamasında gerekiyor.
+build = ["pyinstaller>=6"]
 
 [tool.setuptools]
 package-data = { store = ["schema.sql", "migrations/*.sql"], ui = ["static/*"] }

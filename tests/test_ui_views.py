@@ -544,3 +544,71 @@ def test_mevcut_takvim_varsa_dokunmaz(repo, ders):
 
     assert varsayilan_takvim_saglat(repo) is False
     assert len(repo.list_calendars()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Başlatma sağlamlığı (son kullanıcı)
+# ---------------------------------------------------------------------------
+
+def test_bos_port_bulunur():
+    """Port doluysa bir sonraki boş port seçilir.
+
+    Regresyon: dolu portta uygulama "Address already in use" ile ölüyor ve
+    kısayolun küçültülmüş penceresi kapanıp geriye hiçbir açıklama bırakmıyordu.
+    """
+    import socket
+
+    from ui.server import bos_port_bul
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as mesgul:
+        mesgul.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        mesgul.bind(("127.0.0.1", 0))
+        mesgul.listen(1)
+        dolu = mesgul.getsockname()[1]
+
+        secilen = bos_port_bul("127.0.0.1", dolu)
+        assert secilen != dolu
+        assert dolu < secilen <= dolu + 20
+
+
+def test_hepsi_doluysa_aciklayici_hata():
+    """Boş port bulunamazsa sessizce ölmüyor, anlaşılır hata veriyor."""
+    from ui.server import bos_port_bul
+
+    with pytest.raises(OSError, match="boş port yok"):
+        bos_port_bul("127.0.0.1", 80, deneme=0)
+
+
+def test_tarayici_soket_baglandiktan_sonra_acilir(repo, ders):
+    """`on_ready` çağrıldığında port GERÇEKTEN dinleniyor olmalı.
+
+    Regresyon: tarayıcı `serve()` çağrılmadan açılıyordu ve hızlı bir makinede
+    henüz dinlemeyen porta gidip "siteye ulaşılamıyor" gösteriyordu.
+    """
+    import socket
+    import threading
+
+    from ui.server import make_server, serve
+
+    sonuc = {}
+    hazir_olay = threading.Event()
+
+    def hazir(port):
+        # Bağlantı kurulabiliyorsa soket dinliyordur.
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=2):
+                sonuc["dinliyor"] = True
+        except OSError:
+            sonuc["dinliyor"] = False
+        sonuc["port"] = port
+        hazir_olay.set()
+
+    thread = threading.Thread(
+        target=lambda: serve(repo, IST, "127.0.0.1", 0, False, on_ready=hazir),
+        daemon=True,
+    )
+    thread.start()
+    assert hazir_olay.wait(timeout=10), "on_ready çağrılmadı"
+
+    assert sonuc["dinliyor"] is True, "on_ready anında port dinlemiyordu"
+    assert sonuc["port"] > 0

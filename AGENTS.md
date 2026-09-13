@@ -36,9 +36,14 @@ Windows 11, **PowerShell 5.1**. Python 3.14.7, proje kökünde `.venv`.
 > **`&&` PowerShell 5.1'de ÇALIŞMAZ.** `The token '&&' is not a valid statement
 > separator in this version` hatası verir. Komutları `;` ile ayır.
 
-Kullanıcı uygulamayı masaüstündeki **Takvim** kısayoluyla açıyor
-(`-m ui --db takvim.db --reminder`). `takvim.db` GERÇEK VERİ -- testlerde
-kullanma; `--demo` ayrı bir dosyaya yazsın.
+Kullanıcı uygulamayı masaüstündeki **Takvim** kısayoluyla açıyor; kısayol
+`dist/Takvim.exe` (PyInstaller ile paketlenmiş, Python gerektirmiyor)
+dosyasını çalıştırıyor. Gerçek veri `%LOCALAPPDATA%/Takvim/takvim.db`
+içinde -- testlerde ASLA kullanma, `:memory:` ya da `--demo` kullan.
+
+Kodu değiştirdikten sonra `.exe` ESKİ KALIR; yeniden derlemeden
+"kullanıcıda çalışıyor" deme:
+`.venv\Scripts\python.exe -m PyInstaller takvim.spec --noconfirm --clean`
 
 ```powershell
 # testler
@@ -210,6 +215,17 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     edilemez.
 26. **İlk açılışta varsayılan takvim açılır** (`varsayilan_takvim_saglat`).
     Takvim yoksa hızlı ekleme reddediyor ve kullanıcı hiçbir şey yapamıyor.
+
+27. **`takvim.spec` içindeki `datas` listesi kritik.** `ui/static/*` ve
+    `store/migrations/*.sql` DOSYA olarak okunuyor; PyInstaller yalnızca
+    import edilen modülleri topluyor. Yeni bir veri dosyası eklersen
+    spec'e de ekle, yoksa `.exe` açılır ama boş sayfa gösterir.
+28. **Tarayıcı soket BAĞLANDIKTAN sonra açılır** (`serve(..., on_ready=)`).
+    Önce açılıyordu ve hızlı makinede "siteye ulaşılamıyor" çıkıyordu --
+    son kullanıcı için bu "uygulama çalışmıyor" demek.
+29. **Port sondası BAĞLANARAK yapılır, bind ile DEĞİL.** Windows'ta
+    `SO_REUSEADDR`, Unix'in aksine dinlenen bir porta bind etmeye de izin
+    veriyor; bind sondası dolu portu "boş" sanıyordu.
 
 ---
 

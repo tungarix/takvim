@@ -458,14 +458,63 @@ def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765
     return httpd
 
 
-def serve(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,
-          verbose: bool = False) -> None:
-    """Sunucuyu başlatır ve Ctrl+C'ye kadar çalıştırır."""
+def _port_dolu_mu(host: str, port: int) -> bool:
+    """Portta dinleyen biri var mı — BAĞLANARAK sınar.
+
+    Bind ile sınamak Windows'ta yanlış sonuç veriyor: `SO_REUSEADDR` orada
+    Unix'tekinin aksine, hâlihazırda DİNLENEN bir porta bind etmeye de izin
+    veriyor. Yani "bind edebildim, demek ki boş" çıkarımı yanlış pozitif
+    üretiyor ve uygulama dolu bir portu seçiyordu. Bağlantı denemesi ise her
+    iki işletim sisteminde de kesin: bağlanabiliyorsak orada biri var.
+    """
+    import socket
+
+    try:
+        with socket.create_connection((host, port), timeout=0.25):
+            return True
+    except OSError:
+        return False
+
+
+def bos_port_bul(host: str, tercih: int, deneme: int = 20) -> int:
+    """`tercih`ten başlayarak dinlenmeyen ilk portu döndürür.
+
+    Son kullanıcı için önemli: port doluysa uygulama "Address already in use"
+    ile ölüp küçültülmüş pencereyi kapatıyor ve geriye hiçbir açıklama
+    kalmıyordu.
+    """
+    for aday in range(tercih, tercih + deneme):
+        if not _port_dolu_mu(host, aday):
+            return aday
+    raise OSError(
+        f"{tercih}-{tercih + deneme - 1} aralığında boş port yok. "
+        "Takvim zaten açık olabilir."
+    )
+
+
+def serve(
+    repo: Repo,
+    tzid: str,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    verbose: bool = False,
+    on_ready=None,
+) -> None:
+    """Sunucuyu başlatır ve Ctrl+C'ye kadar çalıştırır.
+
+    `on_ready` soket BAĞLANDIKTAN sonra, istek döngüsü başlamadan önce
+    çağrılır. Tarayıcıyı açmak buraya ait: daha önce `serve()` çağrılmadan
+    açılıyordu ve hızlı bir makinede tarayıcı henüz dinlemeyen porta gidip
+    "siteye ulaşılamıyor" gösteriyordu.
+    """
     httpd = make_server(repo, tzid, host, port, verbose)
-    print(f"Takvim: http://{host}:{port}  (durdurmak için Ctrl+C)", flush=True)
+    gercek_port = httpd.server_address[1]
+    print(f"Takvim: http://{host}:{gercek_port}  (durdurmak için Ctrl+C)", flush=True)
+    if on_ready is not None:
+        on_ready(gercek_port)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nkapatılıyor...")
+        print("\nkapatılıyor...", flush=True)
     finally:
         httpd.server_close()

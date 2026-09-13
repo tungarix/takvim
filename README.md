@@ -2,8 +2,8 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1 tamamlandı ve kullanıma hazır. Masaüstündeki **Takvim** kısayolu
-uygulamayı ve hatırlatıcıyı birlikte başlatır.
+**Durum:** v1 tamamlandı. Masaüstündeki **Takvim** kısayolu tek dosyalık
+`Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 > Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
 
@@ -148,20 +148,16 @@ Migration yazılmadı — sessizce geçilmedi, uyarıyla gözetim altına alınd
 ## 5. Kullanım
 
 Masaüstündeki **Takvim** kısayoluna çift tıkla. Tarayıcıda açılır, hatırlatıcı
-arka planda başlar. Durdurmak için görev çubuğundaki konsol penceresini kapat.
+arka planda başlar. Kapatmak için görev çubuğundaki küçük konsol penceresini
+kapat.
 
-Kısayolun yaptığı:
+Kısayol `dist\Takvim.exe` dosyasını çalıştırıyor. Bu **tek dosyalık, bağımsız
+bir uygulama** — Python ya da başka bir kurulum gerektirmiyor, başka bir
+bilgisayara kopyalayıp çalıştırabilirsin.
 
-```powershell
-.venv\Scripts\python.exe -m ui --db takvim.db --reminder
-```
-
-İlk açılışta takvim yoksa "Kişisel" adında bir tane açılır — aksi hâlde hızlı
-ekleme "önce bir takvim oluşturulmalı" der ve kullanıcı hiçbir şey yapamazdı.
-
-Hatırlatıcıyı ayrı süreç olarak da çalıştırabilirsin:
-`.venv\Scripts\python.exe -m remind --db takvim.db`
-Bildirimleri sınamak için `-m remind --test`.
+Veriler `%LOCALAPPDATA%\Takvim\takvim.db` içinde. Kurulum klasörü yazılabilir
+olmayabileceği (Program Files) için orada değil. Yedeklemek için uygulamadan
+**Dışa aktar**'a bas; `.ics` dosyası her takvim uygulamasında açılır.
 
 ### Neler yapabilirsin
 
@@ -175,11 +171,21 @@ Bildirimleri sınamak için `-m remind --test`.
 | Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |
 | Ayrıntı / işlem | Bloğa tıkla, sağda panel açılır |
 | Hatırlatıcı | Panelden ekle (0 = tam başlarken, 1440 = 1 gün önce) |
-| Arama | Üstteki arama kutusu; şapka ve büyük/küçük harf önemsiz |
+| Arama | Üstteki kutu; şapka ve büyük/küçük harf önemsiz |
 | Yedek | "Dışa aktar" → `.ics` indirir |
 
 Tekrarlı etkinliklerde panelde **iki ayrı silme** var: "Bu örneği sil" yalnız o
 günü kaldırır, "Seriyi tamamen sil" hepsini. İkisi de onay ister.
+
+### Bir şey ters giderse
+
+Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı penceresi
+çıkar. Sık karşılaşılanlar:
+
+- **Port dolu** — Takvim zaten açıksa ikinci kopya kendiliğinden bir sonraki
+  boş portu kullanır, bir şey yapman gerekmez.
+- **Bildirim görünmüyor** — Odaklanma Yardımı toast'ları bastırıyor olabilir.
+  Konsoldan sınamak için: `Takvim.exe` yerine `python -m remind --test`.
 
 ### Geliştirme
 
@@ -192,10 +198,21 @@ python -m venv .venv
 .venv\Scripts\python.exe -m ui --demo
 ```
 
-**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (`.ics`), `pytest`.
-Windows'ta ayrıca `tzdata` — blueprint'in listesinde yok ama işletim sisteminin
-IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
-(`ZoneInfoNotFoundError`). Opsiyonel kolaylık değil, zorunluluk.
+`.exe`'yi yeniden derlemek için:
+
+```powershell
+.venv\Scripts\python.exe -m pip install -e ".[build]"
+.venv\Scripts\python.exe -m PyInstaller takvim.spec --noconfirm --clean
+```
+
+`takvim.spec` içindeki `datas` listesi önemli: `ui/static/*` ve
+`store/migrations/*.sql` dosya olarak okunuyor, PyInstaller onları kendiliğinden
+bulmuyor. Unutulurlarsa uygulama açılır ama boş sayfa gösterir.
+
+**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (`.ics`), `pytest`
+(test), `pyinstaller` (yalnızca paketleme). Windows'ta ayrıca `tzdata` —
+işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç
+çalışmıyor (`ZoneInfoNotFoundError`). Opsiyonel kolaylık değil, zorunluluk.
 
 ---
 
