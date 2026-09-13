@@ -35,6 +35,7 @@ from pathlib import Path
 from core.console import guvenli_konsol
 from store import Repo, yedek_al, yedek_klasoru
 
+from .ayarlar import ayar_dosyasi, ayar_oku
 from .demo import TZID, seed
 from .pencere import BASLIK, pencere_ac
 from .server import bos_port_bul, make_server, serve
@@ -310,7 +311,10 @@ def _onyuz_ac(url: str, dizin: Path, tarayici_zorla: bool) -> None:
     sebep = ""
     if not tarayici_zorla:
         try:
-            pencere_ac(url, dizin)
+            # Tepsi kararı her kapanışta dosyadan okunuyor: ayar değişince
+            # yeniden başlatma gerekmiyor. Okuma patlarsa pencere normal kapanır.
+            ayar_yolu = ayar_dosyasi(dizin)
+            pencere_ac(url, dizin, tepsi_istendi=lambda: bool(ayar_oku(ayar_yolu).get("tepsiye_kucult", False)))
             return
         except Exception as hata:
             traceback.print_exc()

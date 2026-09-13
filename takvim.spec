@@ -21,6 +21,9 @@ a = Analysis(
         ("ui/static", "ui/static"),
         ("store/migrations", "store/migrations"),
         ("store/schema.sql", "store"),
+        # Tepsi simgesi dosya olarak okunuyor (ui/tepsi.py `simge_bul`);
+        # import edilmiyor, yazılmazsa tepsi stok ikonla çalışır.
+        ("takvim.ico", "."),
     ],
     hiddenimports=[
         # zoneinfo tzdata'yı dinamik okur; PyInstaller import göremez.

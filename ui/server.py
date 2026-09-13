@@ -25,6 +25,8 @@ from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
 from store import Repo, new_uid, yedek_dosyalari, yedek_klasoru, yedekten_don
 
+from . import otomatik
+from .ayarlar import VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
 from .presenter import day_payload, month_payload, week_payload
 
 __all__ = ["serve", "make_server"]
@@ -162,6 +164,45 @@ class _Handler(BaseHTTPRequestHandler):
             self._hata("geri alınacak silme yok", 404)
             return
         self._json({"restored_id": diriltilen.id, "title": diriltilen.title})
+
+    def _ayar_kaydet(self) -> None:
+        """POST /api/ayarlar — ayarları yazar, otomatik başlatmayı kurar/kaldırır.
+
+        Verilmeyen anahtar DEĞİŞMEZ (kısmi güncelleme). Otomatik başlatma
+        dosya işleminden ÖNCE denenir: kayıt kurulamazsa dosyaya "açık"
+        yazıp yalan söylemiyoruz. `otomatik.*` modül üzerinden çağrılıyor ki
+        testler sahte kayıtla kabloyu doğrulayabilsin (gerçek Başlangıç
+        klasörüne dokunmadan).
+        """
+        govde = self._govde()
+        tepsi = govde.get("tepsiye_kucult")
+        oto = govde.get("otomatik_baslat")
+        for ad, deger in (("tepsiye_kucult", tepsi), ("otomatik_baslat", oto)):
+            if deger is not None and not isinstance(deger, bool):
+                self._hata(f"{ad} true/false olmalı")
+                return
+        db_yolu = self._db_yolu
+        if oto is not None:
+            if db_yolu is None or str(db_yolu) == ":memory:":
+                self._hata("otomatik başlatma dosya veritabanı istiyor")
+                return
+            yapildi = (
+                otomatik.kur(db_yolu=db_yolu) if oto else otomatik.kaldir()
+            )
+            if not yapildi:
+                self._hata(
+                    "otomatik başlatma kaydı kurulamadı/kaldırılamadı", 500
+                )
+                return
+        dizin = Path(str(db_yolu)).resolve().parent if db_yolu else None
+        if dizin is not None:
+            mevcut = ayar_oku(ayar_dosyasi(dizin))
+            if tepsi is not None:
+                mevcut["tepsiye_kucult"] = tepsi
+            if oto is not None:
+                mevcut["otomatik_baslat"] = oto
+            ayar_yaz(ayar_dosyasi(dizin), mevcut)
+        self._json(_ayar_durumu(db_yolu))
 
     def _cakisma(self, sorgu: dict) -> None:
         """GET /api/conflicts — verilen aralıkla kesişen SAATLİ örnekler.
@@ -305,6 +346,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._cakisma(sorgu)
                 return
 
+            if yol == "/api/ayarlar":
+                self._json(_ayar_durumu(self._db_yolu))
+                return
+
             if yol.startswith("/api/"):
                 self._hata("bulunamadı", 404)
                 return
@@ -354,6 +399,10 @@ class _Handler(BaseHTTPRequestHandler):
 
             if parcalar == ["api", "events", "restore_last"]:
                 self._seri_geri_al()
+                return
+
+            if parcalar == ["api", "ayarlar"]:
+                self._ayar_kaydet()
                 return
 
             if (
@@ -830,6 +879,26 @@ def _yedek_listesi(db_yolu) -> list:
         liste.append({"ad": yol.name, "boyut": boyut})
     liste.reverse()
     return liste
+
+
+def _ayar_durumu(db_yolu) -> dict:
+    """Ayarların o anki hâli: dosyadaki tepsi bayrağı + gerçek kayıt durumu.
+
+    Otomatik başlatma DOSYADAN DEĞİL diskten okunuyor: kullanıcı kısayolu
+    elle silmişse arayüz "açık" yalanı söylemesin.
+    """
+    tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
+    if db_yolu is not None and str(db_yolu) != ":memory:":
+        try:
+            sakli = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent))
+            tepsi = bool(sakli.get("tepsiye_kucult", tepsi))
+        except OSError:
+            pass
+    try:
+        oto_gercek = bool(otomatik.kurulu_mu())
+    except OSError:
+        oto_gercek = False
+    return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek}
 
 
 def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,

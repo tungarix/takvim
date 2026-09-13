@@ -1531,6 +1531,7 @@ el("takvim-ekle").onclick = takvimEkle;
 el("panel-kapat").onclick = panelKapat;
 el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
 el("yedekler").onclick = yedekleriAc;
+el("ayarlar").onclick = ayarlariAc;
 el("ice-aktar").onclick = () => el("ice-aktar-dosya").click();
 el("ice-aktar-dosya").onchange = (e) => {
   const dosya = e.target.files[0];
@@ -1538,6 +1539,57 @@ el("ice-aktar-dosya").onchange = (e) => {
   e.target.value = "";
   if (dosya) iceAktar(dosya);
 };
+
+/* Ayarlar: tepsiye küçült + otomatik başlatma. İkisi de varsayılan kapalı;
+ * açmak bilinçli karar (kapatınca tepsiye inmek, Başlangıç klasörüne yazmak).
+ * Yeniden başlatma gerekmiyor: tepsi kararı her kapanışta dosyadan okunuyor. */
+async function ayarlariAc() {
+  let mevcut;
+  try {
+    mevcut = await istek("/api/ayarlar");
+  } catch (hata) {
+    bildir(hata.message, true);
+    return;
+  }
+  const s = await modalForm("Ayarlar",
+    "Tepsi: pencere kapatılınca uygulama tepsiye iner, hatırlatıcı sürer. " +
+    "Otomatik başlatma: bilgisayarla birlikte hatırlatıcıyı başlatır.",
+    [
+      {
+        ad: "tepsi",
+        etiket: "Pencere kapatılınca",
+        tur: "secim",
+        deger: mevcut.tepsiye_kucult ? "kucult" : "kapat",
+        secenekler: [
+          { deger: "kapat", etiket: "Uygulamayı kapat" },
+          { deger: "kucult", etiket: "Tepsiye küçült" },
+        ],
+      },
+      {
+        ad: "otomatik",
+        etiket: "Bilgisayar açılışında",
+        tur: "secim",
+        deger: mevcut.otomatik_baslat ? "acik" : "kapali",
+        secenekler: [
+          { deger: "kapali", etiket: "Hatırlatıcıyı başlatma" },
+          { deger: "acik", etiket: "Hatırlatıcıyı başlat" },
+        ],
+      },
+    ],
+    "Kaydet");
+  if (!s) return;
+  await eylem(
+    () => istek("/api/ayarlar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        tepsiye_kucult: s.tepsi === "kucult",
+        otomatik_baslat: s.otomatik === "acik",
+      }),
+    }),
+    "Ayarlar kaydedildi",
+  );
+}
 
 /* `.ics` içe aktarma: önce ÖNİZLEME (`dry_run`), sonra gerçek yazma.
  * İki aşama ŞART: dosyanın kaç kayıt ekleyeceğini/güncelleyeceğini görmeden

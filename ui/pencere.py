@@ -25,6 +25,7 @@ import json
 import sys
 import threading
 import traceback
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -273,11 +274,20 @@ def webview2_surumu() -> str | None:
     return None
 
 
-def pencere_ac(url: str, veri_dizini: str | Path) -> None:
+def pencere_ac(
+    url: str,
+    veri_dizini: str | Path,
+    tepsi_istendi: Callable[[], bool] | None = None,
+) -> None:
     """Pencereyi açar ve KAPANANA KADAR geri dönmez.
 
     Ana thread'de çağrılmalı. `webview.start()` GUI döngüsü; pencere kapanınca
     dönüyor ve uygulama da o zaman bitiyor.
+
+    `tepsi_istendi` her kapanışta çağrılıyor (sabit bayrak değil): kullanıcı
+    ayarı ortadan değiştirirse yeniden başlatma gerekmez. True ise X pencereyi
+    GİZLİYOR ve tepsiye simge koyuyor; tepsi kurulamazsa normal kapanıyor
+    (kapanmayan pencere, tepsisiz kalmaktan kötü).
 
     `ImportError`/`Exception` YUKARI aktarılıyor: geri düşüşe (tarayıcı) karar
     vermek çağıranın işi, bu fonksiyonun değil.
@@ -324,12 +334,12 @@ def pencere_ac(url: str, veri_dizini: str | Path) -> None:
     pencere.events.maximized += lambda: durum.__setitem__("buyutulmus", True)
     pencere.events.restored += lambda: durum.__setitem__("buyutulmus", False)
 
-    def kapanirken() -> None:
+    def kapanirken() -> bool | None:
         """Kapanmadan önce geometriyi kaydeder.
 
         `closing` olayı kilitli çalışıyor (senkron), yani pencere yok olmadan
-        önce ölçüleri okuyabiliyoruz. Hiçbir şey döndürmüyoruz: `False`
-        döndürmek kapanmayı İPTAL eder.
+        önce ölçüleri okuyabiliyoruz. Normal kapanışta None dönüyoruz; tepsi
+        modunda pencereyi gizleyip `False` döndürüyoruz (kapanmayı İPTAL eder).
         """
         try:
             if durum["buyutulmus"]:
@@ -342,6 +352,44 @@ def pencere_ac(url: str, veri_dizini: str | Path) -> None:
             geometri_yaz(yol, yeni)
         except Exception:  # kapanışı hiçbir şey engellemesin
             pass
+        if tepsi_istendi is not None and not gercek_kapanis["istendi"]:
+            try:
+                isteniyor = bool(tepsi_istendi())
+            except Exception:
+                isteniyor = False  # ayar okunamadı: güvenli tarafta kal
+            if isteniyor:
+                from .tepsi import Tepsi, simge_bul
+
+                tepsi = Tepsi.kur(
+                    pencere.show, gercek_kapat, simge_yolu=simge_bul()
+                )
+                if tepsi is None:
+                    return None  # simge kurulamadı: normal kapan
+                tutamac["tepsi"] = tepsi
+                try:
+                    pencere.hide()
+                except Exception:
+                    tutamac["tepsi"] = None
+                    return None
+                return False
+        if tutamac["tepsi"] is not None:
+            tutamac["tepsi"].kapat()
+            tutamac["tepsi"] = None
+        return None
+
+    def gercek_kapat() -> None:
+        """Tepsi menüsünden "Kapat": bayrağı koyup pencereyi yıkıyor."""
+        gercek_kapanis["istendi"] = True
+        if tutamac["tepsi"] is not None:
+            tutamac["tepsi"].kapat()
+            tutamac["tepsi"] = None
+        try:
+            pencere.destroy()
+        except Exception:
+            pass
+
+    gercek_kapanis = {"istendi": False}
+    tutamac: dict = {"tepsi": None}
 
     pencere.events.closing += kapanirken
 
