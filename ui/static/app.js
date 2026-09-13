@@ -189,7 +189,8 @@ function zamanCiz(veri) {
       blok.textContent = occ.title;
       blok.style.background = zemin(occ.color);
       blok.style.borderLeftColor = occ.color;
-      blok.onclick = () => panelAc(occ);
+      blok.onclick = () => { if (!tumgunSurukleme.tasindi) panelAc(occ); };
+      blok.addEventListener("pointerdown", (e) => tumgunBasla(e, blok, occ));
       hucre.appendChild(blok);
     });
     seritKap.appendChild(hucre);
@@ -261,7 +262,17 @@ function blokYap(occ, gun) {
     (occ.isOverride ? `<div class="b-rozet">· taşındı</div>` : "");
 
   blok.onclick = () => { if (!surukleme.tasindi) panelAc(occ); };
-  blok.addEventListener("pointerdown", (e) => surukleBasla(e, blok, occ, gun));
+  blok.addEventListener("pointerdown", (e) => surukleBasla(e, blok, occ, gun, "tasi"));
+
+  // Alt kenarda boyutlandırma tutamağı: süreyi değiştirir, yeri değil.
+  const tutamak = document.createElement("div");
+  tutamak.className = "boyut-tutamagi";
+  tutamak.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    surukleBasla(e, blok, occ, gun, "boyutlandir");
+  });
+  blok.appendChild(tutamak);
+
   return blok;
 }
 
@@ -278,12 +289,13 @@ const ESIK = 4;  // px: bu kadar oynamadan sürükleme başlamaz (tık kaybolmas
 
 const surukleme = { aktif: false, tasindi: false };
 
-function surukleBasla(e, blok, occ, gun) {
+function surukleBasla(e, blok, occ, gun, kip = "tasi") {
   if (e.button !== 0 || occ.allDay) return;
   const blokKutu = blok.getBoundingClientRect();
   Object.assign(surukleme, {
     aktif: true,
     tasindi: false,
+    kip,
     blok,
     occ,
     kaynakGun: gun,
@@ -293,8 +305,31 @@ function surukleBasla(e, blok, occ, gun) {
     sure: occ.endMin - occ.startMin,
     hedefGun: gun,
     hedefDakika: occ.startMin,
+    hedefBitisDakika: occ.endMin,
   });
   e.stopPropagation();
+}
+
+/** Boyutlandırma: başlangıç sabit, yalnızca bitiş oynar. */
+function boyutlandirHareket(e) {
+  const sutun = surukleme.blok.parentElement;
+  const kutu = sutun.getBoundingClientRect();
+  const gun = surukleme.kaynakGun;
+
+  const oran = (e.clientY - kutu.top) / kutu.height;
+  let bitis = Math.round((oran * gun.dayMinutes) / SNAP) * SNAP;
+  // En az bir dilim; gece yarısını aşmaya izin veriyoruz (sunucu 48 saate
+  // kadar kabul ediyor), ama ızgara tek gün çizdiği için burada sınırlıyoruz.
+  bitis = Math.max(surukleme.occ.startMin + SNAP, Math.min(bitis, gun.dayMinutes));
+
+  surukleme.hedefBitisDakika = bitis;
+  surukleme.blok.style.height =
+    `${((bitis - surukleme.occ.startMin) / gun.dayMinutes) * 100}%`;
+  const saatEl = surukleme.blok.querySelector(".b-saat");
+  if (saatEl) {
+    saatEl.textContent =
+      `${dakikaSaat(surukleme.occ.startMin)}–${dakikaSaat(bitis)}`;
+  }
 }
 
 function dakikaSaat(dk) {
@@ -313,6 +348,11 @@ function surukleHareket(e) {
   }
   surukleme.tasindi = true;
   surukleme.blok.classList.add("suruklenen");
+
+  if (surukleme.kip === "boyutlandir") {
+    boyutlandirHareket(e);
+    return;
+  }
 
   const sutunlar = [...document.querySelectorAll(".gun-sutun")];
   let indeks = sutunlar.findIndex((s) => {
@@ -343,7 +383,7 @@ function surukleHareket(e) {
 
 async function surukleBitir() {
   if (!surukleme.aktif) return;
-  const { tasindi, occ, kaynakGun, hedefGun, hedefDakika } = surukleme;
+  const { tasindi, kip, occ, kaynakGun, hedefGun, hedefDakika, hedefBitisDakika } = surukleme;
   surukleme.aktif = false;
   if (surukleme.blok) surukleme.blok.classList.remove("suruklenen");
   if (!tasindi) return;
@@ -352,10 +392,95 @@ async function surukleBitir() {
   // bir tur sonra temizliyoruz.
   setTimeout(() => { surukleme.tasindi = false; }, 0);
 
-  if (hedefGun.date === kaynakGun.date && hedefDakika === occ.startMin) {
-    await yukle(); // yer değişmedi, önizlemeyi geri al
+  const boyutlandirma = kip === "boyutlandir";
+  const degismedi = boyutlandirma
+    ? hedefBitisDakika === occ.endMin
+    : hedefGun.date === kaynakGun.date && hedefDakika === occ.startMin;
+  if (degismedi) {
+    await yukle(); // önizlemeyi geri al
     return;
   }
+
+  const govde = boyutlandirma
+    ? {
+        eventId: occ.eventId,
+        originalStartUtc: occ.originalStartUtc,
+        newDate: kaynakGun.date,
+        newMinutes: occ.startMin,
+        newEndMinutes: hedefBitisDakika,
+      }
+    : {
+        eventId: occ.eventId,
+        originalStartUtc: occ.originalStartUtc,
+        newDate: hedefGun.date,
+        newMinutes: hedefDakika,
+      };
+
+  try {
+    await istek("/api/occurrences/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(govde),
+    });
+    bildir(
+      boyutlandirma
+        ? `Süre değişti: ${occ.title} → ${dakikaSaat(occ.startMin)}–${dakikaSaat(hedefBitisDakika)}`
+        : `Taşındı: ${occ.title} → ${dakikaSaat(hedefDakika)}`,
+    );
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+  await yukle();
+}
+
+/* ---------- tüm gün şeridinde sürükleme ---------- */
+
+/* Saatli bloklardan ayrı bir yol: tüm gün etkinliğinin başlangıcı yerel gece
+ * yarısı, yani taşıma GÜN birimindedir. newMinutes=0 gönderiyoruz ve süreyi
+ * move_occurrence koruyor.
+ */
+
+const tumgunSurukleme = { aktif: false, tasindi: false };
+
+function tumgunBasla(e, blok, occ) {
+  if (e.button !== 0) return;
+  Object.assign(tumgunSurukleme, {
+    aktif: true, tasindi: false, blok, occ,
+    baslangicX: e.clientX, hedefTarih: null,
+  });
+}
+
+function tumgunHareket(e) {
+  if (!tumgunSurukleme.aktif) return;
+  if (!tumgunSurukleme.tasindi && Math.abs(e.clientX - tumgunSurukleme.baslangicX) < ESIK) {
+    return;
+  }
+  tumgunSurukleme.tasindi = true;
+  tumgunSurukleme.blok.classList.add("suruklenen");
+
+  const hucreler = [...document.querySelectorAll(".tumgun-hucre")];
+  const indeks = hucreler.findIndex((h) => {
+    const k = h.getBoundingClientRect();
+    return e.clientX >= k.left && e.clientX < k.right;
+  });
+  if (indeks < 0) return;
+  const gun = durum.veri.days[indeks];
+  if (!gun) return;
+  tumgunSurukleme.hedefTarih = gun.date;
+  if (tumgunSurukleme.blok.parentElement !== hucreler[indeks]) {
+    hucreler[indeks].appendChild(tumgunSurukleme.blok);
+  }
+}
+
+async function tumgunBitir() {
+  if (!tumgunSurukleme.aktif) return;
+  const { tasindi, occ, hedefTarih } = tumgunSurukleme;
+  tumgunSurukleme.aktif = false;
+  if (tumgunSurukleme.blok) tumgunSurukleme.blok.classList.remove("suruklenen");
+  if (!tasindi) return;
+  setTimeout(() => { tumgunSurukleme.tasindi = false; }, 0);
+
+  if (!hedefTarih) { await yukle(); return; }
 
   try {
     await istek("/api/occurrences/move", {
@@ -364,16 +489,20 @@ async function surukleBitir() {
       body: JSON.stringify({
         eventId: occ.eventId,
         originalStartUtc: occ.originalStartUtc,
-        newDate: hedefGun.date,
-        newMinutes: hedefDakika,
+        newDate: hedefTarih,
+        newMinutes: 0,
       }),
     });
-    bildir(`Taşındı: ${occ.title} → ${dakikaSaat(hedefDakika)}`);
+    bildir(`Taşındı: ${occ.title} → ${hedefTarih}`);
   } catch (hata) {
     bildir(hata.message, true);
   }
   await yukle();
 }
+
+document.addEventListener("pointermove", tumgunHareket);
+document.addEventListener("pointerup", tumgunBitir);
+document.addEventListener("pointercancel", tumgunBitir);
 
 document.addEventListener("pointermove", surukleHareket);
 document.addEventListener("pointerup", surukleBitir);
@@ -421,6 +550,7 @@ function ayCiz(veri) {
       const daha = document.createElement("div");
       daha.className = "ay-daha";
       daha.textContent = `+${gorunurler.length - AY_MAKS_BLOK} daha`;
+      daha.onclick = (e) => { e.stopPropagation(); gunListesiAc(g, gorunurler, e); };
       hucre.appendChild(daha);
     }
 
@@ -428,6 +558,68 @@ function ayCiz(veri) {
     hucre.onclick = () => { durum.gorunum = "day"; durum.anchor = g.date; yukle(); };
     izgara.appendChild(hucre);
   });
+}
+
+/* ---------- ay görünümü: gün listesi açılır penceresi ---------- */
+
+/* "+N daha" tıklanınca gün görünümüne atlamak, kullanıcıyı bulunduğu yerden
+ * koparıyordu. Bunun yerine o günün tamamını yerinde gösteriyoruz.
+ */
+
+function gunListesiKapat() {
+  const eski = el("gun-listesi");
+  if (eski) eski.remove();
+}
+
+function gunListesiAc(gun, occurrences, olay) {
+  gunListesiKapat();
+
+  const kutu = document.createElement("div");
+  kutu.className = "gun-listesi";
+  kutu.id = "gun-listesi";
+
+  const baslik = document.createElement("div");
+  baslik.className = "gl-baslik";
+  baslik.textContent = new Intl.DateTimeFormat("tr-TR", {
+    weekday: "long", day: "numeric", month: "long",
+  }).format(new Date(`${gun.date}T12:00:00`));
+  kutu.appendChild(baslik);
+
+  occurrences.forEach((occ) => {
+    const satir = document.createElement("div");
+    satir.className = "gl-satir";
+    satir.style.borderLeftColor = occ.color;
+    satir.style.background = zemin(occ.color);
+    satir.textContent = occ.allDay
+      ? occ.title
+      : `${saatBicim(occ.startUtc, occ.tzid)} ${occ.title}`;
+    satir.onclick = () => { gunListesiKapat(); panelAc(occ); };
+    kutu.appendChild(satir);
+  });
+
+  const gunDugme = document.createElement("button");
+  gunDugme.className = "gl-gun-dugme";
+  gunDugme.textContent = "Gün görünümünde aç";
+  gunDugme.onclick = () => {
+    gunListesiKapat();
+    durum.gorunum = "day";
+    durum.anchor = gun.date;
+    yukle();
+  };
+  kutu.appendChild(gunDugme);
+
+  document.body.appendChild(kutu);
+
+  // Ekran dışına taşmasın
+  const k = kutu.getBoundingClientRect();
+  const x = Math.min(olay.clientX, window.innerWidth - k.width - 12);
+  const y = Math.min(olay.clientY, window.innerHeight - k.height - 12);
+  kutu.style.left = `${Math.max(8, x)}px`;
+  kutu.style.top = `${Math.max(8, y)}px`;
+
+  setTimeout(() => {
+    document.addEventListener("click", gunListesiKapat, { once: true });
+  }, 0);
 }
 
 /* ---------- etkinlik paneli ---------- */
@@ -686,7 +878,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   const kisayollar = {
-    Escape: panelKapat,
+    Escape: () => { gunListesiKapat(); panelKapat(); },
     ArrowLeft: () => kaydir(-1),
     ArrowRight: () => kaydir(1),
     t: () => { durum.anchor = bugunISO(); yukle(); },

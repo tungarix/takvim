@@ -453,3 +453,94 @@ def test_hatirlatici_uclari(sunucu):
 
     son = _get(sunucu, "/api/week?date=2026-09-07")
     assert next(o for g in son["days"] for o in g["timed"])["reminders"] == []
+
+
+# ---------------------------------------------------------------------------
+# Yeniden boyutlandırma ve tüm gün taşıma
+# ---------------------------------------------------------------------------
+
+def test_yeniden_boyutlandirma(sunucu):
+    """newEndMinutes süreyi değiştirir, başlangıcı bırakır."""
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"] if o["title"] == "Algoritma")
+    assert (occ["startMin"], occ["endMin"]) == (10 * 60, 12 * 60)
+
+    _post(sunucu, "/api/occurrences/move", {
+        "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+        "newDate": "2026-09-07", "newMinutes": 10 * 60, "newEndMinutes": 11 * 60,
+    })
+
+    sonra = _get(sunucu, "/api/week?date=2026-09-07")
+    yeni = next(o for g in sonra["days"] for o in g["timed"] if o["title"] == "Algoritma")
+    assert (yeni["startMin"], yeni["endMin"]) == (10 * 60, 11 * 60)
+    assert yeni["isOverride"] is True
+
+
+def test_boyutlandirma_gecersiz_degerleri_reddeder(sunucu):
+    """Bitiş başlangıçtan küçük olamaz, iki günü aşamaz."""
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"])
+
+    for bitis in (9 * 60, 10 * 60, 49 * 60):
+        with pytest.raises(urllib.error.HTTPError) as hata:
+            _post(sunucu, "/api/occurrences/move", {
+                "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+                "newDate": "2026-09-07", "newMinutes": 10 * 60, "newEndMinutes": bitis,
+            })
+        assert hata.value.code == 400
+
+
+def test_boyutlandirma_gece_yarisini_asabilir(sunucu):
+    """newEndMinutes 24*60'ı aşabilir: etkinlik ertesi güne sarkabilir."""
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["timed"])
+
+    sonuc = _post(sunucu, "/api/occurrences/move", {
+        "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+        "newDate": "2026-09-07", "newMinutes": 22 * 60, "newEndMinutes": 25 * 60,
+    })
+    # 08.09 01:00 Europe/Istanbul = 07.09 22:00 UTC
+    assert sonuc["moved"]["newEndUtc"].startswith("2026-09-07T22:00")
+
+
+def test_tumgun_baska_gune_tasinir(repo, ders, sunucu):
+    """Tüm gün etkinliği gün birimiyle taşınır ve süresini korur."""
+    olay = _ekle(repo, ders, "Tatil", ist(2026, 9, 8), ist(2026, 9, 10), all_day=True)
+
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    occ = next(o for g in hafta["days"] for o in g["allDay"])
+
+    _post(sunucu, "/api/occurrences/move", {
+        "eventId": occ["eventId"], "originalStartUtc": occ["originalStartUtc"],
+        "newDate": "2026-09-10", "newMinutes": 0,
+    })
+
+    sonra = _get(sunucu, "/api/week?date=2026-09-07")
+    gunler = [g["date"] for g in sonra["days"] if g["allDay"]]
+    assert gunler == ["2026-09-10", "2026-09-11"], "2 günlük süre korunmalı"
+    assert olay.id is not None
+
+
+# ---------------------------------------------------------------------------
+# İlk açılış
+# ---------------------------------------------------------------------------
+
+def test_ilk_acilista_varsayilan_takvim(repo):
+    """Takvim yoksa bir tane açılır: boş ekranla karşılamıyoruz.
+
+    Takvimsiz bir veritabanında hızlı ekleme "önce bir takvim oluşturulmalı"
+    diye reddediyor; kullanıcı ilk açılışta hiçbir şey yapamazdı.
+    """
+    from ui.__main__ import varsayilan_takvim_saglat
+
+    assert repo.list_calendars() == []
+    assert varsayilan_takvim_saglat(repo) is True
+    assert [c.name for c in repo.list_calendars()] == ["Kişisel"]
+
+
+def test_mevcut_takvim_varsa_dokunmaz(repo, ders):
+    """İkinci açılışta yeni takvim eklenmez."""
+    from ui.__main__ import varsayilan_takvim_saglat
+
+    assert varsayilan_takvim_saglat(repo) is False
+    assert len(repo.list_calendars()) == 1

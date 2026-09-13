@@ -18,10 +18,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Faz 4 — konfor (hızlı ekleme, arama, kısayollar) | ✅ bitti |
 | Faz 5 — `.ics` dışa aktarma | ✅ bitti |
 | Hatırlatıcı (`remind/`) + sürükle-bırak | ✅ bitti |
+| Boyutlandırma, tüm gün taşıma, ay açılır listesi | ✅ bitti |
 
 **v1 kapsamı tamamlandı.**
 
-**216 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**222 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -34,6 +35,10 @@ Windows 11, **PowerShell 5.1**. Python 3.14.7, proje kökünde `.venv`.
 
 > **`&&` PowerShell 5.1'de ÇALIŞMAZ.** `The token '&&' is not a valid statement
 > separator in this version` hatası verir. Komutları `;` ile ayır.
+
+Kullanıcı uygulamayı masaüstündeki **Takvim** kısayoluyla açıyor
+(`-m ui --db takvim.db --reminder`). `takvim.db` GERÇEK VERİ -- testlerde
+kullanma; `--demo` ayrı bir dosyaya yazsın.
 
 ```powershell
 # testler
@@ -197,6 +202,14 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
 24. **Otomatik başlatma KURULMAZ.** Başlangıç klasörü kısayolu / Görev
     Zamanlayıcı kaydı sistem düzeyinde değişiklik. Komut README §9'da; kurmak
     kullanıcının kararı, kendi başına yapma.
+
+25. **Konsol çıktısı `errors="replace"` ile yapılandırılıyor**
+    (`core/console.py`). Windows konsolu cp1254; basılamayan tek bir karakter
+    `UnicodeEncodeError` fırlatır ve uzun yaşayan hatırlatıcı döngüsünü
+    öldürebilir. Bir etkinlik başlığı yüzünden hatırlatıcının susması kabul
+    edilemez.
+26. **İlk açılışta varsayılan takvim açılır** (`varsayilan_takvim_saglat`).
+    Takvim yoksa hızlı ekleme reddediyor ve kullanıcı hiçbir şey yapamıyor.
 
 ---
 

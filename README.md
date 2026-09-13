@@ -2,8 +2,8 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1 tamamlandı. Gün/hafta/ay görünümleri, sürükle-bırak, hızlı ekleme,
-arama, hatırlatıcı ve `.ics` içe/dışa aktarma çalışıyor.
+**Durum:** v1 tamamlandı ve kullanıma hazır. Masaüstündeki **Takvim** kısayolu
+uygulamayı ve hatırlatıcıyı birlikte başlatır.
 
 > Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
 
@@ -145,7 +145,43 @@ Migration yazılmadı — sessizce geçilmedi, uyarıyla gözetim altına alınd
 
 ---
 
-## 5. Kurulum ve test
+## 5. Kullanım
+
+Masaüstündeki **Takvim** kısayoluna çift tıkla. Tarayıcıda açılır, hatırlatıcı
+arka planda başlar. Durdurmak için görev çubuğundaki konsol penceresini kapat.
+
+Kısayolun yaptığı:
+
+```powershell
+.venv\Scripts\python.exe -m ui --db takvim.db --reminder
+```
+
+İlk açılışta takvim yoksa "Kişisel" adında bir tane açılır — aksi hâlde hızlı
+ekleme "önce bir takvim oluşturulmalı" der ve kullanıcı hiçbir şey yapamazdı.
+
+Hatırlatıcıyı ayrı süreç olarak da çalıştırabilirsin:
+`.venv\Scripts\python.exe -m remind --db takvim.db`
+Bildirimleri sınamak için `-m remind --test`.
+
+### Neler yapabilirsin
+
+| | |
+|---|---|
+| Görünümler | Gün / Hafta / Ay — `G` `H` `A` kısayolları |
+| Gezinme | `←` `→` ileri-geri, `T` bugün |
+| Etkinlik ekleme | Üstteki kutuya "yarın 14:00 diş hekimi" yaz |
+| Taşıma | Bloğu sürükle (15 dk'ya yuvarlanır, günler arası serbest) |
+| Süre değiştirme | Bloğun alt kenarını sürükle |
+| Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |
+| Ayrıntı / işlem | Bloğa tıkla, sağda panel açılır |
+| Hatırlatıcı | Panelden ekle (0 = tam başlarken, 1440 = 1 gün önce) |
+| Arama | Üstteki arama kutusu; şapka ve büyük/küçük harf önemsiz |
+| Yedek | "Dışa aktar" → `.ics` indirir |
+
+Tekrarlı etkinliklerde panelde **iki ayrı silme** var: "Bu örneği sil" yalnız o
+günü kaldırır, "Seriyi tamamen sil" hepsini. İkisi de onay ister.
+
+### Geliştirme
 
 PowerShell (bu makinenin kabuğu; `&&` desteklenmiyor, `;` kullan):
 
@@ -153,9 +189,10 @@ PowerShell (bu makinenin kabuğu; `&&` desteklenmiyor, `;` kullan):
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -e ".[dev]"
 .venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe -m ui --demo
 ```
 
-**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (Faz 2 `.ics` ayrıştırma), `pytest` (test).
+**Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (`.ics`), `pytest`.
 Windows'ta ayrıca `tzdata` — blueprint'in listesinde yok ama işletim sisteminin
 IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 (`ZoneInfoNotFoundError`). Opsiyonel kolaylık değil, zorunluluk.
@@ -164,7 +201,7 @@ IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç çalışmıyor
 
 ## 6. Kabul kriterleri
 
-**216 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**222 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -438,12 +475,12 @@ onu kullanıyor. Üç regresyon testi ekli.
 
 ## 10. Sonraki fazlar
 
-v1 kapsamı tamamlandı. Bilinçli olarak dışarıda kalanlar:
+v1 kapsamı tamamlandı; §1'deki kapsam dışı listesi hâlâ geçerli
+(sunucu, hesap, senkron, davet, mobil, CalDAV).
 
-- **Blok yeniden boyutlandırma** (süre değiştirme) — taşıma var, uzatma yok
-- **Tüm gün şeridinde sürükleme** — yalnızca saatli bloklar taşınabiliyor
-- **Ay görünümünde "+N daha"** açılır liste yerine gün görünümüne geçiyor
-- **Otomatik başlatma kaydı** — komutu yukarıda, kurulumu kullanıcıya ait
+Bilinçli olarak yapılmayan tek şey **otomatik başlatma kaydı**: Başlangıç
+klasörüne kısayol koymak sistem düzeyinde bir değişiklik, komutu §9'da ama
+kurulumu kullanıcının kararı.
 
 ---
 

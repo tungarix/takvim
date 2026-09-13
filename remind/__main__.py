@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from core.console import guvenli_konsol
 from store import Repo
 
 from .daemon import run_forever, run_once
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--once", action="store_true", help="tek tur çalış ve çık")
     ap.add_argument("--test", action="store_true", help="örnek bildirim gösterip çık")
     ap.add_argument("--verbose", action="store_true")
+    guvenli_konsol()
     args = ap.parse_args(argv)
 
     notifier = pick_notifier(args.notifier)

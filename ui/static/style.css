@@ -520,3 +520,63 @@ kbd {
   box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
   pointer-events: none;
 }
+
+/* Boyutlandırma tutamağı: bloğun alt kenarında ince bir şerit */
+.boyut-tutamagi {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 7px;
+  cursor: ns-resize;
+  border-radius: 0 0 6px 6px;
+}
+.blok:hover .boyut-tutamagi { background: rgba(255, 255, 255, .16); }
+
+.tumgun-blok { cursor: grab; touch-action: none; }
+.tumgun-blok.suruklenen { opacity: .85; cursor: grabbing; pointer-events: none; }
+
+/* Ay görünümü: "+N daha" açılır listesi */
+.gun-listesi {
+  position: fixed;
+  z-index: 200;
+  min-width: 220px;
+  max-width: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--yuzey);
+  border: 1px solid var(--cizgi);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .55);
+  display: grid;
+  gap: 3px;
+}
+.gl-baslik {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .7px;
+  color: var(--metin-silik);
+  padding: 0 4px 6px;
+}
+.gl-satir {
+  font-size: 12px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border-left: 3px solid;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gl-satir:hover { filter: brightness(1.25); }
+.gl-gun-dugme {
+  margin-top: 6px;
+  background: var(--yuzey-2);
+  border: 1px solid var(--cizgi);
+  border-radius: 6px;
+  color: var(--metin-soluk);
+  font: inherit;
+  font-size: 12px;
+  padding: 6px;
+  cursor: pointer;
+}
+.gl-gun-dugme:hover { background: #252a35; color: var(--metin); }

@@ -334,26 +334,32 @@ class _Handler(BaseHTTPRequestHandler):
             dakika = int(govde["newMinutes"])
             if not 0 <= dakika < 24 * 60:
                 raise ValueError(f"newMinutes gün içinde olmalı: {dakika}")
-            yeni_bas = from_wall_clock(
-                datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
-                + timedelta(minutes=dakika),
-                self.tzid,
-            )
+            gun_basi = datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
+            yeni_bas = from_wall_clock(gun_basi + timedelta(minutes=dakika), self.tzid)
+
+            # Yeniden boyutlandırma: bitiş de dakika olarak verilebilir.
+            # Gün başından sayıldığı için 24*60'ı AŞABİLİR (gece yarısını aşan
+            # etkinlik); üst sınırı bu yüzden ayrı tutuyoruz.
+            bitis_dakika = govde.get("newEndMinutes")
+            if bitis_dakika is not None:
+                bitis_dakika = int(bitis_dakika)
+                if bitis_dakika <= dakika:
+                    raise ValueError("newEndMinutes, newMinutes'tan büyük olmalı")
+                if bitis_dakika > 48 * 60:
+                    raise ValueError("newEndMinutes iki günü aşamaz")
+                yeni_bit = from_wall_clock(
+                    gun_basi + timedelta(minutes=bitis_dakika), self.tzid
+                )
+                kayit = self.repo.move_occurrence(event_id, orijinal, yeni_bas, yeni_bit)
+                self._json({"moved": _tasima(kayit)})
+                return
         else:
             yeni_bas = parse_iso(govde["newStartUtc"])
         yeni_bit = parse_iso(govde["newEndUtc"]) if govde.get("newEndUtc") else None
         if self.repo.get_event(event_id) is None:
             raise LookupError("etkinlik bulunamadı")
         kayit = self.repo.move_occurrence(event_id, orijinal, yeni_bas, yeni_bit)
-        self._json(
-            {
-                "moved": {
-                    "originalStartUtc": kayit.original_start_utc.isoformat(),
-                    "newStartUtc": kayit.new_start_utc.isoformat(),
-                    "newEndUtc": kayit.new_end_utc.isoformat() if kayit.new_end_utc else None,
-                }
-            }
-        )
+        self._json({"moved": _tasima(kayit)})
 
     def _ics_iceri(self) -> None:
         """Gövdedeki `.ics` metnini içe aktarır."""
@@ -396,6 +402,15 @@ class _Handler(BaseHTTPRequestHandler):
         gorunur = bool(self._govde().get("visible", True))
         self.repo.update_calendar(replace(takvim, visible=gorunur))
         self._json({"id": takvim_id, "visible": gorunur})
+
+
+def _tasima(kayit) -> dict:
+    """Override -> sözlük (taşıma/boyutlandırma yanıtı)."""
+    return {
+        "originalStartUtc": kayit.original_start_utc.isoformat(),
+        "newStartUtc": kayit.new_start_utc.isoformat() if kayit.new_start_utc else None,
+        "newEndUtc": kayit.new_end_utc.isoformat() if kayit.new_end_utc else None,
+    }
 
 
 def _takvim(c) -> dict:
@@ -447,7 +462,7 @@ def serve(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,
           verbose: bool = False) -> None:
     """Sunucuyu başlatır ve Ctrl+C'ye kadar çalıştırır."""
     httpd = make_server(repo, tzid, host, port, verbose)
-    print(f"Takvim: http://{host}:{port}  (durdurmak için Ctrl+C)")
+    print(f"Takvim: http://{host}:{port}  (durdurmak için Ctrl+C)", flush=True)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
