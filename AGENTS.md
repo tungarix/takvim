@@ -325,6 +325,13 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     Desende yokken ifade hiç tanınmıyor, tarih sessizce BU haftanın salısına
     düşüyor ve "gelecek hafta" başlıkta kalıyordu. Aynı yerde `onumuzdeki`
     (şapkasız) da var: `haftaya`/`gelecek` şapkasız çalışırken o çalışmıyordu.
+47. **Klavye kısayolları ve panel düğmeleri AYNI fonksiyonu çağırır**
+    (`basligiDegistir`, `ornegiSil`, `seriyiSil`). Ayrı yazılsalardı onay
+    metni birinde güncellenip diğerinde unutulurdu; silme geri alınamaz.
+48. **`Del`/`Backspace` yalnızca bir etkinlik SEÇİLİYKEN ve odak bir girdi
+    kutusunda DEĞİLKEN çalışır.** Hızlı ekleme kutusunda yazarken Del harf
+    silmeli, etkinlik değil. `Shift+Del` seriyi siler; ikisi de onay sorar --
+    klavye silmeyi hızlandırır, geri alınamaz hâle getirmez.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

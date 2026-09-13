@@ -175,6 +175,8 @@ olmayabileceği (Program Files) için orada değil. Yedeklemek için uygulamadan
 | Süre değiştirme | Bloğun alt kenarını sürükle |
 | Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |
 | Ayrıntı / işlem | Bloğa tıkla, sağda panel açılır |
+| Klavyeyle silme | Etkinlik seçiliyken <kbd>Del</kbd> bu örneği, <kbd>Shift</kbd>+<kbd>Del</kbd> tüm seriyi siler (ikisi de onay sorar) |
+| Yeniden adlandırma | Etkinlik seçiliyken <kbd>F2</kbd> |
 | Hatırlatıcı | Panelden ekle (0 = tam başlarken, 1440 = 1 gün önce) |
 | Arama | Üstteki kutu; şapka ve büyük/küçük harf önemsiz |
 | Yedek | "Dışa aktar" → `.ics` indirir |

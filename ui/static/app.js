@@ -813,30 +813,75 @@ function panelAc(occ) {
   ciz();
 }
 
+/* Etkinlik işlemleri AYRI fonksiyonlar: hem paneldeki düğmeler hem klavye
+ * kısayolları aynı kodu çağırsın. İkiye ayrılsalardı onay metni bir yerde
+ * güncellenip diğerinde unutulurdu -- silme gibi geri alınamaz bir işlemde
+ * bu kabul edilemez. */
+
+/** Etkinliğin başlığını sorar ve günceller. */
+async function basligiDegistir(occ) {
+  const yeni = await sor("Başlığı değiştir", "Yeni başlık", occ.title);
+  if (yeni === null || !yeni.trim()) return;
+  await eylem(
+    () => istek(`/api/events/${occ.eventId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: yeni.trim() }),
+    }),
+    "Başlık güncellendi",
+  );
+}
+
+/** Yalnızca bu örneği siler; tekrarlı serinin geri kalanı kalır. */
+async function ornegiSil(occ) {
+  const tamam = await onayla(
+    "Bu örneği sil",
+    `"${occ.title}" — yalnızca bu örnek silinecek, serinin geri kalanı kalır.`,
+    "Sil",
+    true,
+  );
+  if (!tamam) return;
+  await eylem(
+    () => istek("/api/occurrences/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
+    }),
+    "Bu örnek silindi",
+  );
+}
+
+/** Seriyi tamamen siler. Onay metni bunun geri alınamaz olduğunu söylüyor. */
+async function seriyiSil(occ) {
+  const tamam = await onayla(
+    "Seriyi tamamen sil",
+    `"${occ.title}" — TÜM seri silinecek. Bu geri alınamaz.`,
+    "Seriyi sil",
+    true,
+  );
+  if (!tamam) return;
+  await eylem(
+    () => istek(`/api/events/${occ.eventId}`, { method: "DELETE" }),
+    "Seri silindi",
+  );
+}
+
 function islemleriCiz(occ) {
   const kap = el("panel-islemler");
   kap.innerHTML = "";
 
-  const ekle = (metin, tehlike, islev) => {
+  const ekle = (metin, tehlike, islev, kisayol) => {
     const b = document.createElement("button");
     b.className = "islem-dugme" + (tehlike ? " tehlike" : "");
     b.textContent = metin;
+    // Kısayolu düğmenin üstünde göster: klavye kısayolu ancak keşfedilebilirse
+    // işe yarar.
+    if (kisayol) b.title = `Kısayol: ${kisayol}`;
     b.onclick = islev;
     kap.appendChild(b);
   };
 
-  ekle("Başlığı değiştir", false, async () => {
-    const yeni = await sor("Başlığı değiştir", "Yeni başlık", occ.title);
-    if (yeni === null || !yeni.trim()) return;
-    await eylem(
-      () => istek(`/api/events/${occ.eventId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: yeni.trim() }),
-      }),
-      "Başlık güncellendi",
-    );
-  });
+  ekle("Başlığı değiştir", false, () => basligiDegistir(occ), "F2");
 
   (occ.reminders || []).forEach((r) => {
     ekle(`⏰ ${hatirlaticiMetni(r.minutesBefore)} — kaldır`, false, async () => {
@@ -871,37 +916,9 @@ function islemleriCiz(occ) {
 
   // Tekrarlı serilerde tek örnek / tüm seri ayrımı kritik: kullanıcı bir
   // dersi bu haftalık iptal etmekle dönem boyunca silmeyi karıştırmamalı.
-  ekle("Bu örneği sil", true, async () => {
-    const tamam = await onayla(
-      "Bu örneği sil",
-      `"${occ.title}" — yalnızca bu örnek silinecek, serinin geri kalanı kalır.`,
-      "Sil",
-      true,
-    );
-    if (!tamam) return;
-    await eylem(
-      () => istek("/api/occurrences/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
-      }),
-      "Bu örnek silindi",
-    );
-  });
-
-  ekle("Seriyi tamamen sil", true, async () => {
-    const tamam = await onayla(
-      "Seriyi tamamen sil",
-      `"${occ.title}" — TÜM seri silinecek. Bu geri alınamaz.`,
-      "Seriyi sil",
-      true,
-    );
-    if (!tamam) return;
-    await eylem(
-      () => istek(`/api/events/${occ.eventId}`, { method: "DELETE" }),
-      "Seri silindi",
-    );
-  });
+  // Klavyede de aynı ayrım var: Del tek örnek, Shift+Del tüm seri.
+  ekle("Bu örneği sil", true, () => ornegiSil(occ), "Del");
+  ekle("Seriyi tamamen sil", true, () => seriyiSil(occ), "Shift+Del");
 }
 
 function hatirlaticiMetni(dakika) {
@@ -1049,10 +1066,31 @@ document.addEventListener("keydown", (e) => {
    * kısayollar yalnızca ÇIPLAK basıldığında geçerli. */
   if (e.ctrlKey || e.altKey || e.metaKey) return;
 
-  // Yazarken kısayollar devreye girmesin
+  // Yazarken kısayollar devreye girmesin. Del ve Backspace için bu ŞART:
+  // hızlı ekleme kutusunda yazarken Del etkinlik silmemeli, harf silmeli.
   if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
     if (e.key === "Escape") e.target.blur();
     return;
+  }
+
+  /* Seçili etkinlik üzerinde çalışan kısayollar. "Seçili" = paneli açık olan
+   * etkinlik; kullanıcı ona zaten tıklamış durumda.
+   *
+   * Del ile Shift+Del ayrımı paneldeki iki düğmenin aynısı: tek örnek mi, tüm
+   * seri mi. İkisi de ONAY SORUYOR -- klavyeyle çalışmak silmeyi hızlandırır,
+   * geri alınamaz hale getirmez. */
+  const secili = durum.secili;
+  if (secili) {
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      (e.shiftKey ? seriyiSil : ornegiSil)(secili);
+      return;
+    }
+    if (e.key === "F2") {
+      e.preventDefault();
+      basligiDegistir(secili);
+      return;
+    }
   }
   const kisayollar = {
     Escape: () => { gunListesiKapat(); panelKapat(); },
