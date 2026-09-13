@@ -21,9 +21,9 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Boyutlandırma, tüm gün taşıma, ay açılır listesi | ✅ bitti |
 | Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
 
-**v1 kapsamı tamamlandı.**
+**v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**313 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**383 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -420,21 +420,20 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı tamamlandı** (README §1). Yeni özellik eklemeden önce SOR --
-kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+**v1 kapsamı + Faz A–E tamamlandı** (README §1, §10). Yeni özellik eklemeden
+önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-Masaüstü penceresine geçişte BİLİNÇLİ OLARAK yapılmayanlar:
+Faz A–E'de bitenler (detay README §10'da):
 
-- **Sistem tepsisi simgesi.** Pencere kapanınca uygulama kapanıyor, yani
-  hatırlatıcı da susuyor. Kapatınca tepsiye küçülmek isteniyorsa bu ayrı bir
-  iş ve kullanıcıya sorulmalı.
-- **`.ics` içe aktarma arayüzü.** Sunucuda `POST /api/import` hazır, ön yüzde
-  düğmesi yok.
-- **Kendi sağ tık menümüz.** WebView2'nin menüsü kapalı (uygulama gibi dursun
-  diye); kopyala/yapıştır klavyeyle çalışıyor.
-- **Monitör başına DPI farkındalığı.** pywebview yalnızca sistem DPI'ını
-  ayarlıyor; farklı ölçekli ikinci monitörde yazı bulanıklaşabilir.
+- **Sistem tepsisi simgesi** (`ui/tepsi.py`, pythonnet `NotifyIcon`, yeni
+  bağımlılık yok). Varsayılan KAPALI; `ui/ayarlar.py` + ⚙ kutusundan açılıyor.
+- **`.ics` içe aktarma arayüzü** (önizlemeli, `?dry_run=1`) + **çakışma
+  uyarısı** (`GET /api/conflicts`, engellemez).
+- **Yedek geri yükleme** (`POST /api/backups/restore`) + **seri silmede
+  anlık görüntü/geri alma** (`004_silinen_seriler.sql`).
+- **"Bundan sonrasını değiştir"** (`Repo.split_series`, THISANDFUTURE).
+- **Lint/tip**: `ruff` + `mypy` (`core/` + `store/` katı); istisnalar
+  `pyproject.toml`'da gerekçeli.
 
-Bilinçli olarak yapılmamış olanlar README §10'da: blok yeniden
-boyutlandırma, tüm gün şeridinde sürükleme, ay görünümünde açılır liste,
-otomatik başlatma kaydı.
+Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menümüz, monitör başına DPI
+farkındalığı, bildirimde kendi uygulama adı (PowerShell AUMID'i ödünç).

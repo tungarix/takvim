@@ -20,7 +20,7 @@ from dateutil.rrule import rruleset, rrulestr
 from .models import Event, Occurrence, Override
 from .timeutil import UTC, ensure_aware, get_tz
 
-__all__ = ["expand", "series_end"]
+__all__ = ["expand", "instance_starts", "series_end"]
 
 _UNTIL_RE = re.compile(r"UNTIL=([^;\s]+)", re.IGNORECASE)
 
@@ -244,6 +244,40 @@ def _is_instance(event: Event, rs: rruleset | None, start_utc: datetime) -> bool
         hit.astimezone(UTC) == start_utc
         for hit in rs.between(target, target, inc=True)
     )
+
+
+def instance_starts(
+    event: Event, *, before: datetime | None = None
+) -> list[datetime]:
+    """KURAL düzeyinde örnek başlangıçları (UTC, sıralı).
+
+    `expand()`'dan farkı: override'ları UYGULAMAZ, görünür örnekleri değil
+    kuralın ürettiklerini döndürür. İptal edilmiş bir örnek DE listede olur,
+    taşınmış örneğin ORİJİNAL yeri olur. Seri bölme (`split_series`) buna
+    dayanıyor: sayım ve sınır hesabı görünürlükten etkilenmemeli.
+
+    `before` verilirse yalnızca ondan ÖNCEKİLER (sınıra eşit olan hariç).
+    Sonsuz seride `before` ŞART (yoksa liste bitmez); verilmemişse ValueError.
+    """
+    if before is not None:
+        before = ensure_aware(before, "before").astimezone(UTC)
+    if not event.is_recurring:
+        tek = [event.start_utc]
+        return [s for s in tek if before is None or s < before]
+    if before is None:
+        son = series_end(event)
+        if son is None:
+            raise ValueError("sonsuz seride before olmadan örnek listelenemez")
+        bit = son + timedelta(seconds=1)
+    else:
+        bit = before - timedelta(seconds=1)
+    rs = _ruleset(event)
+    tz = get_tz(event.tzid)
+    bas_local = event.start_utc.astimezone(tz)
+    bit_local = bit.astimezone(tz)
+    if bit_local < bas_local:
+        return []
+    return sorted(hit.astimezone(UTC) for hit in rs.between(bas_local, bit_local, inc=True))
 
 
 # ---------------------------------------------------------------------------

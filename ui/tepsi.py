@@ -74,7 +74,7 @@ class Tepsi:
         """
         try:
             if arka_uc is None:
-                import clr  # noqa: F401 -- pythonnet köprüsü
+                import clr  # pythonnet köprüsü; aşağıda AddReference ile kullanılıyor
 
                 # Derlemelere açıkça referans ŞART: eklenmezse `System.*`
                 # import'u `ModuleNotFoundError` veriyor ve `kur()` hep None

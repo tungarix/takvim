@@ -192,9 +192,15 @@ olduğunu taşımaz.
 | Hatırlatıcı | Panelden ekle (0 = tam başlarken, 1440 = 1 gün önce) |
 | Arama | Üstteki kutu; şapka ve büyük/küçük harf önemsiz |
 | Yedek | "Dışa aktar" → `.ics` indirir |
+| Yedekler | Üstteki "Yedekler": otomatik yedekleri listeler, seçileni geri yükler |
+| İçe aktar | Üstteki "İçe aktar": `.ics` seç, önizlemeyi onayla (kaç yeni/güncelleme/atlanacak) |
+| Çakışma uyarısı | Oluştururken üst üste gelen saat varsa arayüz söylüyor, engellemiyor |
+| Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat |
 
-Tekrarlı etkinliklerde panelde **iki ayrı silme** var: "Bu örneği sil" yalnız o
-günü kaldırır, "Seriyi tamamen sil" hepsini. İkisi de onay ister.
+Tekrarlı etkinliklerde panelde **üç ayrı işlem** var: "Bu örneği sil" yalnız o
+günü kaldırır, "Seriyi tamamen sil" hepsini (sayı göstererek sorar, tek adımlı
+geri alma var), "Bundan sonrasını değiştir" seriyi ikiye böler (öncekiler
+aynen kalır, sonrakiler yeni seri olur).
 
 ### Bir şey ters giderse
 
@@ -268,7 +274,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**313 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**383 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -333,6 +339,19 @@ kırmızıya dönüyor.
   elenmesi, tekrarsızda gerçek silme
 - `test_yedek.py` (5): açılışta kopya, günde tek dosya, 7 günlük budama,
   yarım yedek bırakmama
+
+### v1 sonrası eklenenler (Faz A–E)
+
+- `test_gunluk.py` (4): log silinmiyor, döndürülüyor (`.log` → `.1` → `.2`)
+- `test_silinen_seri.py` (11): anlık görüntülü silme + geri alma (override,
+  hatırlatıcı, fired geçmişi korunuyor), tek adım/ezme, UID çakışması
+- `test_ui_yedek.py` (8): yedek listesi/dönüşü, seri bilgisi, geri alma uçları
+- `test_seri_bolme.py` (16): THISANDFUTURE bölme (COUNT paylaşımı, UNTIL
+  kısaltması, override/hatırlatıcı/fired dağılımı)
+- `test_ayarlar_otomatik.py` (18): ayar dosyası, Başlangıç kaydı, tepsi simgesi
+- `test_ui_views.py` (+9): çakışma sorgusu (6), içe aktarma önizlemesi, seri bölme (2)
+- Lint + tip: `ruff` (F/I/UP/RUF100) ve `mypy` (`core/` + `store/`) temiz;
+  kural dışı bırakılanlar `pyproject.toml`'da gerekçesiyle listeli
 
 ### Faz 2 sonrası düzeltme: `sequence` kolonu ikiye ayrıldı
 
@@ -503,9 +522,10 @@ Uygulama kapalıyken de çalışması istendiği için arayüzden ayrı: `remind
 kendi bağlantısını açar, aynı veritabanını okur. Bildirimleri sınamak için
 `-m remind --test`.
 
-**Otomatik başlatmayı KURMADIK.** Başlangıç klasörüne kısayol koymak ya da
-Görev Zamanlayıcı kaydı açmak sistem düzeyinde bir değişiklik; bunu sormadan
-yapmıyoruz. İstersen tek seferlik:
+**Otomatik başlatma varsayılan KAPALI.** Başlangıç klasörüne kısayol koymak
+sistem düzeyinde bir değişiklik; sormadan yapılmıyor. Açmak istersen
+arayüzdeki ⚙ Ayarlar kutusundaki anahtar yeterli (kurulumu da kaldırılması da
+oradan). Elle yapmak istersen karşılığı:
 
 ```powershell
 $hedef = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Takvim Hatirlatici.lnk"
@@ -564,9 +584,19 @@ onu kullanıyor. Üç regresyon testi ekli.
 v1 kapsamı tamamlandı; §1'deki kapsam dışı listesi hâlâ geçerli
 (sunucu, hesap, senkron, davet, mobil, CalDAV).
 
-Bilinçli olarak yapılmayan tek şey **otomatik başlatma kaydı**: Başlangıç
-klasörüne kısayol koymak sistem düzeyinde bir değişiklik, komutu §9'da ama
-kurulumu kullanıcının kararı.
+v1 sonrası eklenenler (kapsamı büyütmeden, konfor + güvenlik):
+
+- Yedek geri yükleme (arayüzden liste + dönüş, mevcut hâl kenara alınarak)
+- Seri silmede sayı gösteren onay + tek adımlı geri alma (override,
+  hatırlatıcı, fired geçmişiyle)
+- `.ics` içe aktarma düğmesi (önizlemeli) + çakışma uyarısı
+- Sistem tepsisine küçült + Ayarlar kutusu + otomatik başlatma kaydı
+  (ikisi de varsayılan kapalı)
+- "Bundan sonrasını değiştir" (seri bölme, THISANDFUTURE karşılığı)
+
+Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menüsü, monitör başına DPI
+farkındalığı, bildirimde kendi uygulama adı (PowerShell AUMID'i ödünç
+alınıyor; kaydı sistem değişikliği).
 
 ---
 

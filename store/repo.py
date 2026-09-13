@@ -10,6 +10,7 @@ başlangıcı üç yıl önce olabilir. Sorgu iki parçalı, ayrıntı orada.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from collections import defaultdict
@@ -28,6 +29,7 @@ from core import (
     Reminder,
     ensure_aware,
     expand,
+    instance_starts,
     parse_iso,
     series_end,
 )
@@ -185,9 +187,236 @@ def _row_to_override(row: sqlite3.Row) -> Override:
     )
 
 
+def _tek_kural(rrule: str) -> str:
+    """RRULE metnindeki TEK kural gövdesini döndürür.
+
+    Satır sınıflandırması `_is_bounded` ile aynı (`RRULE:` önekli ya da çıplak
+    satır kuraldır, `DTSTART`/`EXDATE` satırı değil). Birden çok kural varsa
+    ValueError: COUNT/UNTIL hesabı kural başına değil küme başına yapılır ve
+    bölme yanlış sayardı.
+    """
+    kurallar = []
+    for satir in rrule.splitlines():
+        s = satir.strip()
+        if not s:
+            continue
+        if ":" in s:
+            prefix, _, body = s.partition(":")
+            if prefix.strip().upper().split(";")[0] != "RRULE":
+                continue
+            kurallar.append(body)
+        else:
+            kurallar.append(s)
+    if len(kurallar) != 1:
+        raise ValueError("çok kurallı seriler bölünemez")
+    return kurallar[0]
+
+
+def _kural_satiri_degistir(metin: str, eski: str, yeni: str) -> str:
+    """Gövdesi `eski` olan İLK RRULE satırını `yeni` ile değiştirir.
+
+    `str.replace` kullanılmıyor: kural gövdesi metnin başka yerinde de
+    geçebilir; satır bazlı eşleşme kesin.
+    """
+    cikti: list[str] = []
+    yapildi = False
+    for satir in metin.splitlines():
+        s = satir.strip()
+        govde, onek = s, ""
+        if ":" in s:
+            prefix, _, body = s.partition(":")
+            if prefix.strip().upper().split(";")[0] != "RRULE":
+                cikti.append(satir)
+                continue
+            govde, onek = body, prefix + ":"
+        if not yapildi and govde == eski:
+            cikti.append(f"{onek}{yeni}")
+            yapildi = True
+        else:
+            cikti.append(satir)
+    return "\n".join(cikti)
+
+
+def _seriyi_bol(
+    event: Event, overrides: list[Override], split_utc: datetime
+) -> tuple[Event, Event, list[Override], list[Override]]:
+    """Seriyi BÖLER `(eski, yeni, eski_override'lar, yeni_override'lar)`.
+
+    Saf çekirdek: DB yazmaz. Eski seri `[..., split)` aralığını, yeni seri
+    `[split, ...)` aralığını taşır (RFC 5545 `RANGE=THISANDFUTURE` karşılığı).
+    Yeni etkinliğin `uid`'si BOŞ dönüyor; çağıran `new_uid()` ile dolduruyor
+    (`new_uid` store'a ait, bölme mantığı saf kalıyor).
+
+    Kurallar:
+    - COUNT'lu kuralda iki tarafa düşen örnek SAYISI yazılıyor.
+    - COUNT'suz kuralda eskiye `UNTIL` ekleniyor (UTC `Z` biçimi).
+    - RDATE/EXDATE ve override'lar bölme anına göre iki tarafa ayrılıyor.
+    - Zaman/süre DEĞİŞMİYOR: yeni seri bölme anında aynı saatte başlıyor.
+      Başlık/konum/açıklama değişimi çağıranın işi (`replace` ile).
+    """
+    split = ensure_aware(split_utc, "split_utc").astimezone(UTC)
+    if not event.is_recurring:
+        raise ValueError("tekrarsız seri bölünemez")
+
+    def _dogrula(baslangiclar: list) -> int:
+        """Bölme noktasını listeye karşı doğrular; önceki örnek sayısını döndürür."""
+        if split not in baslangiclar:
+            raise ValueError("bölme noktası serinin bir örneği olmalı")
+        once = sum(1 for s in baslangiclar if s < split)
+        if not once:
+            raise ValueError("ilk örnekten bölünemez; tümünü düzenle")
+        return once
+
+    if event.rrule:
+        kural = _tek_kural(event.rrule)
+        sayi = re.search(r"COUNT=(\d+)", kural, re.IGNORECASE)
+        if sayi:
+            # COUNT'lu seri SINIRLI: tam liste bitiyor.
+            tum = instance_starts(event)
+            once_sayisi = _dogrula(tum)
+            toplam = len(tum)
+            eski_govde = re.sub(
+                r"COUNT=\d+", f"COUNT={once_sayisi}", kural, flags=re.IGNORECASE
+            )
+            yeni_govde = re.sub(
+                r"COUNT=\d+",
+                f"COUNT={toplam - once_sayisi}",
+                kural,
+                flags=re.IGNORECASE,
+            )
+        else:
+            # UNTIL'li ya da sınırsız: bölme ve öncesi sayılıyor, tam liste yok.
+            # Burada SAYI değil doğrulama önemli (COUNT yazılmıyor).
+            once = instance_starts(event, before=split)
+            genis = instance_starts(event, before=split + timedelta(seconds=1))
+            _dogrula([*once, *(s for s in genis if s not in once)])
+            # UNTIL kapsayıcı: bölme anının 1 saniye öncesi, bölme örneği
+            # eskiye SIZMASIN. Kuralda UNTIL zaten varsa DEĞİŞTİRİLİYOR
+            # (eklenmiyor): çift UNTIL'de dateutil sonuncuyu alır ve eski
+            # sınır sessizce yanlış olurdu.
+            sinir = (split - timedelta(seconds=1)).strftime("%Y%m%dT%H%M%SZ")
+            if re.search(r"UNTIL=", kural, re.IGNORECASE):
+                eski_govde = re.sub(
+                    r"UNTIL=[^;]+", f"UNTIL={sinir}", kural, flags=re.IGNORECASE
+                )
+            else:
+                eski_govde = f"{kural};UNTIL={sinir}"
+            yeni_govde = kural
+        eski_rrule = _kural_satiri_degistir(event.rrule, kural, eski_govde)
+        yeni_rrule: str | None = _kural_satiri_degistir(event.rrule, kural, yeni_govde)
+    else:
+        # Yalnızca RDATE: liste her zaman sonlu.
+        once_sayisi = _dogrula(instance_starts(event))
+        eski_rrule = None
+        yeni_rrule = None
+
+    eski = replace(
+        event,
+        rrule=eski_rrule,
+        rdate=tuple(d for d in event.rdate if d < split),
+        exdate=tuple(d for d in event.exdate if d < split),
+    )
+    sure = event.duration
+    # Yeni RDATE `>` ile ayrılıyor (`>=` değil): bölme anı yeni serinin
+    # DTSTART'ı ve DTSTART zaten örnek sayılıyor; `>=` olsa aynı an iki kez
+    # üretilirdi. EXDATE'te bu sorun yok (bölme anına eşit dışlama, doğrulanmış
+    # bir bölme noktasında zaten olamaz).
+    yeni = Event(
+        id=None,
+        uid="",
+        calendar_id=event.calendar_id,
+        title=event.title,
+        start_utc=split,
+        end_utc=split + sure,
+        tzid=event.tzid,
+        all_day=event.all_day,
+        rrule=yeni_rrule,
+        rdate=tuple(d for d in event.rdate if d > split),
+        exdate=tuple(d for d in event.exdate if d >= split),
+        description=event.description,
+        location=event.location,
+    )
+    eski_ov = [ov for ov in overrides if ov.original_start_utc.astimezone(UTC) < split]
+    yeni_ov = [ov for ov in overrides if ov.original_start_utc.astimezone(UTC) >= split]
+    return eski, yeni, eski_ov, yeni_ov
+
+
+def _event_ekle(conn: sqlite3.Connection, event: Event, now: str) -> int:
+    """events satırı yazar, id döndürür. Transaction ÇAĞIRANA ait.
+
+    `add_event` ve `split_series` aynı SQL'i kullanıyor: biri tek başına
+    transaction açıyor, öteki bölmenin parçası olarak dışarıdan alıyor.
+    """
+    cur = conn.execute(
+        """
+        INSERT INTO events (
+            uid, calendar_id, title, description, location,
+            start_utc, end_utc, tzid, all_day,
+            rrule, rdate, exdate, series_end_utc,
+            sequence, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        """,
+        (
+            event.uid,
+            event.calendar_id,
+            event.title,
+            event.description,
+            event.location,
+            _to_db(event.start_utc),
+            _to_db(event.end_utc),
+            event.tzid,
+            int(event.all_day),
+            event.rrule,
+            _join_dates(event.rdate),
+            _join_dates(event.exdate),
+            _to_db(series_end(event)),
+            now,
+            now,
+        ),
+    )
+    yeni_id = cur.lastrowid
+    if yeni_id is None:  # INSERT başarılıysa olmamalı
+        raise RuntimeError("Etkinlik yazıldı ama id alınamadı")
+    return yeni_id
+
+
+def _event_guncelle(conn: sqlite3.Connection, event: Event) -> None:
+    """events satırını günceller (sequence+1, series_end yeniden). Transaction
+    ÇAĞIRANA ait; gerekçe `_event_ekle` ile aynı."""
+    if event.id is None:
+        raise ValueError("id'si olan bir Event bekler")
+    cur = conn.execute(
+        """
+        UPDATE events SET
+            calendar_id = ?, title = ?, description = ?, location = ?,
+            start_utc = ?, end_utc = ?, tzid = ?, all_day = ?,
+            rrule = ?, rdate = ?, exdate = ?, series_end_utc = ?,
+            sequence = sequence + 1, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            event.calendar_id,
+            event.title,
+            event.description,
+            event.location,
+            _to_db(event.start_utc),
+            _to_db(event.end_utc),
+            event.tzid,
+            int(event.all_day),
+            event.rrule,
+            _join_dates(event.rdate),
+            _join_dates(event.exdate),
+            _to_db(series_end(event)),
+            _now_db(),
+            event.id,
+        ),
+    )
+    if cur.rowcount == 0:
+        raise LookupError(f"Etkinlik bulunamadı: id={event.id}")
+
+
 class Repo:
     """Takvim veritabanı üzerinde CRUD ve aralık sorgusu."""
-
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
 
@@ -257,34 +486,7 @@ class Repo:
         """Etkinliği kaydeder; series_end_utc'yi RRULE'dan hesaplar."""
         now = _now_db()
         with _tx(self.conn):
-            cur = self.conn.execute(
-                """
-                INSERT INTO events (
-                    uid, calendar_id, title, description, location,
-                    start_utc, end_utc, tzid, all_day,
-                    rrule, rdate, exdate, series_end_utc,
-                    sequence, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-                """,
-                (
-                    event.uid,
-                    event.calendar_id,
-                    event.title,
-                    event.description,
-                    event.location,
-                    _to_db(event.start_utc),
-                    _to_db(event.end_utc),
-                    event.tzid,
-                    int(event.all_day),
-                    event.rrule,
-                    _join_dates(event.rdate),
-                    _join_dates(event.exdate),
-                    _to_db(series_end(event)),
-                    now,
-                    now,
-                ),
-            )
-            event_id = cur.lastrowid
+            event_id = _event_ekle(self.conn, event, now)
         return replace(event, id=event_id)
 
     def get_event(self, event_id: int) -> Event | None:
@@ -341,34 +543,7 @@ class Repo:
         if event.id is None:
             raise ValueError("update_event id'si olan bir Event bekler")
         with _tx(self.conn):
-            cur = self.conn.execute(
-                """
-                UPDATE events SET
-                    calendar_id = ?, title = ?, description = ?, location = ?,
-                    start_utc = ?, end_utc = ?, tzid = ?, all_day = ?,
-                    rrule = ?, rdate = ?, exdate = ?, series_end_utc = ?,
-                    sequence = sequence + 1, updated_at = ?
-                WHERE id = ?
-                """,
-                (
-                    event.calendar_id,
-                    event.title,
-                    event.description,
-                    event.location,
-                    _to_db(event.start_utc),
-                    _to_db(event.end_utc),
-                    event.tzid,
-                    int(event.all_day),
-                    event.rrule,
-                    _join_dates(event.rdate),
-                    _join_dates(event.exdate),
-                    _to_db(series_end(event)),
-                    _now_db(),
-                    event.id,
-                ),
-            )
-            if cur.rowcount == 0:
-                raise LookupError(f"Etkinlik bulunamadı: id={event.id}")
+            _event_guncelle(self.conn, event)
 
     def delete_event(self, event_id: int) -> None:
         """Etkinliği ve (CASCADE ile) override'larını siler."""
@@ -563,6 +738,72 @@ class Repo:
             "ornek_sayisi": sayi,
             "sonsuz": series_end(event) is None,
         }
+
+    def split_series(
+        self,
+        event_id: int,
+        split_utc: datetime,
+        *,
+        title: str | None = None,
+        location: str | None = None,
+        description: str | None = None,
+    ) -> dict:
+        """Seriyi BÖLER: `[..., split)` eski seride kalır, `[split, ...)` YENİ
+        seriye taşınır (RFC 5545 `RANGE=THISANDFUTURE` karşılığı).
+
+        `title`/`location`/`description` verilirse YENİ seriye yazılır (dersin
+        adı dönem ortasında değişti senaryosu); verilmezse eski değerler aynen
+        taşınır. Saat/süre DEĞİŞMEZ — o iş örnek kaydırmada.
+
+        Hepsi TEK transaction'da: eski güncellenir (sequence+1), yeni yazılır,
+        override'lar bölünür, hatırlatıcılar kopyalanır, bölme anından SONRAKİ
+        fired kayıtları yeni hatırlatıcılara taşınır (taşınmazsa o örnekler
+        yeniden öter). Hata hâlinde hiçbir şey değişmez.
+        """
+        event = self.get_event(event_id)
+        if event is None:
+            raise LookupError(f"Etkinlik bulunamadı: id={event_id}")
+        eski, yeni, _, yeni_ov = _seriyi_bol(
+            event, self.list_overrides(event_id), split_utc
+        )
+        if title is not None:
+            yeni = replace(yeni, title=title)
+        if location is not None:
+            yeni = replace(yeni, location=location)
+        if description is not None:
+            yeni = replace(yeni, description=description)
+        yeni = replace(yeni, uid=new_uid())
+        split_metni = _to_db(ensure_aware(split_utc, "split_utc"))
+        with _tx(self.conn):
+            _event_guncelle(self.conn, eski)
+            yeni_id = _event_ekle(self.conn, yeni, _now_db())
+            for ov in yeni_ov:
+                self.conn.execute(
+                    "DELETE FROM event_overrides WHERE event_id = ?"
+                    " AND original_start_utc = ?",
+                    (event_id, _to_db(ov.original_start_utc)),
+                )
+                self.put_override(replace(ov, event_id=yeni_id))
+            for hat in self.list_reminders(event_id):
+                yeni_hat = self.add_reminder(yeni_id, hat.minutes_before)
+                # Sabit genişlikte UTC metni sözlük sırasıyla da kronolojik
+                # (kural 8); bölme anından sonrakiler yeni hatırlatıcıya taşınır.
+                satirlar = self.conn.execute(
+                    "SELECT occurrence_start_utc, fired_at_utc FROM reminder_fired"
+                    " WHERE reminder_id = ? AND occurrence_start_utc >= ?",
+                    (hat.id, split_metni),
+                ).fetchall()
+                for satir in satirlar:
+                    self.conn.execute(
+                        "INSERT INTO reminder_fired (reminder_id,"
+                        " occurrence_start_utc, fired_at_utc) VALUES (?, ?, ?)",
+                        (
+                            yeni_hat.id,
+                            satir["occurrence_start_utc"],
+                            satir["fired_at_utc"],
+                        ),
+                    )
+        return {"eski_id": event_id, "yeni_id": yeni_id, "bolme": split_metni}
 
     def metadata(self, event_id: int) -> dict | None:
         """Modelde taşınmayan DB alanları: sequence, zaman damgaları, seri sonu."""

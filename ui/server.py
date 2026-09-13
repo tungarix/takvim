@@ -415,6 +415,14 @@ class _Handler(BaseHTTPRequestHandler):
 
             if (
                 len(parcalar) == 4
+                and parcalar[:2] == ["api", "events"]
+                and parcalar[3] == "split"
+            ):
+                self._seri_bol(int(parcalar[2]))
+                return
+
+            if (
+                len(parcalar) == 4
                 and parcalar[:2] == ["api", "calendars"]
                 and parcalar[3] == "visible"
             ):
@@ -754,6 +762,29 @@ class _Handler(BaseHTTPRequestHandler):
         kayit = self.repo.add_reminder(event_id, int(dakika))
         self._json(
             {"reminder": {"id": kayit.id, "minutesBefore": kayit.minutes_before}}, 201
+        )
+
+    def _seri_bol(self, event_id: int) -> None:
+        """POST /api/events/<id>/split — seriyi böl (THISANDFUTURE).
+
+        Gövde: `originalStartUtc` (zorunlu, override anahtarı) + isteğe bağlı
+        `title`/`location`/`description` (yalnızca YENİ seriye yazılır).
+        """
+        govde = self._govde()
+        if not govde.get("originalStartUtc"):
+            raise ValueError("originalStartUtc gerekli")
+        split = parse_iso(govde["originalStartUtc"])
+        title = govde.get("title")
+        if title is not None and not str(title).strip():
+            raise ValueError("başlık boş")
+        self._json(
+            self.repo.split_series(
+                event_id,
+                split,
+                title=title,
+                location=govde.get("location"),
+                description=govde.get("description"),
+            )
         )
 
     def _takvim_olustur(self) -> None:

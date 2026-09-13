@@ -338,6 +338,34 @@ def test_api_statik_dosya_disina_cikamaz(sunucu):
     assert hata.value.code == 404
 
 
+def test_api_seri_bolme(repo, ders, sunucu):
+    """POST /api/events/<id>/split: öncesi eski başlık, sonrası yeni."""
+    ev = _ekle(repo, ders, "Algoritma", ist(2026, 9, 7, 10, 0), ist(2026, 9, 7, 11, 0),
+               rrule="FREQ=WEEKLY;BYDAY=MO")
+    sonuc = _post(sunucu, f"/api/events/{ev.id}/split", {
+        "originalStartUtc": ist(2026, 9, 14, 10, 0).isoformat(),
+        "title": "Veri Yapıları",
+    })
+    assert sonuc["eski_id"] == ev.id and sonuc["yeni_id"] != ev.id
+    hafta = _get(sunucu, "/api/week?date=2026-09-08")
+    basliklar = [o["title"] for g in hafta["days"] for o in g["timed"]]
+    assert "Algoritma" in basliklar and "Veri Yapıları" not in basliklar
+    hafta = _get(sunucu, "/api/week?date=2026-09-15")
+    basliklar = [o["title"] for g in hafta["days"] for o in g["timed"]]
+    assert "Veri Yapıları" in basliklar
+
+
+def test_api_seri_bolme_ilk_ornek_400(repo, ders, sunucu):
+    """İlk örnekten bölme 400 (eski seri boş kalırdı)."""
+    ev = _ekle(repo, ders, "Algoritma", ist(2026, 9, 7, 10, 0), ist(2026, 9, 7, 11, 0),
+               rrule="FREQ=WEEKLY;BYDAY=MO")
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(sunucu, f"/api/events/{ev.id}/split", {
+            "originalStartUtc": ist(2026, 9, 7, 10, 0).isoformat(),
+        })
+    assert hata.value.code == 400
+
+
 def test_api_cakisma_kesiseni_bildirir(sunucu, repo, ders):
     """10:00-11:00 kaydına 10:30-11:30 sorulunca çakışma dönüyor."""
     _ekle(repo, ders, "Dişçi", ist(2026, 9, 8, 10, 0), ist(2026, 9, 8, 11, 0))

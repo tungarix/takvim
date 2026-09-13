@@ -1369,9 +1369,39 @@ function islemleriCiz(occ) {
   if (occ.recurring) {
     ekle("Bu örneği sil", true, () => ornegiSil(occ), "Del");
     ekle("Seriyi tamamen sil", true, () => seriyiSil(occ), "Shift+Del");
+    ekle("Bundan sonrasını değiştir", false, () => seriyiBol(occ));
   } else {
     ekle("Sil", true, () => ornegiSil(occ), "Del");
   }
+}
+
+/* Seriyi BÖLER: bu örnek ve sonrakiler yeni seri oluyor (THISANDFUTURE).
+ * Anahtar `originalStartUtc` (taşınmış örnekte `startUtc` DEĞİL — AGENTS 21).
+ * Saat değişmiyor; değişen başlık/konum/açıklama YALNIZCA yeni seriye yazılıyor.
+ * İlk örnekte bölme sunucuda reddediliyor (eski seri boş kalırdı). */
+async function seriyiBol(occ) {
+  const s = await modalForm("Bundan sonrasını değiştir",
+    `"${occ.title}" — bu örnek ve sonrakiler yeni seri olacak, öncekiler aynen kalır.`,
+    [
+      { ad: "baslik", etiket: "Başlık (yeni seri)", tur: "metin", deger: occ.title },
+      { ad: "konum", etiket: "Konum", tur: "metin", deger: occ.location || "" },
+      { ad: "aciklama", etiket: "Açıklama", tur: "uzunmetin", deger: occ.description || "" },
+    ],
+    "Böl");
+  if (s === null || !s.baslik.trim()) return;
+  await eylem(
+    () => istek(`/api/events/${occ.eventId}/split`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        originalStartUtc: occ.originalStartUtc,
+        title: s.baslik.trim(),
+        location: s.konum.trim(),
+        description: s.aciklama.trim(),
+      }),
+    }),
+    "Seri bölündü",
+  );
 }
 
 function hatirlaticiMetni(dakika) {
