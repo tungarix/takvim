@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import sys
 import threading
 import traceback
@@ -32,7 +33,7 @@ from datetime import date
 from pathlib import Path
 
 from core.console import guvenli_konsol
-from store import Repo
+from store import Repo, yedek_al, yedek_klasoru
 
 from .demo import TZID, seed
 from .pencere import BASLIK, pencere_ac
@@ -209,8 +210,25 @@ def _calistir(args) -> int:
     # çalıştırmada arka plan thread'ine geçiyor ve bağlantı burada kurulduğu
     # için sqlite3'ün thread kontrolünü kapatmamız gerekiyor. Sunucu TEK
     # THREAD'li olduğundan erişim yine sıralı (bkz. `make_server`).
-    repo = Repo.open(args.db, check_same_thread=args.no_browser)
     try:
+        repo = Repo.open(args.db, check_same_thread=args.no_browser)
+    except sqlite3.DatabaseError as hata:
+        # Bozuk ya da okunamayan veritabanı: kullanıcıya çıkış yolunu göster.
+        # "Veritabanı bozuk" mesajı tek başına çaresizlik, yedeklerin yeri
+        # kurtarma demek.
+        raise RuntimeError(
+            f"Veritabanı açılamadı: {hata}. "
+            f"Yedekler burada: {yedek_klasoru(veri_dizini(args.db))}"
+        ) from hata
+
+    try:
+        # Yedek EN BAŞTA alınıyor: bir sonraki adımda migration çalışabilir ve
+        # migration'dan önceki hâlin kopyası, işler ters giderse geri dönülecek
+        # tek nokta.
+        if args.db != ":memory:":
+            alinan = yedek_al(repo.conn, veri_dizini(args.db), bugun=date.today())
+            print(f"Yedek: {alinan}" if alinan else "Yedek alınamadı (takvim çalışıyor).", flush=True)
+
         if args.demo:
             if repo.list_calendars():
                 print("--demo: veritabanı dolu, örnek veri eklenmedi", flush=True)

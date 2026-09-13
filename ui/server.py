@@ -29,6 +29,17 @@ from .presenter import day_payload, month_payload, week_payload
 __all__ = ["serve", "make_server"]
 
 STATIC = Path(__file__).resolve().parent / "static"
+
+# Arayüzün sunabileceği tekrar seçenekleri. Haftalık kuralda BYDAY yok:
+# başlangıç günü zaten doğru günde ve FREQ=WEEKLY oradan yürüyor.
+TEKRAR_SECENEKLERI = {
+    "yok": None,
+    "gunluk": "FREQ=DAILY",
+    "haftalik": "FREQ=WEEKLY",
+    "haftaici": "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+    "aylik": "FREQ=MONTHLY",
+    "yillik": "FREQ=YEARLY",
+}
 _MAKS_GOVDE = 8 * 1024 * 1024  # 8 MB: .ics içe aktarma için fazlasıyla yeterli
 
 
@@ -310,6 +321,8 @@ class _Handler(BaseHTTPRequestHandler):
                 end_utc=cozum.end_utc,
                 tzid=cozum.tzid,
                 all_day=cozum.all_day,
+                # "her salı 10:00 ders" artık gerçekten haftalık bir seri.
+                rrule=cozum.rrule,
             )
         )
         self._json(
@@ -354,6 +367,15 @@ class _Handler(BaseHTTPRequestHandler):
         if bitis > 48 * 60:
             raise ValueError("endMinutes iki günü aşamaz")
 
+        # Tekrar KAPALI bir kümeden geliyor, serbest RRULE metni değil: arayüz
+        # bir açılır liste gösteriyor ve kullanıcının RFC 5545 öğrenmesi
+        # gerekmiyor. Tanınmayan değer sessizce "tekrarsız"a düşmüyor, hata
+        # veriyor -- sessizce tek seferlik olan bir ders programı, hiç
+        # oluşturulmamış olandan kötü.
+        tekrar = govde.get("tekrar") or "yok"
+        if tekrar not in TEKRAR_SECENEKLERI:
+            raise ValueError(f"bilinmeyen tekrar: {tekrar}")
+
         gun_basi = datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
         kaydedilen = self.repo.add_event(
             Event(
@@ -364,6 +386,7 @@ class _Handler(BaseHTTPRequestHandler):
                 start_utc=from_wall_clock(gun_basi + timedelta(minutes=dakika), self.tzid),
                 end_utc=from_wall_clock(gun_basi + timedelta(minutes=bitis), self.tzid),
                 tzid=self.tzid,
+                rrule=TEKRAR_SECENEKLERI[tekrar],
             )
         )
         self._json({"event": _event_ozet(kaydedilen)}, 201)

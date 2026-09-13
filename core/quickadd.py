@@ -64,6 +64,29 @@ _GUN_ADI_RE = re.compile(
 )
 _GORECELI_RE = re.compile(r"\b(bugün|bugun|yarın|yarin|öbür gün|obur gun|dün|dun)\b", re.I)
 
+# Tekrar ifadeleri. "her salı" biçiminde YALNIZCA "her" yutuluyor, gün adı
+# tarih çözücüye bırakılıyor: böylece başlangıç ilk salı oluyor ve haftalık
+# tekrar oradan yürüyor. Gün adını da yutsaydık başlangıç bugüne düşer, seri
+# yanlış günde tekrarlardı.
+_TEKRAR_RE = re.compile(
+    r"\b(?:her\s+(gün|gun|hafta|ay|yıl|yil)\b"
+    r"|(hafta\s?içi|hafta\s?ici)\b"
+    rf"|(her)\s+(?={'|'.join(_GUNLER)}))",
+    re.I,
+)
+
+# Tekrar sözcüğünden RRULE'a. Haftalık kuralda BYDAY YOK: başlangıç günü zaten
+# doğru günde ve `FREQ=WEEKLY` o günden yürüyor.
+_TEKRAR_KURAL = {
+    "gün": "FREQ=DAILY",
+    "gun": "FREQ=DAILY",
+    "hafta": "FREQ=WEEKLY",
+    "ay": "FREQ=MONTHLY",
+    "yıl": "FREQ=YEARLY",
+    "yil": "FREQ=YEARLY",
+}
+_HAFTA_ICI_KURAL = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+
 
 @dataclass(frozen=True)
 class QuickAdd:
@@ -80,6 +103,11 @@ class QuickAdd:
     all_day: bool
     tzid: str
     matched: str = ""
+    # Tekrar kuralı (RFC 5545 RRULE) ya da None. Tekrar motoru
+    # (`core/recurrence.py`) baştan beri hazırdı; eksik olan tek şey
+    # kullanıcının "her salı" diyebilmesiydi. Öncesinde "her" sessizce
+    # başlığa yapışıyor ve tek seferlik bir etkinlik oluşuyordu.
+    rrule: str | None = None
 
 
 def _kucult(metin: str) -> str:
@@ -168,6 +196,23 @@ def _tarih_coz(metin: str, bugun: date) -> tuple[date | None, tuple[int, int] | 
     return None, None
 
 
+def _tekrar_coz(metin: str) -> tuple[str | None, tuple[int, int] | None]:
+    """Tekrar ifadesini RRULE'a çevirir; yoksa (None, None).
+
+    Dönen aralık metinden KESİLECEK parçadır. "her salı"da bu yalnızca
+    "her " kısmıdır; gün adı tarih çözücüye kalır.
+    """
+    m = _TEKRAR_RE.search(metin)
+    if not m:
+        return None, None
+    if m.group(1):  # her gün / hafta / ay / yıl
+        return _TEKRAR_KURAL[_kucult(m.group(1))], m.span()
+    if m.group(2):  # hafta içi
+        return _HAFTA_ICI_KURAL, m.span()
+    # "her <gün adı>": haftalık, başlangıç günü seriyi belirliyor.
+    return "FREQ=WEEKLY", m.span()
+
+
 def _sure_coz(metin: str) -> tuple[timedelta | None, tuple[int, int] | None]:
     """'2 saat', '90 dakika', '1.5 saat' ifadesini süreye çevirir."""
     m = _SURE_RE.search(metin)
@@ -239,6 +284,14 @@ def parse_quick_add(
     # "2 saat 14:00" içindeki "saat 14:00" deseni süreyle çakışmasın diye
     # süre saatten önce.
 
+    # 0) Tekrar. Tarihten ÖNCE bakılıyor ama gün adını yutmuyor ("her salı"da
+    # yalnızca "her" gider), böylece bir sonraki adım başlangıcı ilk salıya
+    # kurabiliyor.
+    rrule, tekrar_aralik = _tekrar_coz(ham)
+    if tekrar_aralik:
+        araliklar.append(tekrar_aralik)
+        yakalanan.append(ham[tekrar_aralik[0]:tekrar_aralik[1]].strip())
+
     # 1) Tarih
     gun, gun_aralik = _tarih_coz(ham, bugun)
     if gun_aralik:
@@ -289,7 +342,7 @@ def parse_quick_add(
         end = from_wall_clock(
             datetime.combine(hedef_gun + timedelta(days=1), datetime.min.time()), tzid
         )
-        return QuickAdd(baslik, start, end, True, tzid, " ".join(yakalanan).strip())
+        return QuickAdd(baslik, start, end, True, tzid, " ".join(yakalanan).strip(), rrule)
 
     s, d = baslangic_sd
     start = from_wall_clock(datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day, s, d), tzid)
@@ -306,4 +359,4 @@ def parse_quick_add(
     else:
         end = start + (sure or varsayilan_sure)
 
-    return QuickAdd(baslik, start, end, False, tzid, " ".join(yakalanan).strip())
+    return QuickAdd(baslik, start, end, False, tzid, " ".join(yakalanan).strip(), rrule)

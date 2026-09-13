@@ -332,3 +332,64 @@ def test_hafta_kelimesi_tek_basina_baslikta_kalir():
 
     assert _yerel(r.start_utc) == "2026-09-15 14:00"
     assert r.title == "hafta değerlendirmesi"
+
+
+# ---------------------------------------------------------------------------
+# Tekrar ("her salı 10:00 ders")
+# ---------------------------------------------------------------------------
+
+def test_her_sali_haftalik_seri_kurar():
+    """Tekrar motoru baştan beri vardı, söyleyecek yer yoktu.
+
+    Öncesinde "her" sessizce başlığa yapışıyor ("her ders") ve tek seferlik
+    bir etkinlik oluşuyordu: kullanıcı dönem boyu dersini kurduğunu sanıp tek
+    bir kayıt alıyordu.
+    """
+    r = _coz("her salı 10:00 ders")
+
+    assert r.rrule == "FREQ=WEEKLY"
+    assert r.title == "ders"
+    assert _yerel(r.start_utc) == "2026-09-15 10:00", "ilk salıdan başlamalı"
+
+
+def test_her_gun_gunluk():
+    """"her gün 07:00 koşu" günlük seri."""
+    r = _coz("her gün 07:00 koşu")
+
+    assert r.rrule == "FREQ=DAILY"
+    assert r.title == "koşu"
+
+
+def test_hafta_ici_bes_gun():
+    """"hafta içi" pazartesi-cuma demek; hafta sonu dahil değil."""
+    r = _coz("hafta içi 09:00 mesai")
+
+    assert r.rrule == "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+    assert r.title == "mesai"
+
+
+def test_her_ay_tarihle_birlikte():
+    """"her ay 1 ekim 10:00 kira": tarih de tekrar da tanınmalı."""
+    r = _coz("her ay 1 ekim 10:00 kira")
+
+    assert r.rrule == "FREQ=MONTHLY"
+    assert _yerel(r.start_utc) == "2026-10-01 10:00"
+    assert r.title == "kira"
+
+
+def test_tekrarsiz_ifade_rrule_uretmez():
+    """Niteliksiz "salı 10:00 ders" tek seferlik kalmalı."""
+    assert _coz("salı 10:00 ders").rrule is None
+
+
+def test_turkce_harfsiz_tekrar():
+    """"her carsamba" da çalışmalı."""
+    r = _coz("her carsamba 14:00 toplanti")
+
+    assert r.rrule == "FREQ=WEEKLY"
+    assert _yerel(r.start_utc) == "2026-09-16 14:00"
+
+
+def test_her_kelimesi_baslikta_kalmiyor():
+    """"her" tanındıysa başlıktan kesilmeli."""
+    assert "her" not in _coz("her salı 10:00 ders").title.lower()

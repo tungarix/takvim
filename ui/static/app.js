@@ -462,26 +462,47 @@ async function izgaraTik(e, sutun, gun) {
   dakika = Math.max(0, Math.min(dakika, gun.dayMinutes - OLUSTUR_SNAP));
   const bitis = Math.min(dakika + OLUSTUR_SURE, gun.dayMinutes);
 
-  const baslik = await sor(
+  const s = await modalForm(
     "Yeni etkinlik",
     `${gun.dayNumber} ${gun.monthName} ${gun.dayName} · ${dakikaSaat(dakika)}–${dakikaSaat(bitis)}`,
-    "",
+    [
+      { ad: "baslik", etiket: "Başlık", tur: "metin", deger: "" },
+      /* Tekrar KAPALI bir liste: tekrar motoru baştan beri vardı ama
+       * kullanıcının onu söyleyebileceği hiçbir yer yoktu; RFC 5545 kuralı
+       * yazdırmak da bu uygulamanın işi değil. */
+      {
+        ad: "tekrar",
+        etiket: "Tekrar",
+        tur: "secim",
+        deger: "yok",
+        secenekler: [
+          { deger: "yok", etiket: "Tekrarlanmasın" },
+          { deger: "gunluk", etiket: "Her gün" },
+          { deger: "haftalik", etiket: `Her hafta (${gun.dayName})` },
+          { deger: "haftaici", etiket: "Hafta içi her gün" },
+          { deger: "aylik", etiket: "Her ay" },
+        ],
+      },
+    ],
+    "Ekle",
   );
-  if (baslik === null || !baslik.trim()) return;
+  if (s === null || !s.baslik.trim()) return;
 
+  const ad = s.baslik.trim();
   await eylem(
     () => istek("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // Tarih ve saat BURADA belli; sunucu metin ayrıştırmasın.
       body: JSON.stringify({
-        title: baslik.trim(),
+        title: ad,
         date: gun.date,
         minutes: dakika,
         endMinutes: bitis,
+        tekrar: s.tekrar,
       }),
     }),
-    `Eklendi: ${baslik.trim()} (${gun.dayNumber} ${gun.monthName} ${dakikaSaat(dakika)})`,
+    `Eklendi: ${ad} (${gun.dayNumber} ${gun.monthName} ${dakikaSaat(dakika)})`,
   );
 }
 

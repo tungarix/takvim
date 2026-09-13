@@ -816,3 +816,45 @@ def test_yukte_recurring_bayragi_var(sunucu):
 
     assert tekrarli["recurring"] is True
     assert tekil["recurring"] is False
+
+
+# ---------------------------------------------------------------------------
+# Tekrarlı etkinlik oluşturma
+# ---------------------------------------------------------------------------
+
+def test_tiklayarak_haftalik_seri_olusturma(sunucu):
+    """Izgaraya tıklayıp "her hafta" seçmek gerçek bir seri kuruyor."""
+    sonuc = _post(
+        sunucu,
+        "/api/events",
+        {"title": "yoga", "date": "2026-09-16", "minutes": 1080, "tekrar": "haftalik"},
+    )
+
+    assert sonuc["event"]["recurring"] is True
+    # Üç hafta sonra da orada mı
+    ileri = _get(sunucu, "/api/week?date=2026-10-07")
+    assert [o for g in ileri["days"] for o in g["timed"] if o["title"] == "yoga"]
+
+
+def test_metinden_tekrarli_etkinlik(sunucu):
+    """"her salı 10:00 ders" hızlı ekleme kutusundan da seri kuruyor."""
+    sonuc = _post(sunucu, "/api/events", {"text": "her salı 10:00 ders"})
+
+    assert sonuc["event"]["recurring"] is True
+    assert sonuc["event"]["title"] == "ders"
+
+
+def test_bilinmeyen_tekrar_reddedilir(sunucu):
+    """Tanınmayan tekrar sessizce "tekrarsız"a düşmemeli.
+
+    Sessizce tek seferlik olan bir ders programı, hiç oluşturulmamış olandan
+    kötüdür: kullanıcı kurduğunu sanır.
+    """
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(
+            sunucu,
+            "/api/events",
+            {"title": "x", "date": "2026-09-16", "minutes": 600, "tekrar": "her yarım saat"},
+        )
+
+    assert hata.value.code == 400
