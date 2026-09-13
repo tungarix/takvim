@@ -527,7 +527,12 @@ kbd {
 .gunler.tek-gun { grid-template-columns: minmax(0, 1fr); }
 
 /* Sürüklenen blok üstte dursun ve kendi altındaki sütunu gizlemesin */
-.blok { cursor: grab; touch-action: none; }
+/* `user-select: none` SÜRÜKLEME İÇİN: blok üstünde fareyi basılı tutup
+   çekmek, taşımak yerine içindeki metni seçmeye başlıyor ve seçili metnin
+   üstünden başlayan ikinci bir sürükleme işletim sisteminin sürükle-bırakını
+   tetikleyip taşımayı sessizce iptal ediyor. Metin seçimi uygulamanın geri
+   kalanında (panel, girdi kutuları) açık kalıyor. */
+.blok { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .blok.suruklenen {
   opacity: .85;
   z-index: 30;
@@ -546,7 +551,7 @@ kbd {
 }
 .blok:hover .boyut-tutamagi { background: rgba(255, 255, 255, .16); }
 
-.tumgun-blok { cursor: grab; touch-action: none; }
+.tumgun-blok { cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
 .tumgun-blok.suruklenen { opacity: .85; cursor: grabbing; pointer-events: none; }
 
 /* Ay görünümü: "+N daha" açılır listesi */

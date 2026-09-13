@@ -382,16 +382,20 @@ function surukleBasla(e, blok, occ, gun, kip = "tasi") {
     hedefDakika: occ.startMin,
     hedefBitisDakika: occ.endMin,
   });
-  /* İmleç pencereden ÇIKSA da olayları almaya devam et. Yakalama olmadan
-   * kullanıcı fareyi pencerenin dışında bırakırsa `pointerup` hiç gelmiyor ve
-   * blok imlece yapışıp kalıyor. Uygulama artık kendi penceresinde ve o
-   * pencere tam ekran bir tarayıcı sekmesinden küçük; imlecin dışarı çıkması
-   * çok daha kolay. */
-  try {
-    blok.setPointerCapture(e.pointerId);
-  } catch {
-    // Yakalama desteklenmiyorsa sürükleme eskisi gibi çalışsın, engellemesin.
-  }
+  /* `preventDefault` ŞART. Basılı tutup sürüklemek tarayıcının kendi
+   * davranışlarını tetikliyor: bloğun içindeki metni SEÇMEK, seçili metnin
+   * üstünden başlayınca da işletim sisteminin sürükle-bırak işlemini
+   * başlatmak. İkincisi başlarsa tarayıcı `pointercancel` atıp fare
+   * olaylarını kendine alıyor; `surukleBitir` sürüklemenin ORTASINDA
+   * çalışıyor ve hedef hâlâ kaynak gün olduğu için "değişmedi" deyip geri
+   * alıyor. Kullanıcı açısından sonuç: bloğu yan güne bırakıyorsun, hiçbir
+   * şey olmuyor.
+   *
+   * BURAYA `setPointerCapture` DA EKLEME: bloğu hedef kolona taşımak için
+   * `appendChild` kullanıyoruz, yakalanmış bir öğe DOM'da yer değiştirince
+   * yakalama düşüyor ve aynı erken bitirme riski doğuyor. Pencere dışına
+   * çıkan imleç sorunu bu riske değmez. */
+  e.preventDefault();
   e.stopPropagation();
 }
 
@@ -533,12 +537,9 @@ function tumgunBasla(e, blok, occ) {
     aktif: true, tasindi: false, blok, occ,
     baslangicX: e.clientX, hedefTarih: null,
   });
-  // Bkz. `surukleBasla`: imleç pencereden çıkınca blok yapışıp kalmasın.
-  try {
-    blok.setPointerCapture(e.pointerId);
-  } catch {
-    // desteklenmiyorsa eski davranış
-  }
+  // Metin seçimi ve işletim sisteminin sürükle-bırakı devreye girmesin;
+  // gerekçe `surukleBasla` içinde yazılı.
+  e.preventDefault();
 }
 
 function tumgunHareket(e) {
