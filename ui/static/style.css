@@ -22,6 +22,14 @@
 
 * { box-sizing: border-box; }
 
+/* `hidden` ÖZNİTELİĞİ TEK BAŞINA YETMİYOR. Tarayıcının `[hidden]{display:none}`
+   kuralı yazarın kurallarından ZAYIF: `display` veren her kural onu eziyor ve
+   öğe gizli sanılırken ekranda yer kaplamaya devam ediyor. Bu projeyi iki kez
+   ısırdı: soru kutusu (`.perde`) açılışta ekranda duruyordu ve ay görünümü
+   (`.ay-gorunum`) gizliyken bile haftalık ızgaranın yüksekliğini yiyordu --
+   günün ikinci yarısına ulaşılamamasının sebebi buydu. Tek ve genel kural. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   height: 100%;
@@ -120,6 +128,21 @@ html, body {
 .izgara-sarmal {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* `min-height: 0` BURADA HAYATİ. Esnek kutu çocuklarının varsayılan
+   `min-height: auto` değeri, onları İÇERİK yüksekliğinin altına inmekten
+   alıkoyuyor. Izgara 24 saat × 48px = 1152px ve bu kural olmadan
+   `#zaman-gorunum` pencereden taşıyordu: `.izgara-kaydirma` hiç kaydırılmıyor
+   (`scrollHeight == clientHeight`), günün ekrana sığmayan yarısına
+   ULAŞILAMIYORDU. Öğleden sonraki etkinlikler ne görünüyor ne tıklanabiliyordu;
+   `ciz()` içindeki "açılışta 07:00'ye kaydır" satırı da sessizce etkisizdi. */
+#zaman-gorunum {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -615,10 +638,7 @@ kbd {
   align-items: center;
   justify-content: center;
 }
-/* ŞART: `hidden` özniteliğinin getirdiği `display: none` tarayıcının kendi
-   stilinden geliyor ve yukarıdaki `display: flex` onu EZİYOR. Bu satır
-   olmadan soru kutusu daha uygulama açılırken boş boş ekranda duruyor. */
-.perde[hidden] { display: none; }
+/* Gizleme için yukarıdaki genel `[hidden]` kuralı yeterli. */
 .modal {
   width: min(420px, calc(100vw - 48px));
   background: var(--yuzey);
