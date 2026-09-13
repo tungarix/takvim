@@ -17,7 +17,7 @@ from pathlib import Path
 
 from icalendar import Calendar as ICalendar
 from icalendar import Event as IEvent
-from icalendar import Timezone, vDatetime, vRecur, vText
+from icalendar import Timezone, vRecur
 
 from core import UTC, Event, Override
 from core.timeutil import get_tz

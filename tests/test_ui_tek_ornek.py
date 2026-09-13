@@ -78,21 +78,21 @@ def test_farkli_ad_ayri_kilit():
 
 def test_pencere_bulununca_true():
     """Var olan pencere bulunuyor (Win32 çağrısı sahte listeyle atlanıyor)."""
-    sahte = lambda: [(1, "Bir Başka Program", 10), (2, "Takvim", 11)]  # noqa: E731
+    sahte = lambda: [(1, "Bir Başka Program", 10), (2, "Takvim", 11)]
 
     assert pencereyi_one_al("Takvim", listele=sahte) is True
 
 
 def test_pencere_yoksa_false():
     """Pencere henüz açılmamışsa çağıran sessizce devam edebilsin."""
-    sahte = lambda: [(1, "Bir Başka Program", 10)]  # noqa: E731
+    sahte = lambda: [(1, "Bir Başka Program", 10)]
 
     assert pencereyi_one_al("Takvim", listele=sahte) is False
 
 
 def test_baslik_tam_eslesmeli():
     """"Takvim Yedekleme" gibi başka bir pencereyi öne almayalım."""
-    sahte = lambda: [(1, "Takvim Yedekleme", 10), (2, "Takvimler", 11)]  # noqa: E731
+    sahte = lambda: [(1, "Takvim Yedekleme", 10), (2, "Takvimler", 11)]
 
     assert pencereyi_one_al("Takvim", listele=sahte) is False
 
@@ -132,7 +132,7 @@ def test_ayni_baslikli_baska_surec_one_alinmaz():
     Süreç numarası verildiğinde yalnızca BİZİM pencereye bakılmalı; yoksa
     kısayola ikinci tık Takvim'i değil Explorer'ı öne alıyor.
     """
-    sahte = lambda: [(1, "Takvim", 999), (2, "Takvim", 1234)]  # noqa: E731
+    sahte = lambda: [(1, "Takvim", 999), (2, "Takvim", 1234)]
 
     assert pencereyi_one_al("Takvim", pid=1234, listele=sahte) is True
     assert pencereyi_one_al("Takvim", pid=555, listele=sahte) is False

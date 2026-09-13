@@ -588,7 +588,7 @@ def test_tarayici_soket_baglandiktan_sonra_acilir(repo, ders):
     import socket
     import threading
 
-    from ui.server import make_server, serve
+    from ui.server import serve
 
     sonuc = {}
     hazir_olay = threading.Event()

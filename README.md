@@ -268,7 +268,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**233 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**313 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -314,6 +314,25 @@ Faz 2 ayrıca şunları kapsıyor (`docs/faz2-ics-import.md` kabul listesinin ta
 Üç kritik Faz 2 davranışı mutasyonla doğrulandı (tüm gün `DTEND` dışlayıcılığı,
 Windows eşlemesi, `SEQUENCE` karşılaştırması): her biri bozulduğunda ilgili test
 kırmızıya dönüyor.
+
+### Faz 4/5 + hatırlatıcı + masaüstü penceresi kabul listesi
+
+233'ten 313'e çıkan farkın dağılımı (`pytest --collect-only`):
+
+- `test_quickadd.py` (43): tarih→süre→saat maskeleme sırası, bitişik bulunma eki
+  (`9da`), işaretsiz çıplak sayının saat sayılmaması, `matched=""` uyarısı
+- `test_ui_views.py` (61): gün/hafta/ay uçları, kırpma-önce-layout, DST günü
+  `dayMinutes`, panelde gerçek saat
+- `test_reminders.py` (26): "etkinlik hâlâ güncel mi" ölçütü, `mark_fired`
+  önceliği + UNIQUE ikinci hat, gizli takvim susması
+- `test_ui_pencere.py` (22): boyut/konum kaydı, tek örnek kilidi, WebView2
+  yokluğunda tarayıcı geri düşüşü
+- `test_ics_export.py` (16): UTC'ye çevirmeme (`TZID` + `VTIMEZONE`), farklı
+  `default_tzid` ile gidiş-dönüş
+- `test_ui_tek_ornek.py` (14): `series_slot_utc` anahtarı, hayalet override
+  elenmesi, tekrarsızda gerçek silme
+- `test_yedek.py` (5): açılışta kopya, günde tek dosya, 7 günlük budama,
+  yarım yedek bırakmama
 
 ### Faz 2 sonrası düzeltme: `sequence` kolonu ikiye ayrıldı
 

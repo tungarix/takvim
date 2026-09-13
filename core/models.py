@@ -8,7 +8,7 @@ oluşturmak imkânsız -- "sonra kontrol ederiz" diye bir aşama yok.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from .timeutil import UTC, ensure_aware, get_tz

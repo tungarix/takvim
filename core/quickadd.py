@@ -144,6 +144,7 @@ def _tarih_coz(metin: str, bugun: date) -> tuple[date | None, tuple[int, int] | 
         gun = int(m.group(1))
         ay = _AYLAR[_kucult(m.group(2))]
         yil = int(m.group(3)) if m.group(3) else bugun.year
+        aday: date | None
         try:
             aday = date(yil, ay, gun)
         except ValueError:

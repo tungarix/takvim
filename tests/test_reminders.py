@@ -6,12 +6,10 @@ hatırlatıcı testinin "bazen geçen" hâli, hatırlatıcının kendisinden bet
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 import pytest
 
 from core import Event, Occurrence, Reminder, due_reminders, fire_key, next_fire_time
-from remind.daemon import bildirim_metni, run_once
+from remind.daemon import run_once
 from remind.notifier import ConsoleNotifier, pick_notifier
 from store import Repo, new_uid
 from tests.helpers import IST, ist

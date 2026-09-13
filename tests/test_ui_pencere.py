@@ -175,7 +175,7 @@ def test_olu_alandaki_konum_reddedilir():
     o boşluktaki konumu geçerli sayar ve pencere hiçbir ekranda görünmez.
     """
     sinir = (0, -1080, 3840, 2160)  # sağ üstte ikinci monitör
-    sol_ustte_monitor_yok = lambda x, y: not (x < 1920 and y < 0)  # noqa: E731
+    sol_ustte_monitor_yok = lambda x, y: not (x < 1920 and y < 0)
 
     sonuc = ekrana_sigdir(Geometri(1180, 760, 200, -900), sinir, sol_ustte_monitor_yok)
 

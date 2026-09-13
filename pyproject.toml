@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13", "types-python-dateutil>=2.9"]
 # Son kullanıcıya verilecek tek dosyalık .exe için; ÇALIŞMA ZAMANI
 # bağımlılığı değil, yalnızca paketleme aşamasında gerekiyor.
 build = ["pyinstaller>=6"]
@@ -37,3 +37,28 @@ packages = ["core", "store", "ics", "ui", "remind"]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = [".venv", "build", "dist"]
+
+[tool.ruff.lint]
+# Bilinçli olarak SEÇİLMEDİ (her biri gerçek bir tasarım kararına dokunuyor):
+# - BLE (blind-except): hatırlatıcı döngüsü, yedek, pencere geri düşüşü bilerek
+#   geniş yakalıyor; daraltmak uzun yaşayan süreçleri tek hatayla öldürür.
+# - DTZ (naive datetime): duvar saati (`from_wall_clock`, gece yarısı) bilerek
+#   naive kurulup tzid ile anlamlandırılıyor; UTC dayatmak DST'yi bozar.
+# - S (try-except-pass/continue): yedek/log/import bilerek sessiz geçiyor.
+# - TRY004: `ensure_aware` API'si ValueError sözü veriyor, testler ona kilitli.
+# - RUF022 (`__all__` sırası): liste kamusal API sırası, alfabetik değil.
+# - PYI034: `Repo.__enter__` zaten `-> "Repo"` döndürüyor; kural stub odaklı.
+# - SIM115: günlük akışı sürecin ömrü boyunca AÇIK kalmalı (stdout yönlendirme).
+# - PLW1510/S112: bildirim zinciri ve .ics satır toleransı bilerek böyle.
+select = ["F", "I", "UP", "RUF100"]
+
+[tool.mypy]
+python_version = "3.12"
+# `core/` + `store/` katı; `ui/` + `remind/` + `ics/` gevşek (ağ/arayüz kodu).
+[[tool.mypy.overrides]]
+module = ["ui.*", "remind.*", "ics.*", "takvim_app"]
+ignore_errors = true

@@ -11,7 +11,7 @@ from datetime import date, datetime
 import pytest
 
 from core import UTC, Event, to_local
-from ics import export_repo, export_text, import_ics, write_file
+from ics import export_repo, import_ics, write_file
 from store import Repo, new_uid
 from tests.helpers import IST, NY, ist, ny
 

@@ -49,8 +49,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     server_version = "Takvim/1.0"
 
-    def log_message(self, format: str, *args) -> None:  # noqa: A002
+    def log_message(self, format: str, *args) -> None:
         """Varsayılan stderr gürültüsünü kısar."""
+        # Parametre adı stdlib'in (`BaseHTTPRequestHandler.log_message`);
+        # builtin `format`'ı gölgelemesi bilinçli, yeniden adlandırılmamalı.
         if self.server.verbose:  # type: ignore[attr-defined]
             super().log_message(format, *args)
 
@@ -144,8 +146,10 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- GET ----------------------------------------------------------------
 
-    def do_GET(self) -> None:  # noqa: N802
+    def do_GET(self) -> None:
         """Görünüm verileri, arama, dışa aktarma ve statik dosyalar."""
+        # Yöntem adları stdlib'in (`BaseHTTPRequestHandler.do_GET` ...);
+        # PEP8'e uydurulmamalı, yoksa yönlendirme çalışmaz.
         parsed = urlparse(self.path)
         sorgu = parse_qs(parsed.query)
         yol = parsed.path
@@ -189,7 +193,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     # -- POST ---------------------------------------------------------------
 
-    def do_POST(self) -> None:  # noqa: N802
+    def do_POST(self) -> None:
         """Oluşturma, örnek düzeyi işlemler, görünürlük ve içe aktarma."""
         if not self._kaynak_guvenli():
             self._hata("bu istek Takvim penceresinden gelmiyor", 403)
@@ -244,7 +248,7 @@ class _Handler(BaseHTTPRequestHandler):
         except LookupError as exc:
             self._hata(str(exc), 404)
 
-    def do_PATCH(self) -> None:  # noqa: N802
+    def do_PATCH(self) -> None:
         """PATCH /api/events/<id> — başlık/konum/açıklama günceller."""
         if not self._kaynak_guvenli():
             self._hata("bu istek Takvim penceresinden gelmiyor", 403)
@@ -264,7 +268,7 @@ class _Handler(BaseHTTPRequestHandler):
         except LookupError as exc:
             self._hata(str(exc), 404)
 
-    def do_DELETE(self) -> None:  # noqa: N802
+    def do_DELETE(self) -> None:
         """DELETE /api/events/<id> — SERİNİN TAMAMINI siler."""
         if not self._kaynak_guvenli():
             self._hata("bu istek Takvim penceresinden gelmiyor", 403)

@@ -38,7 +38,7 @@ def _normalize_until(text: str, tz: tzinfo) -> str:
     etkinliğin kendi diliminde yorumlayıp UTC'ye çeviriyoruz.
     """
 
-    def repl(match: "re.Match[str]") -> str:
+    def repl(match: re.Match[str]) -> str:
         raw = match.group(1)
         if raw.upper().endswith("Z"):
             return match.group(0)

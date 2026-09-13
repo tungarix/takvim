@@ -12,7 +12,6 @@ import pytest
 from core import Override, expand, series_end, to_local
 from tests.helpers import IST, NY, ist, local_stamps, make_event, ny, utc_stamps
 
-
 # ---------------------------------------------------------------------------
 # 1. Her ayın son iş günü
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ Referans an sabit: 13 Eylül 2026, Pazar, 10:00 Europe/Istanbul.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 

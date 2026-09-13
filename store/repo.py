@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 
 from core import (
     UTC,
@@ -59,7 +60,9 @@ def _from_db(raw: str | None) -> datetime | None:
 
 def _join_dates(values) -> str | None:
     """rdate/exdate listesini virgüllü metne çevirir; boşsa NULL."""
-    return ",".join(_to_db(v) for v in values) if values else None
+    # `cast`: elemanlar her zaman datetime, `_to_db` o girdide asla None
+    # döndürmüyor; dönüş tipi yalnızca None girdiyi de kabul ettiği için geniş.
+    return ",".join(cast(str, _to_db(v)) for v in values) if values else None
 
 
 def _split_dates(raw: str | None) -> tuple[datetime, ...]:
@@ -188,7 +191,7 @@ class Repo:
         self.conn = conn
 
     @classmethod
-    def open(cls, path: str | Path, *, check_same_thread: bool = True) -> "Repo":
+    def open(cls, path: str | Path, *, check_same_thread: bool = True) -> Repo:
         """DB'yi açar ve bekleyen migrationları uygular.
 
         `check_same_thread` için bkz. `connect()`; varsayılanı değiştirmeden
@@ -202,7 +205,7 @@ class Repo:
         """Bağlantıyı kapatır."""
         self.conn.close()
 
-    def __enter__(self) -> "Repo":
+    def __enter__(self) -> Repo:
         return self
 
     def __exit__(self, *exc) -> None:
@@ -694,12 +697,15 @@ class Repo:
         candidates = self._candidate_events(
             window_start, window_end, calendar_ids, include_hidden
         )
-        overrides = self._overrides_for_events([e.id for e in candidates])
+        overrides = self._overrides_for_events(
+            [e.id for e in candidates if e.id is not None]
+        )
 
         out: list[Occurrence] = []
         for event in candidates:
-            out.extend(
-                expand(event, overrides.get(event.id, []), window_start, window_end)
-            )
+            # Adaylar DB satırından geliyor, id'leri her zaman var. `-1` yalnızca
+            # tip denetleyici için; rowid ≥ 1 olduğundan asla çakışmaz.
+            anahtar = event.id if event.id is not None else -1
+            out.extend(expand(event, overrides.get(anahtar, []), window_start, window_end))
         out.sort(key=lambda o: (o.start_utc, o.end_utc, o.uid))
         return out

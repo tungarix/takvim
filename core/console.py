@@ -16,8 +16,14 @@ import sys
 def guvenli_konsol() -> None:
     """stdout/stderr'i UTF-8 + replace ile yeniden yapılandırır."""
     for akis in (sys.stdout, sys.stderr):
+        # `reconfigure` TextIO'ya özgü; yönlendirilmiş/sarmalanmış akışta ya da
+        # penceresiz `.exe`'de (`None`) olmayabilir. `getattr` ile bakmak,
+        # doğrudan çağırıp `AttributeError` yakalamakla aynı anlama geliyor.
+        yeniden = getattr(akis, "reconfigure", None)
+        if not callable(yeniden):
+            continue
         try:
-            akis.reconfigure(encoding="utf-8", errors="replace")
-        except (AttributeError, OSError, ValueError):
+            yeniden(encoding="utf-8", errors="replace")
+        except (OSError, ValueError):
             # Yönlendirilmiş ya da sarmalanmış akış; olduğu gibi bırak.
             pass

@@ -20,6 +20,9 @@ from pathlib import Path
 # Aynı anda tutulacak en fazla günlük boyutu. Uygulama aylarca açık kalabilir;
 # sınırsız büyüyen bir dosya bırakmak kabul edilemez.
 _MAKS_GUNLUK = 1 * 1024 * 1024  # 1 MB
+# Döndürmede saklanan dosya sayısı: takvim.log + .1 + .2. Eskiden sınır aşılınca
+# dosya SİLİNİYORDU ve hata izi kayboluyordu; şimdi kaydırılıyor, en eski düşüyor.
+_SAKLANAN_GUNLUK = 3
 
 
 def _gunluk_yolu() -> Path:
@@ -27,6 +30,34 @@ def _gunluk_yolu() -> Path:
     kok = Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Takvim"
     kok.mkdir(parents=True, exist_ok=True)
     return kok / "takvim.log"
+
+
+def _dondur(yol: Path) -> None:
+    """Sınırı aşan günlüğü kaydırır: `.log` -> `.log.1` -> `.log.2`, en eski düşer.
+
+    Ayrı fonksiyon ki testsiz kalmasın (`_gunluge_yonlendir` yalnızca paketlenmiş
+    `.exe`'de çalışıyor). Her adım kendi hatasını yutuyor: kilitli ya da izinsiz
+    bir dosyada takılıp zincirin geri kalanını bozmuyoruz; en kötü ihtimalle
+    dosya büyümesine devam ediyor ve bir sonraki açılışta yine deneniyor.
+    """
+    try:
+        if not yol.exists() or yol.stat().st_size <= _MAKS_GUNLUK:
+            return
+    except OSError:
+        return
+    for i in range(_SAKLANAN_GUNLUK - 1, 0, -1):
+        kaynak = yol if i == 1 else yol.with_name(f"{yol.name}.{i - 1}")
+        hedef = yol.with_name(f"{yol.name}.{i}")
+        try:
+            if kaynak.exists():
+                if hedef.exists():
+                    try:
+                        hedef.unlink()
+                    except OSError:
+                        continue  # hedef kilitliyse bu basamağı atla
+                kaynak.replace(hedef)
+        except OSError:
+            pass  # bu basamak atlanır, zincirin gerisi denenir
 
 
 def _gunluge_yonlendir() -> None:
@@ -50,8 +81,7 @@ def _gunluge_yonlendir() -> None:
         return
     try:
         yol = _gunluk_yolu()
-        if yol.exists() and yol.stat().st_size > _MAKS_GUNLUK:
-            yol.unlink()
+        _dondur(yol)
         akis = open(yol, "a", encoding="utf-8", errors="replace", buffering=1)
         sys.stdout = akis
         sys.stderr = akis

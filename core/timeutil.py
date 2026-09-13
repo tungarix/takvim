@@ -9,7 +9,7 @@ kalmıyor. Diğer tüm public fonksiyonlar naive girdide ValueError fırlatır.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from functools import lru_cache
+from functools import cache
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 __all__ = [
@@ -24,10 +24,11 @@ __all__ = [
     "format_iso",
 ]
 
-UTC = timezone.utc
+UTC = timezone.utc  # noqa: UP017 -- `datetime.UTC` eşdeğeri ama bu ad modülün
+# kamusal API'si; tek doğruluk kaynağı burada kalmalı, dağılmamalı.
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_tz(tzid: str) -> ZoneInfo:
     """IANA adından ZoneInfo üretir; geçersiz/bilinmeyen adda ValueError.
 

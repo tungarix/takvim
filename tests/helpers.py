@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from core import Event, Occurrence, Override, from_wall_clock
+from core import Event, Occurrence, from_wall_clock
 
 IST = "Europe/Istanbul"   # DST yok -- hataları saklar
 NY = "America/New_York"   # DST var -- hataları ortaya çıkarır
