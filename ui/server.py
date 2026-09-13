@@ -384,12 +384,28 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"event": _event_ozet(yeni)})
 
     def _ornek_iptal(self) -> None:
-        """Serinin TEK örneğini iptal eder (diğerleri durur)."""
+        """Bir örneği siler.
+
+        TEKRARLI seride: yalnızca o örnek iptal edilir, seri durur.
+
+        TEKRARSIZ etkinlikte: KAYIT SİLİNİR. Eskiden burada da "iptal edildi"
+        override'ı yazılıyordu ve sonuç sessizce yanlıştı: etkinlik ızgaradan
+        kayboluyor ama ARAMADA çıkmaya, `.ics` dışa aktarmasında ETKİN olarak
+        yazılmaya devam ediyordu. Kullanıcı sildiğini sanıyor, yedeğinden geri
+        yüklediğinde etkinlik diriliyordu. Ölçülerek bulundu.
+        """
         govde = self._govde()
         event_id = int(govde["eventId"])
         orijinal = parse_iso(govde["originalStartUtc"])
-        if self.repo.get_event(event_id) is None:
+        etkinlik = self.repo.get_event(event_id)
+        if etkinlik is None:
             raise LookupError("etkinlik bulunamadı")
+
+        if not etkinlik.is_recurring:
+            self.repo.delete_event(event_id)
+            self._json({"deleted": event_id})
+            return
+
         self.repo.cancel_occurrence(event_id, orijinal)
         self._json({"cancelled": govde["originalStartUtc"]})
 

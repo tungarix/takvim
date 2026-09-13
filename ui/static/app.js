@@ -97,24 +97,29 @@ function modalAcik() {
   return modalDurum !== null;
 }
 
-function modalSor({ baslik, metin = "", varsayilan = null, onay = "Tamam", tehlike = false }) {
+/* Tek çekirdek, üç kullanım: onay kutusu, tek satırlık soru ve çok alanlı
+ * form. Açma/kapama, Esc/Enter, perdeye tıklama ve odağı geri verme TEK
+ * yerde -- üç ayrı kopya olsaydı biri düzeltilip diğerleri unutulurdu. */
+function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku, iptalDegeri }) {
   const perde = el("perde");
-  const girdi = el("modal-girdi");
+  const govde = el("modal-alanlar");
   const tamam = el("modal-tamam");
   const iptal = el("modal-iptal");
   const oncekiOdak = document.activeElement;
-  const metinKipi = varsayilan !== null; // metin sorusu mu, evet/hayır mı
 
   el("modal-baslik").textContent = baslik;
   el("modal-metin").textContent = metin;
-  girdi.hidden = !metinKipi;
-  girdi.value = metinKipi ? varsayilan : "";
+  govde.innerHTML = "";
+  govde.hidden = true;
   tamam.textContent = onay;
   tamam.classList.toggle("tehlike", tehlike);
   tamam.classList.toggle("birincil", !tehlike);
   perde.hidden = false;
 
-  if (metinKipi) { girdi.focus(); girdi.select(); } else { tamam.focus(); }
+  const ilkOdak = kur ? kur(govde) : null;
+  govde.hidden = govde.children.length === 0;
+  (ilkOdak || tamam).focus();
+  if (ilkOdak && ilkOdak.select) ilkOdak.select();
 
   return new Promise((cozumle) => {
     const bitir = (deger) => {
@@ -128,32 +133,113 @@ function modalSor({ baslik, metin = "", varsayilan = null, onay = "Tamam", tehli
       if (oncekiOdak && oncekiOdak.focus) oncekiOdak.focus();
       cozumle(deger);
     };
-    const iptalDeger = () => (metinKipi ? null : false);
-    const onayDeger = () => (metinKipi ? girdi.value : true);
-    const perdeTik = (e) => { if (e.target === perde) bitir(iptalDeger()); };
+    const perdeTik = (e) => { if (e.target === perde) bitir(iptalDegeri); };
     /* YAKALAMA aşamasında dinliyoruz: aşağıdaki genel kısayol dinleyicisi
      * (g/h/a/t) modal açıkken arkadaki görünümü değiştirmesin. */
     const tus = (e) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); bitir(iptalDeger()); }
-      else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); bitir(onayDeger()); }
+      if (e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation(); bitir(iptalDegeri);
+      } else if (e.key === "Enter" && !e.isComposing) {
+        // Çok satırlı alanda Enter yeni satır demek; formu göndermemeli.
+        if (e.target && e.target.tagName === "TEXTAREA") return;
+        e.preventDefault(); e.stopPropagation(); bitir(oku());
+      }
     };
 
-    modalDurum = { kapat: () => bitir(iptalDeger()) };
+    modalDurum = { kapat: () => bitir(iptalDegeri) };
     perde.addEventListener("click", perdeTik);
     document.addEventListener("keydown", tus, true);
-    tamam.onclick = () => bitir(onayDeger());
-    iptal.onclick = () => bitir(iptalDeger());
+    tamam.onclick = () => bitir(oku());
+    iptal.onclick = () => bitir(iptalDegeri);
   });
 }
 
 /** Metin sorar; iptal edilirse null döner (prompt() ile aynı sözleşme). */
 function sor(baslik, metin, varsayilan = "") {
-  return modalSor({ baslik, metin, varsayilan });
+  let girdi;
+  return modalAc({
+    baslik,
+    metin,
+    iptalDegeri: null,
+    kur: (govde) => {
+      girdi = document.createElement("input");
+      girdi.type = "text";
+      girdi.className = "modal-girdi";
+      girdi.id = "modal-girdi";
+      girdi.autocomplete = "off";
+      girdi.value = varsayilan;
+      govde.appendChild(girdi);
+      return girdi;
+    },
+    oku: () => girdi.value,
+  });
 }
 
 /** Evet/hayır sorar; confirm() ile aynı sözleşme. */
 function onayla(baslik, metin, onay = "Tamam", tehlike = false) {
-  return modalSor({ baslik, metin, onay, tehlike });
+  return modalAc({ baslik, metin, onay, tehlike, iptalDegeri: false, oku: () => true });
+}
+
+/* Çok alanlı form kutusu.
+ *
+ * `alanlar`: [{ad, etiket, tur, deger, secenekler}] -- tur: metin | uzunmetin |
+ * tarih | saat | secim. İptalde null, onayda {ad: değer} döner.
+ *
+ * Tarih ve saat için tarayıcının KENDİ girdilerini (`type=date/time`)
+ * kullanıyoruz: yerel biçimi, klavye yazımını ve takvim açılır kutusunu
+ * işletim sistemi hallediyor; kendi tarih seçicimizi yazmak bu uygulamanın
+ * kazanacağı bir savaş değil.
+ */
+function modalForm(baslik, metin, alanlar, onay = "Kaydet") {
+  const girdiler = {};
+  return modalAc({
+    baslik,
+    metin,
+    onay,
+    iptalDegeri: null,
+    kur: (govde) => {
+      let ilk = null;
+      alanlar.forEach((a) => {
+        const satir = document.createElement("label");
+        satir.className = "modal-alan" + (a.dar ? " dar" : "");
+        const etiket = document.createElement("span");
+        etiket.className = "modal-etiket";
+        etiket.textContent = a.etiket;
+        satir.appendChild(etiket);
+
+        let g;
+        if (a.tur === "uzunmetin") {
+          g = document.createElement("textarea");
+          g.rows = 2;
+        } else if (a.tur === "secim") {
+          g = document.createElement("select");
+          (a.secenekler || []).forEach((s) => {
+            const o = document.createElement("option");
+            o.value = s.deger;
+            o.textContent = s.etiket;
+            g.appendChild(o);
+          });
+        } else {
+          g = document.createElement("input");
+          g.type = a.tur === "tarih" ? "date" : a.tur === "saat" ? "time" : "text";
+          g.autocomplete = "off";
+        }
+        g.className = "modal-girdi";
+        g.value = a.deger == null ? "" : a.deger;
+        if (a.devredisi) g.disabled = true;
+        satir.appendChild(g);
+        govde.appendChild(satir);
+        girdiler[a.ad] = g;
+        if (!ilk && !a.devredisi) ilk = g;
+      });
+      return ilk;
+    },
+    oku: () => {
+      const sonuc = {};
+      Object.entries(girdiler).forEach(([ad, g]) => { sonuc[ad] = g.value; });
+      return sonuc;
+    },
+  });
 }
 
 let bildirimZaman = null;
@@ -818,25 +904,117 @@ function panelAc(occ) {
  * güncellenip diğerinde unutulurdu -- silme gibi geri alınamaz bir işlemde
  * bu kabul edilemez. */
 
-/** Etkinliğin başlığını sorar ve günceller. */
-async function basligiDegistir(occ) {
-  const yeni = await sor("Başlığı değiştir", "Yeni başlık", occ.title);
-  if (yeni === null || !yeni.trim()) return;
-  await eylem(
-    () => istek(`/api/events/${occ.eventId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: yeni.trim() }),
-    }),
-    "Başlık güncellendi",
-  );
+/** ISO andını etkinliğin KENDİ saat diliminde `YYYY-AA-GG` yapar. */
+function yerelTarihISO(iso, tzid) {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit", timeZone: tzid,
+  }).format(new Date(iso));
 }
 
-/** Yalnızca bu örneği siler; tekrarlı serinin geri kalanı kalır. */
+/** ISO andını etkinliğin KENDİ saat diliminde `SS:DD` yapar. */
+function yerelSaatISO(iso, tzid) {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: tzid,
+  }).format(new Date(iso));
+}
+
+function dakikayaCevir(ss_dd) {
+  const [s, d] = (ss_dd || "0:0").split(":").map(Number);
+  return s * 60 + d;
+}
+
+/* Etkinliği çok alanlı formla düzenler.
+ *
+ * Bunun var olmasının sebebi: bir etkinliğin SAATİNİ değiştirmenin tek yolu
+ * bloğu sürüklemekti ve sürükleme yalnızca ekrandaki günler arasında çalışıyor
+ * (ay görünümünde hiç yok). "Sonraki haftaya nasıl taşırım" sorusunun cevabı
+ * buydu. Sunucu tarafı zaten hazırdı: konum/açıklama için PATCH, tarih/saat
+ * için `/api/occurrences/move`.
+ */
+async function etkinligiDuzenle(occ) {
+  const eskiTarih = yerelTarihISO(occ.startUtc, occ.tzid);
+  const eskiBas = yerelSaatISO(occ.startUtc, occ.tzid);
+  const eskiBit = yerelSaatISO(occ.endUtc, occ.tzid);
+
+  const alanlar = [
+    { ad: "baslik", etiket: "Başlık", tur: "metin", deger: occ.title },
+    { ad: "tarih", etiket: "Tarih", tur: "tarih", deger: eskiTarih },
+  ];
+  if (!occ.allDay) {
+    alanlar.push(
+      { ad: "baslangic", etiket: "Başlangıç", tur: "saat", deger: eskiBas, dar: true },
+      { ad: "bitis", etiket: "Bitiş", tur: "saat", deger: eskiBit, dar: true },
+    );
+  }
+  alanlar.push(
+    { ad: "konum", etiket: "Konum", tur: "metin", deger: occ.location || "" },
+    { ad: "aciklama", etiket: "Açıklama", tur: "uzunmetin", deger: occ.description || "" },
+  );
+
+  const s = await modalForm(
+    "Etkinliği düzenle",
+    occ.recurring
+      ? "Tekrarlı seri: başlık, konum ve açıklama TÜM seriyi, tarih ve saat yalnızca BU örneği etkiler."
+      : "",
+    alanlar,
+  );
+  if (s === null) return;
+
+  const yeniBaslik = (s.baslik || "").trim();
+  if (!yeniBaslik) {
+    bildir("Başlık boş olamaz", true);
+    return;
+  }
+
+  const yama = {};
+  if (yeniBaslik !== occ.title) yama.title = yeniBaslik;
+  if ((s.konum || "") !== (occ.location || "")) yama.location = s.konum.trim() || null;
+  if ((s.aciklama || "") !== (occ.description || "")) yama.description = s.aciklama.trim() || null;
+
+  const saatDegisti = !occ.allDay && (s.baslangic !== eskiBas || s.bitis !== eskiBit);
+  const tasindi = s.tarih !== eskiTarih || saatDegisti;
+
+  if (!Object.keys(yama).length && !tasindi) return; // hiçbir şey değişmedi
+
+  await eylem(async () => {
+    if (Object.keys(yama).length) {
+      await istek(`/api/events/${occ.eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(yama),
+      });
+    }
+    if (tasindi) {
+      const govde = {
+        eventId: occ.eventId,
+        originalStartUtc: occ.originalStartUtc,
+        newDate: s.tarih,
+        newMinutes: 0,
+      };
+      if (!occ.allDay) {
+        const bas = dakikayaCevir(s.baslangic);
+        let bit = dakikayaCevir(s.bitis);
+        // Bitiş başlangıçtan küçükse gece yarısını aşıyordur: ertesi güne taşı.
+        if (bit <= bas) bit += 24 * 60;
+        govde.newMinutes = bas;
+        govde.newEndMinutes = bit;
+      }
+      await istek("/api/occurrences/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(govde),
+      });
+    }
+  }, "Etkinlik güncellendi");
+}
+
+/** Tekrarlıda bu örneği iptal eder, tekrarsızda etkinliği SİLER. */
 async function ornegiSil(occ) {
   const tamam = await onayla(
-    "Bu örneği sil",
-    `"${occ.title}" — yalnızca bu örnek silinecek, serinin geri kalanı kalır.`,
+    occ.recurring ? "Bu örneği sil" : "Etkinliği sil",
+    occ.recurring
+      ? `"${occ.title}" — yalnızca bu örnek silinecek, serinin geri kalanı kalır.`
+      : `"${occ.title}" silinecek.`,
     "Sil",
     true,
   );
@@ -881,7 +1059,7 @@ function islemleriCiz(occ) {
     kap.appendChild(b);
   };
 
-  ekle("Başlığı değiştir", false, () => basligiDegistir(occ), "F2");
+  ekle("Düzenle", false, () => etkinligiDuzenle(occ), "F2 · Enter");
 
   (occ.reminders || []).forEach((r) => {
     ekle(`⏰ ${hatirlaticiMetni(r.minutesBefore)} — kaldır`, false, async () => {
@@ -917,8 +1095,13 @@ function islemleriCiz(occ) {
   // Tekrarlı serilerde tek örnek / tüm seri ayrımı kritik: kullanıcı bir
   // dersi bu haftalık iptal etmekle dönem boyunca silmeyi karıştırmamalı.
   // Klavyede de aynı ayrım var: Del tek örnek, Shift+Del tüm seri.
-  ekle("Bu örneği sil", true, () => ornegiSil(occ), "Del");
-  ekle("Seriyi tamamen sil", true, () => seriyiSil(occ), "Shift+Del");
+  // TEKRARSIZ etkinlikte iki düğme göstermek anlamsız ve korkutucu: tek "Sil".
+  if (occ.recurring) {
+    ekle("Bu örneği sil", true, () => ornegiSil(occ), "Del");
+    ekle("Seriyi tamamen sil", true, () => seriyiSil(occ), "Shift+Del");
+  } else {
+    ekle("Sil", true, () => ornegiSil(occ), "Del");
+  }
 }
 
 function hatirlaticiMetni(dakika) {
@@ -1083,12 +1266,12 @@ document.addEventListener("keydown", (e) => {
   if (secili) {
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
-      (e.shiftKey ? seriyiSil : ornegiSil)(secili);
+      (e.shiftKey && secili.recurring ? seriyiSil : ornegiSil)(secili);
       return;
     }
-    if (e.key === "F2") {
+    if (e.key === "F2" || e.key === "Enter") {
       e.preventDefault();
-      basligiDegistir(secili);
+      etkinligiDuzenle(secili);
       return;
     }
   }
@@ -1105,4 +1288,45 @@ document.addEventListener("keydown", (e) => {
   if (islev) { e.preventDefault(); islev(); }
 });
 
+/* ---------- canlı tazeleme ---------- */
+
+/* Bu uygulama gün boyu açık duruyor (hatırlatıcı zaten yalnızca açıkken
+ * çalışıyor). Hiçbir zamanlayıcı yoktu ve bunun iki görünür sonucu vardı:
+ * kırmızı "şimdi" çizgisi ÇİZİLDİĞİ ANDA donuyordu, öğleden sonra ekrana
+ * bakınca hâlâ sabahı gösteriyordu; gece yarısı geçince de dünkü sütun
+ * "bugün" olarak işaretli kalıyordu. Uygulamanın canlı değil ekran görüntüsü
+ * gibi durmasının sebebi buydu.
+ */
+const TAZELE_ARALIK = 30 * 1000;
+
+function simdiCizgisiniTazele() {
+  const cizgi = document.querySelector(".simdi-cizgi");
+  if (!cizgi || !durum.veri || !durum.veri.days) return;
+  const gun = durum.veri.days.find((g) => g.date === bugunISO());
+  if (!gun) return;
+  const simdi = new Date();
+  cizgi.style.top = `${((simdi.getHours() * 60 + simdi.getMinutes()) / gun.dayMinutes) * 100}%`;
+}
+
+function canliBaslat() {
+  let sonGun = bugunISO();
+  setInterval(() => {
+    // Kullanıcı bir şeyin ortasındaysa ekranın altını oymayalım.
+    if (surukleme.aktif || tumgunSurukleme.aktif || modalAcik()) return;
+
+    const gun = bugunISO();
+    if (gun !== sonGun) {
+      sonGun = gun;
+      /* Gece yarısı geçti: "bugün" vurgusu ve şimdi çizgisi başka güne ait.
+       * `durum.anchor`a DOKUNMUYORUZ: kullanıcı başka bir haftaya bakıyor
+       * olabilir ve ekranı altından kaydırmak kabalık olur. Yeniden çizmek
+       * yeterli, "Bugün" düğmesi zaten bir tık uzakta. */
+      yukle();
+      return;
+    }
+    simdiCizgisiniTazele();
+  }, TAZELE_ARALIK);
+}
+
 yukle();
+canliBaslat();

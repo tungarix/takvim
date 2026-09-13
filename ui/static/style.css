@@ -655,9 +655,15 @@ kbd {
   white-space: pre-line; /* mesajlardaki \n gerçek satır sonu olsun */
 }
 .modal-metin:empty { display: none; }
+.modal-alanlar { display: grid; gap: 10px; margin-top: 14px; }
+.modal-alan { display: grid; gap: 4px; }
+.modal-alan.dar { grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
+.modal-etiket { font-size: 12px; color: var(--metin-soluk); }
+.modal-alanlar textarea { resize: vertical; min-height: 46px; }
+.modal-alanlar select { appearance: auto; }
+
 .modal-girdi {
   width: 100%;
-  margin-top: 14px;
   background: var(--zemin);
   border: 1px solid var(--cizgi);
   border-radius: 7px;

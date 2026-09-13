@@ -96,6 +96,7 @@ def _occ_sozluk(
         "calendarId": occ.calendar_id,
         "color": renkler.get(occ.calendar_id, "#6b7280"),
         "isOverride": occ.is_override,
+        "recurring": occ.recurring,
         "allDay": occ.all_day,
         "location": occ.location,
         "description": occ.description,

@@ -752,3 +752,67 @@ def test_hizli_ekleme_yolu_bozulmadi(sunucu):
 
     assert sonuc["event"]["title"] == "toplantı"
     assert "salı" in sonuc["parsed"]["matched"]
+
+
+# ---------------------------------------------------------------------------
+# Silme: tekrarsız etkinlikte GERÇEKTEN silme
+# ---------------------------------------------------------------------------
+
+def test_tekrarsiz_etkinlik_silinince_aramadan_ve_yedekten_de_gidiyor(sunucu):
+    """"Sil" dediğimiz şey gerçekten silinmeli.
+
+    Eskiden tekrarsız etkinlikte de "iptal edildi" override'ı yazılıyordu:
+    etkinlik ızgaradan kayboluyor ama aramada çıkmaya ve `.ics` dışa
+    aktarmasına ETKİN olarak yazılmaya devam ediyordu. Kullanıcı sildiğini
+    sanıyor, yedeğinden geri yüklediğinde etkinlik diriliyordu.
+    """
+    olusan = _post(
+        sunucu, "/api/events",
+        {"title": "tek seferlik toplantı", "date": "2026-09-24", "minutes": 600},
+    )["event"]
+
+    _post(
+        sunucu,
+        "/api/occurrences/cancel",
+        {"eventId": olusan["id"], "originalStartUtc": olusan["startUtc"]},
+    )
+
+    ara = urllib.parse.quote("tek seferlik")
+    assert _get(sunucu, f"/api/search?q={ara}")["results"] == []
+    with urllib.request.urlopen(sunucu + "/api/export") as yanit:
+        assert "tek seferlik toplantı" not in yanit.read().decode("utf-8")
+
+
+def test_tekrarli_seride_tek_ornek_iptali_seriyi_BIRAKIYOR(sunucu):
+    """Tekrarlıda davranış değişmedi: yalnız o örnek gider, seri kalır.
+
+    Bu testin kırmızıya dönmesi, tekrarsız düzeltmesinin seriyi de silmeye
+    başladığı anlamına gelir -- dönem boyu ders programını götüren hata.
+    """
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    ornek = next(o for g in hafta["days"] for o in g["timed"] if o["title"] == "Algoritma")
+
+    _post(
+        sunucu,
+        "/api/occurrences/cancel",
+        {"eventId": ornek["eventId"], "originalStartUtc": ornek["originalStartUtc"]},
+    )
+
+    # O hafta gitti...
+    bu_hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    assert not [o for g in bu_hafta["days"] for o in g["timed"] if o["title"] == "Algoritma"]
+    # ...ama seri duruyor.
+    sonraki = _get(sunucu, "/api/week?date=2026-09-14")
+    assert [o for g in sonraki["days"] for o in g["timed"] if o["title"] == "Algoritma"]
+
+
+def test_yukte_recurring_bayragi_var(sunucu):
+    """Arayüz "bu örnek / tüm seri" ayrımını bu bayrakla gösteriyor."""
+    _post(sunucu, "/api/events", {"title": "tekil", "date": "2026-09-24", "minutes": 540})
+    hafta = _get(sunucu, "/api/week?date=2026-09-07")
+    tekrarli = next(o for g in hafta["days"] for o in g["timed"] if o["title"] == "Algoritma")
+    eylul24 = _get(sunucu, "/api/week?date=2026-09-24")
+    tekil = next(o for g in eylul24["days"] for o in g["timed"] if o["title"] == "tekil")
+
+    assert tekrarli["recurring"] is True
+    assert tekil["recurring"] is False

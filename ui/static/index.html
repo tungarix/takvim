@@ -58,7 +58,7 @@
       <kbd>←</kbd> <kbd>→</kbd> gezin · <kbd>T</kbd> bugün ·
       <kbd>G</kbd>/<kbd>H</kbd>/<kbd>A</kbd> görünüm · <kbd>Esc</kbd> kapat<br>
       Seçiliyken: <kbd>Del</kbd> sil · <kbd>Shift</kbd>+<kbd>Del</kbd> seriyi sil ·
-      <kbd>F2</kbd> başlığı değiştir
+      <kbd>F2</kbd> / <kbd>Enter</kbd> düzenle
     </p>
   </aside>
 
@@ -99,7 +99,9 @@
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-baslik">
     <h2 class="modal-baslik" id="modal-baslik"></h2>
     <p class="modal-metin" id="modal-metin"></p>
-    <input class="modal-girdi" id="modal-girdi" type="text" autocomplete="off" hidden>
+    <!-- Alanlar JS tarafından kuruluyor: tek satırlık soru da, çok alanlı
+         düzenleme formu da aynı kutuyu kullanıyor. -->
+    <div class="modal-alanlar" id="modal-alanlar" hidden></div>
     <div class="modal-islemler">
       <button type="button" class="dugme" id="modal-iptal">İptal</button>
       <button type="button" class="dugme birincil" id="modal-tamam">Tamam</button>

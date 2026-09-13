@@ -167,6 +167,11 @@ class Occurrence:
     is_override: bool = False
     location: str | None = None
     description: str | None = None
+    # Bu örnek TEKRARLI bir seriye mi ait? Arayüz buna göre "bu örnek / tüm
+    # seri" ayrımını gösteriyor ve tekrarsız etkinlikte silme gerçekten
+    # siliyor. Occurrence'ın kendisi Event'e bakamadığı için `expand()`
+    # taşıyor.
+    recurring: bool = False
     # Bu örneğin seride karşılık geldiği ORİJİNAL başlangıç. Override'lı
     # örneklerde start_utc taşınmış saati gösterir; override kaydının anahtarı
     # ise burasıdır. Karıştırmak, var olan override'ı güncellemek yerine
