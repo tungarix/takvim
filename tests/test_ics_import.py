@@ -406,3 +406,21 @@ def test_ice_aktarma_yerel_sayaci_ezmez():
         assert meta["ics_sequence"] == 1, "dosyadaki SEQUENCE ayrı kolonda"
     finally:
         repo.close()
+
+
+def test_guncelleme_takvim_tasimaz():
+    """Aynı UID güncellenirken etkinlik hedef takvime taşınmaz, yerinde kalır."""
+    repo, takvim = _repo()
+    try:
+        diger = repo.add_calendar("Diğer", "#222222")
+        import_ics(repo, FIXTURES / "tek_saatli.ics", calendar_id=takvim.id, default_tzid=IST)
+        kayit = repo.get_event_by_uid("tek-saatli-1")
+        # Kullanıcı etkinliği diğer takvime taşıdı:
+        repo.update_event(replace(repo.get_event(kayit.id), calendar_id=diger.id))
+        rapor = import_ics(
+            repo, FIXTURES / "tek_saatli.ics", calendar_id=takvim.id, default_tzid=IST
+        )
+        assert rapor.updated == 1
+        assert repo.get_event_by_uid("tek-saatli-1").calendar_id == diger.id
+    finally:
+        repo.close()

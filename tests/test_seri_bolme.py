@@ -188,6 +188,52 @@ def test_bolme_rdate_serisini_ayirir(repo, ders):
     assert repo.get_event(sonuc["yeni_id"]).rdate == (ist(2026, 9, 21, 10, 0),)
 
 
+def test_bolme_count_exdate_kaybetmez(repo, ders):
+    """COUNT + EXDATE: iptal edilmiş örnek de sayaçta durur, örnek kaybolmaz."""
+    ev = repo.add_event(_seri(
+        ders, rrule="FREQ=WEEKLY;BYDAY=MO;COUNT=5",
+        exdate=(ist(2026, 9, 7, 10, 0),)))
+    bas = datetime(2026, 9, 1, tzinfo=UTC)
+    bit = datetime(2026, 11, 1, tzinfo=UTC)
+    once = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert len(once) == 4
+    sonuc = repo.split_series(ev.id, ist(2026, 9, 21, 10, 0))
+    sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert sonra == once
+    assert "COUNT=2" in (repo.get_event(ev.id).rrule or "")
+    assert "COUNT=3" in (repo.get_event(sonuc["yeni_id"]).rrule or "")
+
+
+def test_bolme_rdate_noktasinda_carsamba_kaybolmaz(repo, ders):
+    """BYDAY'li kural + Çarşamba RDATE'ten bölünce Çarşamba durur, Pazartesiler kalır."""
+    ev = repo.add_event(_seri(
+        ders, rrule="FREQ=WEEKLY;BYDAY=MO",
+        rdate=(ist(2026, 9, 9, 10, 0),)))
+    bas = datetime(2026, 9, 1, tzinfo=UTC)
+    bit = datetime(2026, 10, 15, tzinfo=UTC)
+    once = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    sonuc = repo.split_series(ev.id, ist(2026, 9, 9, 10, 0))
+    sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert sonra == once
+    assert ist(2026, 9, 9, 10, 0) in sonra
+    assert sonuc["yeni_id"] != ev.id
+
+
+def test_bolme_rdate_noktasinda_gun_kaymaz(repo, ders):
+    """BYDAY'siz kural + RDATE'ten bölünce kalan günler kaymaz (Pazartesi kalır)."""
+    ev = repo.add_event(_seri(
+        ders, rrule="FREQ=WEEKLY",
+        rdate=(ist(2026, 9, 9, 10, 0),)))
+    bas = datetime(2026, 9, 1, tzinfo=UTC)
+    bit = datetime(2026, 10, 15, tzinfo=UTC)
+    once = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    sonuc = repo.split_series(ev.id, ist(2026, 9, 9, 10, 0))
+    sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert sonra == once
+    yeni = repo.get_event(sonuc["yeni_id"])
+    assert "BYDAY=MO" in (yeni.rrule or "")
+
+
 def test_bolme_olmayan_etkinlikte_404luk(repo):
     """Kayıtsız id LookupError (sunucuda 404 olacak)."""
     with pytest.raises(LookupError):

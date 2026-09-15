@@ -1245,7 +1245,7 @@ async function seriyiSil(occ) {
   const kapsam = bilgi.recurring
     ? (bilgi.sonsuz
       ? `Sonsuz seri — önümüzdeki 2 yılda ${bilgi.ornek_sayisi} örnek`
-      : `${bilgi.ornek_sayisi} örnek (2 yıllık pencerede)`)
+      : `${bilgi.ornek_sayisi} örnek`)
     : "Tek seferlik etkinlik";
   const tamam = await onayla(
     "Seriyi tamamen sil",

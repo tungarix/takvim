@@ -197,7 +197,13 @@ def _calistir(args) -> int:
     # Mutex tutamağı işletim sistemine ait; süreç bitene kadar açık kalıyor ve
     # kilidi o tutuyor. Burada bir değişkende tutmamızın tek sebebi, gerekirse
     # açıkça kapatabilmek ve kilidin nerede alındığının okunur olması.
-    if not args.coklu and args.db != ":memory:":
+    # `--no-browser` kilit ALMAZ: o kip penceresiz bir arka plan kopyasıdır
+    # (otomatik başlatma `--no-browser --reminder` ile çalışıyor) ve kilidi
+    # alsaydı sonradan tıklanan kısayol "zaten açık" deyip kapanırdı — ortada
+    # öne alınacak bir pencere olmadığı hâlde. Arka plan kopyaları birbirini
+    # engellemiyor; mükerrer bildirimi `reminder_fired` UNIQUE kısıtı, port
+    # çakışmasını `bos_port_bul` çözüyor.
+    if not args.coklu and args.db != ":memory:" and not args.no_browser:
         alindi, _kilit = kilit_al(kilit_adi(args.db))
         if not alindi:
             print("Takvim zaten açık; var olan pencere öne alınıyor.", flush=True)
@@ -259,8 +265,12 @@ def _calistir(args) -> int:
 
         if args.no_browser:
             # Ön yüz yok: sunucu ana thread'de, Ctrl+C'ye kadar. Testler ve
-            # "başka bir tarayıcıdan bağlanayım" durumu için.
-            serve(repo, args.tz, args.host, port, args.verbose)
+            # "başka bir tarayıcıdan bağlanayım" durumu için. DB yolu da
+            # geçiliyor ki Yedekler ve Ayarlar uçları çalışsın.
+            serve(
+                repo, args.tz, args.host, port, args.verbose,
+                db_yolu=None if args.db == ":memory:" else args.db,
+            )
             return 0
 
         return _onyuzle_calistir(args, repo, port)

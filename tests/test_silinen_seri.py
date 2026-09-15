@@ -176,3 +176,12 @@ def test_series_info_olmayan_404(repo):
     """Kayıtsız id LookupError (sunucuda 404 olacak)."""
     with pytest.raises(LookupError):
         repo.series_info(999)
+
+
+def test_series_info_sonlu_seride_gercek_toplam(repo, ders):
+    """5 yıllık günlük seri 2 yıllık pencereye sığmaz; sayı eksik gösterilmemeli."""
+    ev = repo.add_event(_seri(
+        ders, rrule="FREQ=DAILY;COUNT=1826"))  # ~5 yıl
+    bilgi = repo.series_info(ev.id)
+    assert bilgi["sonsuz"] is False
+    assert bilgi["ornek_sayisi"] == 1826

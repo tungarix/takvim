@@ -18,7 +18,6 @@ günlükte görür.
 
 from __future__ import annotations
 
-import shutil
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -97,19 +96,18 @@ def _budama(klasor: Path) -> list[Path]:
 
 
 def yedekten_don(repo, db_yolu, ad: str, *, check_same_thread: bool = True):
-    """Seçili yedeği CANLI veritabanının üstüne yazar; açılmış depoyu döndürür.
+    """Seçili yedeği CANLI veritabanına yazar; AYNI depoyu döndürür.
 
-    Sıra bilinçli: bağlantıyı KAPAT (Windows açık dosyayı değiştirtmez) ->
-    mevcut hâli kenara al (`onceki-takvim-*.db`, `takvim-*.db` örüntüsünün
-    DIŞINDA ki yedek listesini ve budamayı kirletmesin) -> geçiciye kopyala +
-    taşı (yarım yedek kuralı, AGENTS 55) -> yeniden aç.
+    SQLite `backup` API'siyle, dosya DEĞİŞTİRMEKSİZİN: bağlantı açıkken
+    dosya kopyalamak Windows'ta kilide takılıyor ve hatırlatıcı thread'i
+    (ayrı bağlantı, aynı dosya) açıkken `replace` her zaman patlıyordu.
+    Eski kod o hatayı YUTUP eski DB'yi "geri yüklendi" diye döndürüyordu.
 
-    Yedek bozuk çıkarsa kenara alınan geri konup o açılıyor; gerçekten
-    açılacak bir şey kalmadıysa RuntimeError. `repo` parametresi kapatılmak
-    için alınıyor; dönüşteki depo YENİ bağlantı.
+    Sıra: yedeği doğrula -> mevcut hâli kenara al (`onceki-takvim-*.db`,
+    `takvim-*.db` örüntüsünün DIŞINDA) -> yedeği canlı bağlantıya kopyala.
+    Başarısızlıkta RuntimeError; ASLA sahte başarı yok. `check_same_thread`
+    imza uyumu için duruyor (bağlantı yeniden açılmıyor, mevcut korunuyor).
     """
-    from .repo import Repo
-
     if db_yolu is None or str(db_yolu) == ":memory:":
         raise ValueError("bellek veritabanına yedekten dönülemez")
     db = Path(db_yolu).resolve()
@@ -120,34 +118,64 @@ def yedekten_don(repo, db_yolu, ad: str, *, check_same_thread: bool = True):
         raise ValueError(f"yedek bulunamadı: {ad}")
     kaynak = klasor / ad
 
-    repo.close()
-    kenara: Path | None = None
-    if db.exists():
-        try:
-            damga = datetime.now().strftime("%Y-%m-%d-%H%M%S")
-            kenara = klasor / f"onceki-takvim-{damga}.db"
-            gecici_kenara = kenara.with_name(kenara.name + ".gecici")
-            shutil.copyfile(db, gecici_kenara)
-            gecici_kenara.replace(kenara)
-        except OSError:
-            kenara = None  # kenara alınamadı; geri dönüş yine denenir
-    degisti = False
     try:
-        gecici = db.with_name(db.name + ".geri-yukleme")
-        shutil.copyfile(kaynak, gecici)
-        gecici.replace(db)
-        degisti = True
-        return Repo.open(db, check_same_thread=check_same_thread)
-    except Exception:
-        if degisti and kenara is not None and kenara.exists():
-            try:
-                shutil.copyfile(kenara, db)
-            except OSError:
-                pass
+        kaynaga_baglanti = sqlite3.connect(str(kaynak))
+    except sqlite3.Error as hata:
+        raise RuntimeError(f"Yedek açılamadı ({kaynak.name}): {hata}") from hata
+    try:
         try:
-            return Repo.open(db, check_same_thread=check_same_thread)
-        except Exception:
+            kaynaga_baglanti.execute("PRAGMA quick_check").fetchone()
+        except sqlite3.Error as hata:
+            raise RuntimeError(f"Yedek bozuk ({kaynak.name}): {hata}") from hata
+
+        kenara: Path | None = None
+        if db.exists():
+            try:
+                damga = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+                kenara = klasor / f"onceki-takvim-{damga}.db"
+                kenara_baglanti = sqlite3.connect(str(kenara))
+                try:
+                    repo.conn.backup(kenara_baglanti)
+                finally:
+                    kenara_baglanti.close()
+            except (sqlite3.Error, OSError):
+                # Kenara alınamadı; geri dönüş yine denenir. Yarım kalmış
+                # kenara dosyası varsa temizle ki "sağlam kenara" sanılmasın.
+                try:
+                    if kenara is not None and kenara.exists():
+                        kenara.unlink()
+                except OSError:
+                    pass
+                kenara = None
+
+        try:
+            # `sleep`: hedef başka bir bağlantı (hatırlatıcı thread'i)
+            # tarafından anlık kilitliyse bekleyip yeniden dene.
+            kaynaga_baglanti.backup(repo.conn, sleep=0.1)
+        except Exception as hata:
             raise RuntimeError(
-                "Yedekten dönülemedi; eldeki kopyalarla devam ediliyor. "
+                f"Yedekten dönülemedi ({kaynak.name}): {hata}. "
                 f"Yedek klasörü: {klasor}"
-            ) from None
+            ) from hata
+
+        try:
+            repo.conn.execute("PRAGMA quick_check").fetchone()
+        except sqlite3.Error as hata:
+            # Geri yazma yarım kaldıysa kenaradaki sağlam hâli geri koymayı
+            # dene; olmazsa yine de sessiz kalma.
+            if kenara is not None and kenara.exists():
+                try:
+                    geri_baglanti = sqlite3.connect(str(kenara))
+                    try:
+                        geri_baglanti.backup(repo.conn, sleep=0.1)
+                    finally:
+                        geri_baglanti.close()
+                except (sqlite3.Error, OSError):
+                    pass
+            raise RuntimeError(
+                f"Yedekten dönülen veritabanı bozuk: {hata}. "
+                f"Yedek klasörü: {klasor}"
+            ) from hata
+        return repo
+    finally:
+        kaynaga_baglanti.close()

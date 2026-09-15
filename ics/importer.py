@@ -773,7 +773,10 @@ def import_ics(
             yazilan_override += len(p.overrides)
             continue
         try:
-            repo.update_event(replace(p.event, id=mevcut.id, calendar_id=calendar_id))
+            # Güncelleme MEVCUT takvimde kalır: içe aktarma hedefi yalnızca YENİ
+            # kayıtlar için. Eskiden hedef takvime taşınıyordu ve kullanıcı
+            # fark etmeden etkinlik takvim değiştiriyordu.
+            repo.update_event(replace(p.event, id=mevcut.id, calendar_id=mevcut.calendar_id))
             repo.set_ics_sequence(mevcut.id, p.sequence)
             # Override senkronu: kaynakta artık olmayan geçersiz kılma
             # DB'de öksüz kalmasın, yoksa silinen örnek geri gelmez.

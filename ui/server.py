@@ -1000,6 +1000,7 @@ def serve(
     port: int = 8765,
     verbose: bool = False,
     on_ready=None,
+    db_yolu=None,
 ) -> None:
     """Sunucuyu başlatır ve Ctrl+C'ye kadar çalıştırır.
 
@@ -1007,8 +1008,12 @@ def serve(
     çağrılır. Tarayıcıyı açmak buraya ait: daha önce `serve()` çağrılmadan
     açılıyordu ve hızlı bir makinede tarayıcı henüz dinlemeyen porta gidip
     "siteye ulaşılamıyor" gösteriyordu.
+
+    `db_yolu` yedek/ayar uçları için şart; verilmezse o uçlar boş/ret
+    dönüyor (test sunucuları). `--no-browser` bunu geçirmeyi unutuyordu,
+    arka plan kipinde Yedekler ve Ayarlar hiç çalışmıyordu.
     """
-    httpd = make_server(repo, tzid, host, port, verbose)
+    httpd = make_server(repo, tzid, host, port, verbose, db_yolu=db_yolu)
     gercek_port = httpd.server_address[1]
     print(f"Takvim: http://{host}:{gercek_port}  (durdurmak için Ctrl+C)", flush=True)
     if on_ready is not None:

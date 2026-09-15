@@ -103,7 +103,13 @@ def pid_oku(veri_dizini: str | Path) -> int | None:
 
 
 def _win32_pencereler() -> list[tuple[int, str, int]]:
-    """Görünür üst düzey pencereleri `(tutamak, başlık, süreç)` olarak listeler."""
+    """Görünür+gizli üst düzey pencereleri `(tutamak, başlık, süreç)` olarak listeler.
+
+    Tepsiye küçültülmüş pencere GİZLİDİR (`pencere.hide()`): yalnızca görünür
+    pencerelere bakarsak ikinci tık onu bulamaz ve "hiçbir şey olmuyor"
+    hissi verir. Bu yüzden görünürlük filtresi YOK; `pencereyi_one_al`
+    zaten başlık + süreç numarasıyla daraltıyor.
+    """
     import ctypes
     from ctypes import wintypes
 
@@ -113,13 +119,12 @@ def _win32_pencereler() -> list[tuple[int, str, int]]:
     GERI = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)
 
     def topla(tutamak, _lparam):
-        if user32.IsWindowVisible(tutamak):
-            tampon = ctypes.create_unicode_buffer(512)
-            user32.GetWindowTextW(tutamak, tampon, 512)
-            if tampon.value:
-                pid = wintypes.DWORD()
-                user32.GetWindowThreadProcessId(tutamak, ctypes.byref(pid))
-                sonuc.append((int(tutamak), tampon.value, int(pid.value)))
+        tampon = ctypes.create_unicode_buffer(512)
+        user32.GetWindowTextW(tutamak, tampon, 512)
+        if tampon.value:
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(tutamak, ctypes.byref(pid))
+            sonuc.append((int(tutamak), tampon.value, int(pid.value)))
         return True
 
     user32.EnumWindows(GERI(topla), 0)
@@ -156,11 +161,15 @@ def pencereyi_one_al(baslik: str, pid: int | None = None, listele=None) -> bool:
 
 
 def _one_getir(tutamak: int) -> bool:
-    """Pencereyi simge durumundan çıkarıp odağı ona verir."""
+    """Pencereyi simge durumundan/gizliden çıkarıp odağı ona verir."""
     try:
         import ctypes
 
         user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+        # Önce GÖSTER (tepsiye gizlenmiş pencere için), sonra GERİ YÜKLE
+        # (görev çubuğuna küçültülmüş için). Tek komut iki hâli de
+        # kapsamıyor: SW_RESTORE gizli pencereyi göstermeyebiliyor.
+        user32.ShowWindow(tutamak, 5)  # SW_SHOW
         user32.ShowWindow(tutamak, 9)  # SW_RESTORE
         if user32.SetForegroundWindow(tutamak):
             return True

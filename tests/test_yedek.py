@@ -134,3 +134,16 @@ def test_yedekten_don_bellekte_reddedilir():
     with Repo.open(":memory:") as repo:
         with pytest.raises(ValueError):
             yedekten_don(repo, ":memory:", "takvim-2026-09-13.db")
+
+
+def test_yedekten_don_ikinci_baglanti_acikken_calir(tmp_path):
+    """Hatırlatıcı thread'i dosyayı açık tutarken dönüş sessizce yutulmasın."""
+    db = tmp_path / "takvim.db"
+    with _depo(db) as repo:
+        yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 13))
+        repo.add_calendar("Ders", "#e0524a")
+        with Repo.open(str(db)) as ikinci:  # hatırlatıcı benzetimi
+            repo = yedekten_don(repo, str(db), "takvim-2026-09-13.db")
+            assert [c.name for c in repo.list_calendars()] == ["Kişisel"]
+            assert [c.name for c in ikinci.list_calendars()] == ["Kişisel"]
+        repo.close()

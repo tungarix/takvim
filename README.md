@@ -229,10 +229,12 @@ Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı pencer
 - **`.ics` içe aktarma arayüzde yok**, yalnızca API'de (`POST /api/import`).
 - **Seri düzenleme sınırlı.** Tekrarlı bir etkinliğin başlığını/konumunu
   değiştirmek TÜM seriyi, tarih/saatini değiştirmek yalnızca o örneği etkiler.
-  "Bundan sonrası için değiştir" yok.
+  "Bundan sonrası için değiştir" paneldeki "Bundan sonrasını değiştir"
+  düğmesinde (seriyi ikiye böler).
 - **Geri alma tek adımlık.** Bildirimdeki "Geri al" yalnızca son silmeyi ve
-  10 saniye içinde geri alır. Seri silmede geri alma yok; onay kutusu bu yüzden
-  ne olacağını açıkça yazıyor.
+  10 saniye içinde geri alır. Seri silmede de tek adımlı geri alma var
+  (silme bildirimindeki "Geri al"); onay kutusu bu yüzden ne olacağını
+  açıkça yazıyor.
 
 ### Geliştirme
 
