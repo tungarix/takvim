@@ -9,7 +9,7 @@ from datetime import timedelta
 
 import pytest
 
-from core import Override, expand, series_end, to_local
+from core import Override, expand, next_rule_start, series_end, to_local
 from tests.helpers import IST, NY, ist, local_stamps, make_event, ny, utc_stamps
 
 # ---------------------------------------------------------------------------
@@ -448,3 +448,42 @@ def test_naive_pencere_reddedilir():
     event = make_event(ist(2024, 5, 1, 10, 0), ist(2024, 5, 1, 11, 0))
     with pytest.raises(ValueError):
         expand(event, [], _dt(2024, 5, 1), ist(2024, 5, 2))
+
+
+# ---------------------------------------------------------------------------
+# next_rule_start: seri bölmenin desen-üstü başlangıcı
+# ---------------------------------------------------------------------------
+
+def test_next_rule_start_ustunde_ise_ayni_ani_dondurur():
+    """Kural örneğinin üstü sorulunca kendisi dönüyor (inc=True)."""
+    event = make_event(
+        ist(2026, 9, 7, 10, 0), ist(2026, 9, 7, 11, 0),
+        rrule="FREQ=WEEKLY;BYDAY=MO",
+    )
+    assert next_rule_start(event, ist(2026, 9, 14, 10, 0)) == ist(2026, 9, 14, 10, 0)
+
+
+def test_next_rule_start_aradakini_atlayip_sonraki_kurali_bulur():
+    """Desen dışı an (RDATE noktası) sorulunca sonraki kural örneği dönüyor."""
+    event = make_event(
+        ist(2026, 9, 7, 10, 0), ist(2026, 9, 7, 11, 0),
+        rrule="FREQ=WEEKLY;BYDAY=MO",
+        rdate=(ist(2026, 9, 9, 10, 0),),
+    )
+    # Çarşamba RDATE'i kuralda yok sayılıyor; cevap sonraki Pazartesi:
+    assert next_rule_start(event, ist(2026, 9, 9, 10, 0)) == ist(2026, 9, 14, 10, 0)
+
+
+def test_next_rule_start_tukenmis_kuralda_none():
+    """COUNT bitmişse soru ne olursa olsun None (bölme kuyruğu salt RDATE)."""
+    event = make_event(
+        ist(2026, 9, 7, 10, 0), ist(2026, 9, 7, 11, 0),
+        rrule="FREQ=WEEKLY;BYDAY=MO;COUNT=2",
+    )
+    assert next_rule_start(event, ist(2026, 10, 1, 10, 0)) is None
+
+
+def test_next_rule_start_kuralsizda_none():
+    """RRULE yoksa ızgara da yok."""
+    event = make_event(ist(2026, 9, 7, 10, 0), ist(2026, 9, 7, 11, 0))
+    assert next_rule_start(event, ist(2026, 9, 7, 10, 0)) is None

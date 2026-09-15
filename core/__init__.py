@@ -11,7 +11,7 @@ from .layout import layout
 from .models import Calendar, Event, Occurrence, Override
 from .query import conflicts, free_slots, overlaps
 from .quickadd import QuickAdd, parse_quick_add
-from .recurrence import expand, instance_starts, series_end
+from .recurrence import expand, instance_starts, next_rule_start, series_end
 from .reminders import DueReminder, Reminder, due_reminders, fire_key, next_fire_time
 from .timeutil import (
     UTC,
@@ -34,6 +34,7 @@ __all__ = [
     # tekrar
     "expand",
     "instance_starts",
+    "next_rule_start",
     "series_end",
     # yerleşim ve sorgu
     "layout",

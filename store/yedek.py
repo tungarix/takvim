@@ -18,7 +18,9 @@ günlükte görür.
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -64,7 +66,12 @@ def yedek_al(baglanti: sqlite3.Connection, veri_dizini: str | Path, *, bugun: da
         # Geçici ada yazıp sonra taşıyoruz: yedek alırken uygulama kapanırsa
         # geriye YARIM bir "yedek" kalmasın. Yarım yedek, yedeksiz olmaktan
         # kötüdür -- insan ona güvenir.
-        gecici = hedef.with_name(hedef.name + ".gecici")
+        # Ad süreç-özel (`pid` sonekli): ön yüzle otomatik başlatmanın arka
+        # plan kopyası aynı gün yedek alırsa ortak temp dosyaya yazıp
+        # birbirinin anlık görüntüsünü bozardı. Taşıma atomik, son kazananın
+        # dosyası da tutarlı bir anlık görüntü.
+        _eski_gecicileri_temizle(klasor, hedef.name)
+        gecici = hedef.with_name(f"{hedef.name}.gecici-{os.getpid()}")
         kopya = sqlite3.connect(gecici)
         try:
             baglanti.backup(kopya)
@@ -79,6 +86,26 @@ def yedek_al(baglanti: sqlite3.Connection, veri_dizini: str | Path, *, bugun: da
         return hedef
     except (sqlite3.Error, OSError):
         return None
+
+
+def _eski_gecicileri_temizle(klasor: Path, hedef_ad: str) -> None:
+    """Ölmüş süreçlerden kalan temp yedekleri siler.
+
+    Yalnızca 1 SAATTEN ESKİLER: canlı bir süreç şu an yazıyor olabilir,
+    onun dosyasına dokunmak o yedeği bozar. Normal yedek saniyeler sürdüğü
+    için saatlik eşik fazlasıyla güvenli. Silinemeyen atlanıyor.
+    """
+    esik = time.time() - 3600
+    try:
+        adaylar = list(klasor.glob(f"{hedef_ad}.gecici-*"))
+    except OSError:
+        return
+    for artik in adaylar:
+        try:
+            if artik.stat().st_mtime < esik:
+                artik.unlink()
+        except OSError:
+            pass  # kilitli ya da arada silinmiş; bir dahaki sefere
 
 
 def _budama(klasor: Path) -> list[Path]:

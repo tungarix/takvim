@@ -357,6 +357,30 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
 56. **Arayüzde tek bir `setInterval` var** (`canliBaslat`): şimdi çizgisini
     tazeliyor ve gün değişince yeniden çiziyor. Sürükleme ya da açık kutu
     varsa dokunmuyor, `durum.anchor`a da dokunmuyor.
+57. **Seri bölmede COUNT kural düzeyinde sayılır.** Görünür örnek sayısı
+    EXDATE düşülmüş hâl; sayaca onu yazmak dışlanmış örnek kadar eski tarafı
+    kısa yazar ve örnek kaybolur. Doğrulama görünür listede, sayaç yalın
+    RRULE'da (`_seriyi_bol`).
+58. **Yeni seri desen üstünden başlar.** Bölme anı RDATE ise yeni DTSTART
+    sonraki kural örneğidir (`next_rule_start`), kural metni değişmez.
+    Desen dışına düşen DTSTART `INTERVAL` fazını/saat ızgarasını kaydırır ve
+    sayaç kayan ızgarayı sayıp örnek düşürür. Bölme anının kendisi RDATE ile
+    taşınır.
+59. **Yedek temp dosyası süreç-özeldir** (`.gecici-<pid>`). Ön yüzle arka
+    plan kopyası aynı gün yedek alırsa ortak temp birbirinin anlık
+    görüntüsünü bozar. Bir saatten eski kalıntılar açılışta temizlenir;
+    canlı yazana dokunulmaz.
+60. **`--no-browser` tek-örnek kilidini ALMAZ.** Penceresiz arka plan
+    kopyası (otomatik başlatma) kilidi tutarsa kısayol tıklaması "zaten
+    açık" deyip kapanır — öne alınacak pencere olmadığı hâlde. Arka plan
+    kopyaları birbirini engellemez (`reminder_fired` UNIQUE + `bos_port_bul`).
+61. **Pencere arama gizli pencereyi de bulur.** Tepsideki pencere gizlidir;
+    yalnızca görünürleri listelemek ikinci tıkı boşa düşürür. Öne alırken
+    önce `SW_SHOW`, sonra `SW_RESTORE` (tek komut iki hâli kapsamıyor).
+62. **Yedekten dönüş dosya DEĞİŞTİRMEZ, `backup` API'siyle yazar.** Açık
+    bağlantı varken `replace` Windows kilidine takılıyor ve eski kod hatayı
+    yutup "geri yüklendi" diyordu. Başarısızlık `RuntimeError`, sahte
+    başarı yok; aynı depo nesnesi dönüyor.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

@@ -205,7 +205,11 @@ def test_bolme_count_exdate_kaybetmez(repo, ders):
 
 
 def test_bolme_rdate_noktasinda_carsamba_kaybolmaz(repo, ders):
-    """BYDAY'li kural + Çarşamba RDATE'ten bölünce Çarşamba durur, Pazartesiler kalır."""
+    """BYDAY'li kural + Çarşamba RDATE'ten bölünce Çarşamba durur, Pazartesiler kalır.
+
+    Yeni seri desen üstünden başlıyor (sonraki Pazartesi), kural metni
+    aynen duruyor; Çarşamba RDATE ile taşınıyor.
+    """
     ev = repo.add_event(_seri(
         ders, rrule="FREQ=WEEKLY;BYDAY=MO",
         rdate=(ist(2026, 9, 9, 10, 0),)))
@@ -216,11 +220,16 @@ def test_bolme_rdate_noktasinda_carsamba_kaybolmaz(repo, ders):
     sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
     assert sonra == once
     assert ist(2026, 9, 9, 10, 0) in sonra
-    assert sonuc["yeni_id"] != ev.id
+    yeni = repo.get_event(sonuc["yeni_id"])
+    assert yeni.start_utc == ist(2026, 9, 14, 10, 0)
+    assert yeni.rrule == "FREQ=WEEKLY;BYDAY=MO"
 
 
 def test_bolme_rdate_noktasinda_gun_kaymaz(repo, ders):
-    """BYDAY'siz kural + RDATE'ten bölünce kalan günler kaymaz (Pazartesi kalır)."""
+    """BYDAY'siz kural + RDATE'ten bölünce kalan günler kaymaz (Pazartesi kalır).
+
+    Kural metnine dokunulmuyor; faz desen üstü DTSTART ile korunuyor.
+    """
     ev = repo.add_event(_seri(
         ders, rrule="FREQ=WEEKLY",
         rdate=(ist(2026, 9, 9, 10, 0),)))
@@ -231,7 +240,59 @@ def test_bolme_rdate_noktasinda_gun_kaymaz(repo, ders):
     sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
     assert sonra == once
     yeni = repo.get_event(sonuc["yeni_id"])
-    assert "BYDAY=MO" in (yeni.rrule or "")
+    assert yeni.start_utc == ist(2026, 9, 14, 10, 0)
+    assert yeni.rrule == "FREQ=WEEKLY"
+
+
+def test_bolme_interval_fazi_rdate_noktasinda_korunur(repo, ders):
+    """İki haftada bir + RDATE'ten bölünce kalan haftalar kaymaz.
+
+    Regresyon: yeni DTSTART desen dışına düşünce INTERVAL sayacı faz
+    kaydırıyordu (21 Eylül → 28 Eylül). Desen üstü başlangıçla haftalar
+    yerinde kalıyor.
+    """
+    ev = repo.add_event(_seri(
+        ders, rrule="FREQ=WEEKLY;INTERVAL=2;COUNT=4",
+        rdate=(ist(2026, 9, 16, 10, 0),)))
+    bas = datetime(2026, 9, 1, tzinfo=UTC)
+    bit = datetime(2026, 11, 15, tzinfo=UTC)
+    once = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert once == [
+        ist(2026, 9, 7, 10, 0), ist(2026, 9, 16, 10, 0),
+        ist(2026, 9, 21, 10, 0), ist(2026, 10, 5, 10, 0),
+        ist(2026, 10, 19, 10, 0),
+    ]
+    sonuc = repo.split_series(ev.id, ist(2026, 9, 16, 10, 0))
+    sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert sonra == once
+    yeni = repo.get_event(sonuc["yeni_id"])
+    assert yeni.start_utc == ist(2026, 9, 21, 10, 0)
+    assert "COUNT=3" in (yeni.rrule or "")
+
+
+def test_bolme_saatlik_faz_rdate_noktasinda_korunur(repo, ders):
+    """Saatlik kural + RDATE'ten bölünce saat ızgarası kaymaz, örnek kaybolmaz.
+
+    Regresyon: desen dışı DTSTART saat ızgarasını kaydırıyordu (11:00 →
+    12:30) ve sayaç kayan ızgarayı saydığı için 15:00 sessizce düşüyordu.
+    """
+    ev = repo.add_event(_seri(
+        ders, start=ist(2026, 9, 7, 9, 0), end=ist(2026, 9, 7, 10, 0),
+        rrule="FREQ=HOURLY;INTERVAL=2;COUNT=4",
+        rdate=(ist(2026, 9, 7, 10, 30),)))
+    bas = datetime(2026, 9, 1, tzinfo=UTC)
+    bit = datetime(2026, 9, 10, tzinfo=UTC)
+    once = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert once == [
+        ist(2026, 9, 7, 9, 0), ist(2026, 9, 7, 10, 30),
+        ist(2026, 9, 7, 11, 0), ist(2026, 9, 7, 13, 0),
+        ist(2026, 9, 7, 15, 0),
+    ]
+    sonuc = repo.split_series(ev.id, ist(2026, 9, 7, 10, 30))
+    sonra = sorted(o.start_utc for o in repo.occurrences(bas, bit))
+    assert sonra == once
+    yeni = repo.get_event(sonuc["yeni_id"])
+    assert yeni.start_utc == ist(2026, 9, 7, 11, 0)
 
 
 def test_bolme_olmayan_etkinlikte_404luk(repo):

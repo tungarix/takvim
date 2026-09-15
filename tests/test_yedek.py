@@ -86,7 +86,7 @@ def test_yarim_yedek_birakilmaz(tmp_path):
         yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 13))
 
     klasor = yedek_klasoru(tmp_path)
-    assert not list(klasor.glob("*.gecici"))
+    assert not list(klasor.glob("*gecici*"))
     for d in yedek_dosyalari(klasor):
         sqlite3.connect(d).execute("PRAGMA quick_check").fetchone()  # bozuksa patlar
 

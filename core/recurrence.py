@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from dataclasses import replace
 from datetime import datetime, timedelta, tzinfo
 
 from dateutil.rrule import rruleset, rrulestr
@@ -20,7 +21,7 @@ from dateutil.rrule import rruleset, rrulestr
 from .models import Event, Occurrence, Override
 from .timeutil import UTC, ensure_aware, get_tz
 
-__all__ = ["expand", "instance_starts", "series_end"]
+__all__ = ["expand", "instance_starts", "next_rule_start", "series_end"]
 
 _UNTIL_RE = re.compile(r"UNTIL=([^;\s]+)", re.IGNORECASE)
 
@@ -278,6 +279,28 @@ def instance_starts(
     if bit_local < bas_local:
         return []
     return sorted(hit.astimezone(UTC) for hit in rs.between(bas_local, bit_local, inc=True))
+
+
+def next_rule_start(event: Event, at: datetime) -> datetime | None:
+    """RRULE'nin `at` anındaki ya da sonrasındaki ilk örneği (UTC).
+
+    Yalnızca KURAL sayılır: RDATE/EXDATE/override'lar YOK sayılır (bölme
+    hesabı kural ızgarasına göre yapılır; görünürlük hesabı `expand`'in
+    işi). Kural tükenmişse (COUNT/UNTIL dışı kalmışsa) ya da kural yoksa
+    None döner.
+
+    `instance_starts` sonsuz seride liste bitiremez; burada yalnızca
+    SONRAKİ örnek sorulduğu için dateutil'in `after()`'ı yetiyor ve
+    materialize yok.
+    """
+    at = ensure_aware(at, "at")
+    if not event.rrule:
+        return None
+    # RDATE/EXDATE'siz yalın kopya: aranan ızgara, ekler/çıkarmalar değil.
+    yalın = replace(event, rdate=(), exdate=())
+    tz = get_tz(event.tzid)
+    sonraki = _ruleset(yalın).after(at.astimezone(tz), inc=True)
+    return sonraki.astimezone(UTC) if sonraki is not None else None
 
 
 # ---------------------------------------------------------------------------

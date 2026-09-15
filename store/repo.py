@@ -29,8 +29,8 @@ from core import (
     Reminder,
     ensure_aware,
     expand,
-    get_tz,
     instance_starts,
+    next_rule_start,
     parse_iso,
     series_end,
 )
@@ -238,47 +238,6 @@ def _kural_satiri_degistir(metin: str, eski: str, yeni: str) -> str:
     return "\n".join(cikti)
 
 
-def _yeni_kurali_sabitle(kural_govde: str, event: Event, split: datetime) -> str:
-    """RDATE noktasından bölünen yeni serinin kuralını ilk güne ÇAPALAR.
-
-    `FREQ=WEEKLY` (BYDAY'siz) gibi kurallar deseni DTSTART'tan alır: Pazartesi
-    başlayan seri + Çarşamba RDATE varken Çarşamba'dan bölünüp aynı kural
-    yeni DTSTART'la (Çarşamba) kurulursa kalan Pazartesiler Çarşamba'ya KAYAR.
-    `BYDAY=MO` yazan kuralda ise kayma yok ama Çarşamba RRULE üretmediği için
-    (dateutil DTSTART'ı desene uymuyorsa saymıyor) bölme anı KAYBOLUR.
-
-    Çözüm ikisi için de aynı: bölme anı bir RDATE ise (`split in event.rdate`)
-    deseni orijinal güne açıkça yazıyoruz (WEEKLY->BYDAY, MONTHLY->BYMONTHDAY,
-    YEARLY->BYMONTH+BYMONTHDAY) ve bölme anını yeni RDATE'te tutuyoruz
-    (çağıran `>=` ile ayırıyor; rruleset yineleneni tek sayıyor).
-    RRULE örneğinden bölünüyorsa desen zaten korunuyor, dokunulmuyor.
-    """
-    if split not in set(event.rdate):
-        return kural_govde
-    parca = re.search(r"FREQ=(\w+)", kural_govde, re.IGNORECASE)
-    freq = parca.group(1).upper() if parca else ""
-    ust = kural_govde.upper()
-    try:
-        yerel = event.start_utc.astimezone(get_tz(event.tzid))
-    except ValueError:
-        return kural_govde
-    if freq == "WEEKLY" and "BYDAY=" not in ust:
-        kodlar = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
-        return f"{kural_govde};BYDAY={kodlar[yerel.weekday()]}"
-    if freq == "MONTHLY" and "BYDAY=" not in ust and "BYMONTHDAY=" not in ust:
-        return f"{kural_govde};BYMONTHDAY={yerel.day}"
-    if (
-        freq == "YEARLY"
-        and "BYMONTH=" not in ust
-        and "BYDAY=" not in ust
-        and "BYMONTHDAY=" not in ust
-        and "BYYEARDAY=" not in ust
-        and "BYWEEKNO=" not in ust
-    ):
-        return f"{kural_govde};BYMONTH={yerel.month};BYMONTHDAY={yerel.day}"
-    return kural_govde
-
-
 def _seriyi_bol(
     event: Event, overrides: list[Override], split_utc: datetime
 ) -> tuple[Event, Event, list[Override], list[Override]]:
@@ -295,11 +254,14 @@ def _seriyi_bol(
       bakmak EXDATE'li seride eski tarafı kısa yazar ve örnek kaybolur).
     - COUNT'suz kuralda eskiye `UNTIL` ekleniyor (UTC `Z` biçimi).
     - RDATE/EXDATE ve override'lar bölme anına göre iki tarafa ayrılıyor;
-      bölme anı RDATE ise yeni tarafta TUTULUYOR (`>=`) ve yeni kural ilk
-      güne çapalanıyor (`_yeni_kurali_sabitle`), yoksa Çarşamba RDATE'ten
-      bölünce Çarşamba kayboluyor ya da kalan Pazartesiler Çarşamba'ya kayıyor.
-    - Zaman/süre DEĞİŞMİYOR: yeni seri bölme anında aynı saatte başlıyor.
-      Başlık/konum/açıklama değişimi çağıranın işi (`replace` ile).
+      bölme anı RDATE ise yeni tarafta TUTULUYOR (`>=`; rruleset yineleneni
+      tek saydığı için RRULE örneğinde bölününce de çift üretim olmuyor).
+    - Yeni seri DESEN ÜSTÜNDEN başlıyor: `split` kural örneğiyse oradan,
+      RDATE noktasındaysa sonraki kural örneğinden (`G`). Kural metni ve
+      DTSTART fazı böylece hiç oynamıyor — `INTERVAL` fazı ya da saatlik
+      kurallar desen dışından bölününce kaymıyor. İlk örnek (`split`in
+      kendisi) RDATE ile taşınıyor, kaybolmuyor.
+    - Süre DEĞİŞMİYOR. Başlık/konum/açıklama değişimi çağıranın işi.
     """
     split = ensure_aware(split_utc, "split_utc").astimezone(UTC)
     if not event.is_recurring:
@@ -316,6 +278,12 @@ def _seriyi_bol(
 
     if event.rrule:
         kural = _tek_kural(event.rrule)
+        # Yeni serinin DTSTART'ı (`yeni_bas`): desen üstündeki ilk örnek.
+        # Kural örneğinden bölünüyorsa bölme anının kendisi; RDATE
+        # noktasındaysa sonraki kural örneği (`G`), kural tükenmişse bölme
+        # anı (kuyruk salt RDATE olur). Kural metni DEĞİŞMEDİĞİ için faz
+        # (haftanın günü, INTERVAL sayacı, saatlik ızgara) aynen korunur.
+        rdate_kumesi = set(event.rdate)
         sayi = re.search(r"COUNT=(\d+)", kural, re.IGNORECASE)
         if sayi:
             # COUNT'lu seri SINIRLI: görünür liste doğrulanır, SAYAÇ kural
@@ -329,6 +297,8 @@ def _seriyi_bol(
             once_kural = sum(1 for s in kural_ornekleri if s < split)
             toplam_kural = len(kural_ornekleri)
             yeni_kural_sayisi = toplam_kural - once_kural
+            sonraki = [s for s in kural_ornekleri if s >= split]
+            yeni_bas = min(sonraki) if sonraki else split
             if once_kural <= 0:
                 eski_govde = ""
             else:
@@ -338,13 +308,12 @@ def _seriyi_bol(
             if yeni_kural_sayisi <= 0:
                 yeni_govde = ""
             else:
-                ham_yeni = re.sub(
+                yeni_govde = re.sub(
                     r"COUNT=\d+",
                     f"COUNT={yeni_kural_sayisi}",
                     kural,
                     flags=re.IGNORECASE,
                 )
-                yeni_govde = _yeni_kurali_sabitle(ham_yeni, event, split)
         else:
             # UNTIL'li ya da sınırsız: bölme ve öncesi sayılıyor, tam liste yok.
             # Burada SAYI değil doğrulama önemli (COUNT yazılmıyor).
@@ -362,7 +331,15 @@ def _seriyi_bol(
                 )
             else:
                 eski_govde = f"{kural};UNTIL={sinir}"
-            yeni_govde = _yeni_kurali_sabitle(kural, event, split)
+            yeni_govde = kural
+            if split in rdate_kumesi:
+                # RDATE noktası: kural ızgarasında mı? Değilse sonraki
+                # kural örneğinden başla (yoksa kural tükenmiş, salt RDATE).
+                g = next_rule_start(event, split)
+                yeni_bas = g if g is not None else split
+            else:
+                # Kural örneği (doğrulandı): desen zaten üstünde.
+                yeni_bas = split
         if not eski_govde:
             eski_rrule = None
         else:
@@ -373,10 +350,12 @@ def _seriyi_bol(
             yeni_rrule = _kural_satiri_degistir(event.rrule, kural, yeni_govde)
     else:
         # Yalnızca RDATE: liste her zaman sonlu (dönüş değeri değil,
-        # doğrulama önemli: ilk örnekten bölünemez).
+        # doğrulama önemli: ilk örnekten bölünemez). Kural yok, desen
+        # sorunu yok; yeni seri bölme anından başlıyor.
         _dogrula(instance_starts(event))
         eski_rrule = None
         yeni_rrule = None
+        yeni_bas = split
 
     eski = replace(
         event,
@@ -387,10 +366,10 @@ def _seriyi_bol(
     sure = event.duration
     # Yeni RDATE ayrımı: RRULE'suz seride `>` (bölme anı yeni DTSTART ve
     # DTSTART kuralsızken her zaman sayılıyor, tekrarsız yazılmıyor); RRULE'li
-    # seride `>=` (bölme anı RDATE ise yeni RDATE'te TUTULUYOR, çünkü dateutil
-    # desene uymayan DTSTART'ı saymıyor — BYDAY=MO kuralında Çarşamba
-    # RDATE'ten bölünce Çarşamba kayboluyordu; rruleset yineleneni tek
-    # saydığı için RRULE örneğinde bölününce de çift üretim olmuyor).
+    # seride `>=` (bölme anı RDATE ise yeni RDATE'te TUTULUYOR — yeni DTSTART
+    # desen üstünde (`yeni_bas`) olduğu için kural onu üretmeyebilir; rruleset
+    # yineleneni tek saydığı için RRULE örneğinde bölününce de çift üretim
+    # olmuyor).
     # EXDATE'te eşitlik zaten olamaz (doğrulanmış bölme noktası görünür
     # örnek, dışlanmış değil).
     if event.rrule is None:
@@ -402,8 +381,8 @@ def _seriyi_bol(
         uid="",
         calendar_id=event.calendar_id,
         title=event.title,
-        start_utc=split,
-        end_utc=split + sure,
+        start_utc=yeni_bas,
+        end_utc=yeni_bas + sure,
         tzid=event.tzid,
         all_day=event.all_day,
         rrule=yeni_rrule,
