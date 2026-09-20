@@ -64,25 +64,28 @@ class ImportReport:
 
 
 def _to_calendar(source: str | Path) -> Calendar:
-    """`source` dosya yoluysa dosyadan, `.ics` metniyse metinden takvim kurar.
+    """`source` bir `Path`SE dosyadan, `str`SE METİN olarak takvim kurar.
 
-    `str` iki anlama gelebildiği için içeriğinde `BEGIN:VCALENDAR` geçiyorsa
-    metin sayılır, yoksa var olan bir dosya yolu mu diye bakılır. Uzun bir
-    `.ics` metni hiçbir zaman dosya olarak bulunamayacağı için yanlış dala
-    girme riski yok.
+    `str` ASLA dosya yolu olarak YORUMLANMAZ (güvenlik denetimi TKV-API-003).
+    Önce yalnızca kendi `BEGIN:VCALENDAR` sezgimizi kaldırmıştık, ama `str`'i
+    doğrudan `Calendar.from_ical`e vermek YETMİYORDU: `icalendar` paketinin
+    KENDİ `from_ical`'ı da satır sonu TAŞIMAYAN bir `str`'i diskte dosya olarak
+    arıyor (`Path(st).is_file()` -- paketin kaynağında elle doğrulandı). Yani
+    tek satırlık, saldırganın diskte var olduğunu bildiği bir yol string'i
+    hâlâ okunup `/api/export` ile dışarı sızabiliyordu; bunu da uçtan uca
+    kanıtladık. Çözüm: `str`'i BAYT'a çeviriyoruz -- paket yalnızca `str`
+    girdiyi yol olarak deniyor, `bytes`'ı ASLA (kaynakta `elif isinstance(st,
+    str)` şartı `bytes`'ı hiç kapsamıyor). Türkçe karakterler için UTF-8
+    yuvarlanıp geri geliyor, doğrulandı.
+
+    Python içinden gerçekten dosya okutmak isteyen çağıran açıkça `Path`
+    geçirsin -- testler ve `import_ics`'in dosya tabanlı kullanımları zaten
+    öyle yapıyor, davranışları DEĞİŞMEDİ.
     """
     if isinstance(source, Path):
         return Calendar.from_ical(source)
     if isinstance(source, str):
-        if "BEGIN:VCALENDAR" in source.upper():
-            return Calendar.from_ical(source)
-        aday = Path(source)
-        # Kısa bir metin parçası tesadüfen var olan bir dosya adıyla çakışırsa
-        # dosya sayılır; pratikte testlerde geçen kısa UID'ler dosya olmadığı
-        # için bu dala girmez.
-        if aday.exists() and aday.is_file():
-            return Calendar.from_ical(aday)
-        return Calendar.from_ical(source)
+        return Calendar.from_ical(source.encode("utf-8"))
     raise ValueError(f"source str veya Path olmalı, alınan: {type(source).__name__}")
 
 

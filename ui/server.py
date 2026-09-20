@@ -93,20 +93,44 @@ class _Handler(BaseHTTPRequestHandler):
         """Hata gövdesi."""
         self._json({"error": mesaj}, status)
 
+    def _icerik_uzunlugu(self) -> int:
+        """`Content-Length` başlığını doğrulayıp okunacak byte sayısını verir.
+
+        Negatif ya da sayı-olmayan bir değer eskiden doğrudan `int()`'e
+        geçiyordu; `rfile.read(negatif)` Python'da "bağlantı kapanana kadar
+        oku" demek ve sunucu TEK THREAD'li olduğu için bu TEK bir istekle tüm
+        istemcileri kilitliyordu -- güvenlik denetimi TKV-API-005, ham soketle
+        kanıtlandı (art arda gelen ilgisiz bir `GET` 12 sn zaman aşımına
+        uğradı). `0 <= uzunluk <= _MAKS_GOVDE` dışındaki her değer reddedilir.
+        """
+        ham = self.headers.get("Content-Length")
+        try:
+            uzunluk = int(ham) if ham is not None else 0
+        except ValueError:
+            raise ValueError("Content-Length sayı olmalı") from None
+        if not 0 <= uzunluk <= _MAKS_GOVDE:
+            raise ValueError("gövde boyutu geçersiz")
+        return uzunluk
+
     def _govde(self) -> dict:
-        """İstek gövdesini JSON olarak okur."""
-        uzunluk = int(self.headers.get("Content-Length") or 0)
-        if uzunluk > _MAKS_GOVDE:
-            raise ValueError("gövde çok büyük")
+        """İstek gövdesini JSON olarak okur; sözlük olmayan gövdeyi reddeder.
+
+        `json.loads` geçerli ama sözlük OLMAYAN bir gövdeyi (ör. `"metin"`,
+        `[1, 2]`, `42`) sessizce kabul ederdi; çağıranlar hepsi `govde.get(...)`
+        çağırdığı için bu, `ValueError` değil yakalanmayan bir `AttributeError`
+        ile patlardı (TKV-API-005'in ikinci yarısı).
+        """
+        uzunluk = self._icerik_uzunlugu()
         if uzunluk == 0:
             return {}
-        return json.loads(self.rfile.read(uzunluk))
+        veri = json.loads(self.rfile.read(uzunluk))
+        if not isinstance(veri, dict):
+            raise ValueError("gövde bir JSON nesnesi (obje) olmalı")
+        return veri
 
     def _metin_govde(self) -> str:
         """İstek gövdesini düz metin olarak okur (.ics içe aktarma)."""
-        uzunluk = int(self.headers.get("Content-Length") or 0)
-        if uzunluk > _MAKS_GOVDE:
-            raise ValueError("gövde çok büyük")
+        uzunluk = self._icerik_uzunlugu()
         return self.rfile.read(uzunluk).decode("utf-8", errors="replace")
 
     def _kaynak_guvenli(self) -> bool:
@@ -286,10 +310,17 @@ class _Handler(BaseHTTPRequestHandler):
         self._json({"restored": ad})
 
     def _statik(self, yol: str) -> None:
-        """static/ altından dosya sunar; dizin dışına çıkışı engeller."""
+        """static/ altından dosya sunar; dizin dışına çıkışı engeller.
+
+        `startswith()` METİN öneki karşılaştırıyordu, GERÇEK DİZİN ilişkisi
+        değil: `STATIC` `...\\ui\\static` ise `...\\ui\\static-x\\gizli.txt`
+        de aynı öneki taşır ve testte gerçekten sızdırıldı (TKV-API-004).
+        `is_relative_to` segment sınırına saygılı, doğru kapsayış kontrolü.
+        """
         ad = "index.html" if yol in ("", "/") else yol.lstrip("/")
+        kok = STATIC.resolve()
         hedef = (STATIC / ad).resolve()
-        if not str(hedef).startswith(str(STATIC.resolve())) or not hedef.is_file():
+        if not hedef.is_relative_to(kok) or not hedef.is_file():
             self._hata("bulunamadı", 404)
             return
         tur, _ = mimetypes.guess_type(str(hedef))

@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**396 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**412 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -411,6 +411,53 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     `{ passive: false }`: `preventDefault` olmadan tarayıcı SAYFAYI
     yakınlaştırırdı, ızgarayı değil. Yalnızca `e.ctrlKey` true'yken
     devreye giriyor; düz kaydırma dokunulmadan tarayıcıya bırakılıyor.
+65. **Güvenlik denetimi (TKV-API-001..005), hepsi ELLE ürettikten sonra
+    düzeltildi.** Beş bulgu, `tests/test_guvenlik.py`:
+    - **RRULE yoğunluk bütçesi** (`core/recurrence.py`, `_MAKS_ORNEK=10_000`).
+      "Sınırlı" (`COUNT`/`UNTIL`) yoğun DEĞİL demek değil: `FREQ=SECONDLY` +
+      büyük `COUNT`, `series_end()`'i (`list(_ruleset(event))`) dakikalarca
+      kilitleyebiliyordu -- gerçek `COUNT=2_000_000` HTTP isteği 4.9 sn sürdü,
+      düzeltmeden sonra 0.02 sn. `itertools.islice` `rruleset`'i TEMBEL
+      tüketiyor (dateutil kaynağından doğrulandı: `_iter()` gerçek bir
+      üreteç), yani sınırı aşan seri TAMAMEN üretilmeden yakalanıyor.
+      `series_end()` REDDEDİYOR (`add_event`/import zamanı, veri hiç girmez);
+      `expand()` her RENDER'da çağrıldığı için REDDETMİYOR, sessizce kırpıyor
+      -- reddetseydi kalıcı kötü veri o ayı bir daha AÇILAMAZ yapardı. Ayrıca
+      `rs.between()` pencereyi TAMAMEN üretip listeye topluyor (dateutil
+      kaynağı: `gen = self` sonra tam tüketim); yerine `xafter()`+elle üst
+      sınır (`_pencere_ornekleri`) TEMBEL ve `between()`'le birebir aynı
+      sonucu veriyor (diferansiyel testle doğrulandı) -- sınırsız+yoğun bir
+      seride ay görünümü 17 sn'den 0.06 sn'ye düştü.
+    - **`ics/importer.py::_to_calendar`**: `str` girdi ASLA dosya yolu
+      sayılmaz. İKİ KATMANDA düzeltildi: önce kendi `BEGIN:VCALENDAR`
+      sezgimiz kaldırıldı, ama YETMEDİ -- `icalendar` paketinin KENDİ
+      `from_ical`'ı da satır sonu taşımayan bir `str`'i `Path(st).is_file()`
+      ile diskte arıyor (paket kaynağında elle doğrulandı). Asıl çözüm:
+      `str`'i `.encode("utf-8")` ile `bytes`'a çevirmek -- paket yalnızca
+      `str` girdiyi yol olarak deniyor, `bytes`'ı hiç. Uçtan uca kanıtlandı:
+      diskteki bir dosyanın yolu POST gövdesi olarak gönderilince önce
+      okunup `/api/export`'la sızıyordu, düzeltmeden sonra sızmıyor. `Path`
+      açıkça geçilirse dosya okuma (testlerin kullandığı yol) DEĞİŞMEDİ.
+    - **`ui/server.py::_statik`**: `startswith()` METİN öneki
+      karşılaştırıyordu, dizin sınırı değil -- `ui/static` kökü `ui/static-x`
+      gibi bir kardeş dizinle aynı öneki taşır. Gerçek bir kardeş dizin
+      kurup `GET /../static-x/sir.txt` ile canlı sızdırıldı; `is_relative_to`
+      düzeltti (segment sınırına saygılı).
+    - **`ui/server.py::_icerik_uzunlugu`** (`_govde`+`_metin_govde` ortak):
+      `Content-Length` negatifse `rfile.read(negatif)` bağlantı kapanana
+      kadar okur; sunucu TEK THREAD'li olduğu için TEK bir istek TÜM
+      istemcileri kilitliyordu -- ham soketle kanıtlandı, ardından gelen
+      ilgisiz bir `GET` 12 sn zaman aşımına uğradı, düzeltmeden sonra
+      0.03 sn. `0 <= uzunluk <= _MAKS_GOVDE` dışı her değer artık ANINDA
+      400. `_govde` ayrıca sözlük OLMAYAN geçerli JSON'u (`[1,2,3]`) da
+      reddediyor -- eskiden çağıranların `govde.get(...)`'i yakalanmayan
+      `AttributeError` verirdi.
+    - **`ui/__main__.py`**: `--host` loopback (127.0.0.1/::1/localhost)
+      dışındaysa `--ag-erisimine-izin-ver` ŞART, yoksa `_ag_erisimi_dogrula`
+      `ValueError` atar. API'nin hiçbir kimlik doğrulaması yok;
+      `Origin`/`Sec-Fetch-Site` kontrolü CSRF'e karşı, ağdaki başka bir
+      cihaza karşı DEĞİL -- bu bayrak olmadan `--host 0.0.0.0` ile açılan
+      bir örneğe ağdaki HERKES erişip yazabilirdi.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

@@ -157,6 +157,16 @@ def main(argv: list[str] | None = None) -> int:
     ayristirici.add_argument("--tz", default=TZID, help="IANA saat dilimi")
     ayristirici.add_argument("--port", type=int, default=8765)
     ayristirici.add_argument("--host", default="127.0.0.1")
+    ayristirici.add_argument(
+        "--ag-erisimine-izin-ver",
+        action="store_true",
+        help=(
+            "--host loopback (127.0.0.1/::1/localhost) DIŞINDAYSA şart: "
+            "API hiçbir kimlik doğrulaması yapmıyor, Origin/Sec-Fetch-Site "
+            "kontrolü CSRF'e karşı -- bu bayrak olmadan ağdaki herkes "
+            "takvim verine erişip değiştirebilirdi (bkz. AGENTS.md)"
+        ),
+    )
     ayristirici.add_argument("--demo", action="store_true", help="örnek veriyle doldur")
     ayristirici.add_argument(
         "--reminder", action="store_true", help="hatırlatıcıyı da başlat"
@@ -187,8 +197,41 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
 
+def _loopback_mi(host: str) -> bool:
+    """`host` yalnızca BU makineye mi bağlanıyor.
+
+    `0.0.0.0`, LAN IP'leri ya da bir alan adı BURADA sayılmaz -- API'nin
+    hiçbir kimlik doğrulaması yok (TKV-API-002), `Origin`/`Sec-Fetch-Site`
+    kontrolü de CSRF'e karşı, ağdaki başka bir cihaza karşı değil.
+    """
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
+def _ag_erisimi_dogrula(host: str, izin_var: bool) -> None:
+    """Loopback dışı `host` için açık onay ŞART; yoksa `ValueError`.
+
+    Ayrı, saf bir fonksiyon: `_calistir`in geri kalanını (DB açma, kilit
+    alma...) tetiklemeden test edilebilsin diye.
+    """
+    if not _loopback_mi(host) and not izin_var:
+        raise ValueError(
+            f"--host {host!r} bu bilgisayarla sınırlı değil. API hiçbir "
+            "kimlik doğrulaması yapmıyor: ağdaki HERKES takvim verini okuyup "
+            "değiştirebilir. Bunu bilerek istiyorsan --ag-erisimine-izin-ver "
+            "bayrağını da ekle."
+        )
+    if not _loopback_mi(host):
+        print(
+            f"UYARI: sunucu {host} üzerinde dinliyor -- ağdaki HERKES "
+            "kimlik doğrulaması olmadan erişebilir.",
+            flush=True,
+        )
+
+
 def _calistir(args) -> int:
     """Asıl akış; istisnalar `main` tarafından yakalanıyor."""
+    _ag_erisimi_dogrula(args.host, args.ag_erisimine_izin_ver)
+
     if args.db != ":memory:":
         # Göreli yol kısayolun çalışma dizinine göre çözülür; mutlağa çevirip
         # hangi dosyanın açıldığını kesinleştiriyoruz.

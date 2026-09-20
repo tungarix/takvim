@@ -11,8 +11,9 @@ pencere üretilir.
 
 from __future__ import annotations
 
+import itertools
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import replace
 from datetime import datetime, timedelta, tzinfo
 
@@ -22,6 +23,16 @@ from .models import Event, Occurrence, Override
 from .timeutil import UTC, ensure_aware, get_tz
 
 __all__ = ["expand", "instance_starts", "next_rule_start", "series_end"]
+
+# Bir serinin/pencerenin güvenle materialize edebileceği en fazla örnek
+# sayısı. "Sınırlı" (COUNT/UNTIL) bir kural bile FREQ=SECONDLY gibi yoğun
+# olursa milyonlarca örnek üretebilir -- kötü niyetli bir .ics dosyasının tek
+# HTTP isteğiyle sunucuyu dakikalarca kilitlemesi buradan geliyordu
+# (güvenlik denetimi TKV-API-001, elle ölçüldü: COUNT=2_000_000 gerçek bir
+# HTTP isteğinde 4.9 sn, ay görünümünde sınırsız FREQ=SECONDLY bir seri
+# expand() ile 17 sn sürdü). 10.000, gerçek bir kişisel takvimin ASLA
+# yaklaşmayacağı ama saldırı yüzeyini saniyelerin altında tutan bir sınır.
+_MAKS_ORNEK = 10_000
 
 _UNTIL_RE = re.compile(r"UNTIL=([^;\s]+)", re.IGNORECASE)
 
@@ -172,6 +183,29 @@ def _intersects(occ: Occurrence, window_start: datetime, window_end: datetime) -
     return occ.start_utc < window_end and occ.end_utc > window_start
 
 
+def _pencere_ornekleri(
+    rs: rruleset, after: datetime, before: datetime, maks: int
+) -> Iterator[datetime]:
+    """`rs.between(after, before, inc=True)` ile AYNI sonuç, ama TEMBEL ve
+    `maks` öğede kırpılır.
+
+    `rruleset.xafter()` alttaki heapq-birleştirme üretecini tek tek çeker
+    (dateutil kaynağı doğrulandı); `between()` ise aynı üreteci pencerenin
+    SONUNA kadar tüketip bir listeye topluyor -- sınırsız/yoğun bir kuralda bu,
+    fark yaratıyor. `xafter(after, inc=True)` başlangıç sınırını `between`'in
+    `inc=True` dalıyla birebir eşliyor (`>= after`); üst sınırı burada elle
+    uyguluyoruz (`d <= before`).
+    """
+    n = 0
+    for d in rs.xafter(after, inc=True):
+        if d > before:
+            return
+        n += 1
+        if n > maks:
+            return
+        yield d
+
+
 def expand(
     event: Event,
     overrides: list[Override],
@@ -199,7 +233,19 @@ def expand(
         # Pencereden ÖNCE başlayıp içine sarkan örnekleri kaçırmamak için sorgu
         # başlangıcını bir süre kadar geriye alıyoruz (gece yarısını aşan
         # etkinlikler, çok günlü tüm gün etkinlikler).
-        raw_starts = rs.between(window_start - duration, window_end, inc=True)
+        #
+        # `rs.between(...)` YERİNE `_pencere_ornekleri`: between() TÜM pencereyi
+        # önce belleğe alıp sonra döndürüyor -- sınırsız FREQ=SECONDLY bir seri
+        # (series_end() düzeltmesinden ÖNCE içe aktarılmış, kalıcı) tek bir ay
+        # görünümünü 17 saniye kilitleyebiliyordu (TKV-API-001, ölçüldü). Burada
+        # REDDETMİYORUZ (series_end()'in tersine): expand() her render'da
+        # çağrılıyor, hata fırlatmak kullanıcıyı o ay/haftaya bir daha hiç
+        # giremez hâle getirirdi. Bunun yerine `_MAKS_ORNEK`'te sessizce kırpıp
+        # geri kalanını gösteriyoruz -- yarım bir görünüm, kilitlenmiş bir
+        # uygulamadan iyidir.
+        raw_starts = list(
+            _pencere_ornekleri(rs, window_start - duration, window_end, _MAKS_ORNEK)
+        )
     else:
         raw_starts = [event.start_utc]
 
@@ -345,8 +391,18 @@ def series_end(event: Event) -> datetime | None:
     if not _is_bounded(event.rrule):
         return None  # sonsuz seri; RDATE eklense bile sonsuz kalır
 
-    # Sınırlı olduğunu bildiğimiz için materialize etmek güvenli.
-    starts = list(_ruleset(event))
+    # "Sınırlı" (COUNT/UNTIL) YOĞUN olmadığı anlamına gelmiyor -- FREQ=SECONDLY
+    # + büyük bir COUNT/UNTIL milyonlarca örnek üretebilir. `itertools.islice`
+    # `rruleset` üretecini TEMBEL tüketir (ölçüldü: COUNT=10_000_000'da bile
+    # ilk 10.001 öğeyi <25ms'de verir), yani sınırı aşan bir seri TAMAMEN
+    # üretilmeden yakalanır. Aşarsa reddediyoruz: `add_event`/`update_event`
+    # bunu çağırıyor, içe aktarmada tek bir etkinliğin hatası olarak raporlanır
+    # (TKV-API-001), veritabanına asla girmez.
+    starts = list(itertools.islice(_ruleset(event), _MAKS_ORNEK + 1))
+    if len(starts) > _MAKS_ORNEK:
+        raise ValueError(
+            f"seri çok yoğun: {_MAKS_ORNEK}'den fazla örnek üretiyor, reddedildi"
+        )
     if not starts:
         return None  # tüm örnekler EXDATE ile silinmiş
     return max(starts).astimezone(UTC) + duration

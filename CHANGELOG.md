@@ -5,6 +5,31 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/) biçimini ve
 GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 `Takvim.exe` ekiyle yayınlanır.
 
+## [Yayınlanmamış]
+
+### Güvenlik
+Harici bir API güvenlik denetiminin beş bulgusu da elle (gerçek HTTP
+istekleri, ham soketler, ölçülen süreler) doğrulanıp düzeltildi:
+- **RRULE hizmet engelleme (DoS)**: `FREQ=SECONDLY` + büyük `COUNT`/`UNTIL`
+  içeren bir `.ics`, tek bir istekle sunucuyu dakikalarca kilitleyebiliyordu
+  (`COUNT=2.000.000` gerçek istekte 4.9 sn, ay görünümünde sınırsız bir seri
+  17 sn). Artık 10.000 örneği aşan seriler içe aktarımda reddediliyor,
+  görüntülemede sessizce kırpılıyor.
+- **İçe aktarmada dosya yolu okuma**: `POST /api/import` gövdesi, diskte var
+  olan bir dosya adına denk gelirse o dosya okunup `/api/export` ile dışarı
+  sızdırılabiliyordu (uçtan uca kanıtlandı) -- bu, `icalendar` paketinin
+  kendi dosya-yolu sezgisinden kaynaklanıyordu, iki katmanda kapatıldı.
+- **Statik dosya sunumunda yol geçişi**: dizin sınırı kontrolü metin öneki
+  karşılaştırıyordu; `ui/static` ile aynı önekli bir kardeş dizindeki dosya
+  sızdırılabiliyordu (canlı kanıtlandı).
+- **Tek istekle sunucu kilitlenmesi**: geçersiz/negatif `Content-Length`
+  başlığı, TEK THREAD'li sunucuyu TÜM istemciler için kilitliyordu (ham
+  soketle kanıtlandı: ilgisiz bir istek 12 sn zaman aşımına uğradı).
+- **Ağa açık, kimlik doğrulamasız API**: `--host` loopback dışına
+  ayarlanırsa artık `--ag-erisimine-izin-ver` bayrağı şart.
+
+Ayrıntı: `tests/test_guvenlik.py` (16 yeni test).
+
 ## [1.0.2] - 2026-09-20
 
 ### Düzeltildi
