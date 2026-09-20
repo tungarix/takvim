@@ -4,20 +4,55 @@
    ve DST'li günlerin 23/25 saatinden bağımsız çalışıyor. */
 
 :root {
-  --zemin: #0f1115;
-  --yuzey: #171a21;
-  --yuzey-2: #1e222b;
-  --cizgi: #272c37;
-  --cizgi-soluk: #1f2430;
-  --metin: #e6e8ee;
-  --metin-soluk: #9aa1b1;
-  --metin-silik: #6b7280;
-  --vurgu: #4f8cff;
-  --bugun: #1b2333;
+  /* Yeniden tasarım (bkz. Takvim Arayuz.pdf): eski metin-silik #6b7280,
+     yüzey-2 üstünde 3.91:1 ile WCAG AA'nın (4.5:1) altındaydı. Yeni palet
+     üç zeminin (zemin/yüzey/yüzey-2) HİÇBİRİNDE 4.5:1'in altına inmiyor --
+     elle hesaplanıp doğrulandı (en kötü durum metin-silik/yüzey-2: 4.86:1). */
+  --zemin: #101114;
+  --yuzey: #171a20;
+  --yuzey-2: #22252c;
+  --bugun: #16191f;
+  --cizgi: #333844;
+  --cizgi-soluk: #23262e;
+  --metin: #edeef1;
+  --metin-soluk: #b9bfcb;
+  --metin-silik: #8b919f;
+  --vurgu: #ff563c;
+  /* Vurgu dolgusu üstünde YAZI için: #edeef1, #ff563c üstünde yalnızca
+     2.72:1 -- AA'nın altında. Vurgu-dolgulu her öğede (birincil düğme,
+     seçili görünüm, bugün rozeti...) metin BUNUNLA yazılır, --metin ile
+     DEĞİL. Elle hesaplandı: vurgu-ink/vurgu = 5.73:1. */
+  --vurgu-ink: #14161a;
+  --uyari-kenar: #6b2318;
+  --uyari-metin: #ff8f7a;
+  /* İkisi de belgede yok, türetildi (bkz. AGENTS.md #66): hover zemini
+     yüzey-2'den %12 açık (--metin 9.1:1, --metin-soluk 5.72:1 -- ikisi de
+     hover'da kullanılıyor). vurgu-acik vurgudan %14 açık, vurgu-ink 6.5:1. */
+  --yuzey-3: #3c3f45;
+  --vurgu-acik: #ff6d57;
+
+  /* Yeni takvim için varsayılan renk ÖNERİSİ; kullanıcı yine serbest hex
+     seçiyor (renk girdisi kısıtlı değil). Vurguyla karışmasın diye mavi. */
+  --takvim-varsayilan: #8ea3c9;
+
+  --bosluk-1: 4px;
+  --bosluk-2: 8px;
+  --bosluk-3: 12px;
+  --bosluk-4: 16px;
+  --bosluk-5: 24px;
+  --bosluk-6: 32px;
+  --bosluk-7: 48px;
+
+  --dugme-yukseklik: 32px;
+  --girdi-yukseklik: 32px;
+  --yaricap: 0px; /* KASITLI: her yerde keskin köşe */
 
   --saat-genislik: 64px;
   --saat-yukseklik: 48px;
   --ust-yukseklik: 56px;
+  --kenar-genislik: 240px;
+  --kenar-ray: 56px;
+  --panel-genislik: 340px;
 }
 
 * { box-sizing: border-box; }
@@ -35,8 +70,17 @@ html, body {
   height: 100%;
   background: var(--zemin);
   color: var(--metin);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 13px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overflow: hidden;
+}
+
+/* Odak halkası: tema ile uyumlu tek tanım, tarayıcının varsayılan (turuncu)
+   halkasının yerine geçiyor. Yalnızca KLAVYE odağında görünür (fare
+   tıklamasında değil) -- `:focus-visible` bunu ayırt ediyor. */
+:focus-visible {
+  outline: 2px solid var(--vurgu);
+  outline-offset: 2px;
+  border-radius: var(--yaricap);
 }
 
 /* ---------- üst çubuk ---------- */
@@ -44,9 +88,9 @@ html, body {
 .ust-cubuk {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--bosluk-2);
   height: var(--ust-yukseklik);
-  padding: 0 16px;
+  padding: 0 var(--bosluk-4);
   background: var(--yuzey);
   border-bottom: 1px solid var(--cizgi);
 }
@@ -57,17 +101,25 @@ html, body {
 
 .gezinme { display: flex; align-items: center; gap: 6px; }
 
+/* Tek düğme ölçeği: yükseklik HER YERDE 32px (bkz. Takvim Arayuz.pdf,
+   "Düğme yüksekliği 32px — tek ölçek"). Tek istisna bildirim şeridindeki
+   "Geri al" (.bildirim-dugme, 28px) -- o kendi kuralında ayrıca ayarlanıyor. */
 .dugme, .ikon-dugme {
+  height: var(--dugme-yukseklik);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: var(--yuzey-2);
   color: var(--metin);
   border: 1px solid var(--cizgi);
-  border-radius: 7px;
-  padding: 6px 12px;
+  border-radius: var(--yaricap);
+  padding: 0 12px;
   font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
-.ikon-dugme { padding: 4px 11px; font-size: 18px; line-height: 1; }
-.dugme:hover, .ikon-dugme:hover { background: #252a35; border-color: #333a48; }
+.ikon-dugme { width: var(--dugme-yukseklik); padding: 0; font-size: 16px; line-height: 1; }
+.dugme:hover, .ikon-dugme:hover { background: var(--yuzey-3); border-color: var(--cizgi); }
 .dugme:active, .ikon-dugme:active { transform: translateY(1px); }
 
 .hafta-etiketi { margin: 0; font-size: 15px; font-weight: 550; }
@@ -104,7 +156,7 @@ html, body {
   align-items: center;
   gap: 9px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--yaricap);
   cursor: pointer;
   user-select: none;
 }
@@ -113,7 +165,7 @@ html, body {
 
 .renk-kutu {
   width: 11px; height: 11px;
-  border-radius: 3px;
+  border-radius: var(--yaricap);
   flex: none;
   border: 1px solid rgba(255,255,255,.18);
 }
@@ -132,7 +184,7 @@ html, body {
   font: inherit;
   line-height: 1;
   padding: 2px 4px;
-  border-radius: 4px;
+  border-radius: var(--yaricap);
   cursor: pointer;
 }
 .takvim-satir:hover .takvim-dugme,
@@ -147,7 +199,7 @@ html, body {
   font-size: 16px;
   line-height: 1;
   padding: 0 4px;
-  border-radius: 4px;
+  border-radius: var(--yaricap);
   cursor: pointer;
 }
 .kenar-ekle:hover { background: var(--yuzey-2); color: var(--metin); }
@@ -196,8 +248,8 @@ html, body {
 .gun-basligi .sayi { font-size: 19px; font-weight: 550; margin-top: 2px; }
 .gun-basligi.bugun .sayi {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: 50%;
-  background: var(--vurgu); color: #fff;
+  width: 30px; height: 30px; border-radius: var(--yaricap);
+  background: var(--vurgu); color: var(--vurgu-ink);
 }
 .gun-basligi.bugun .ad { color: var(--vurgu); }
 
@@ -222,7 +274,7 @@ html, body {
 .tumgun-blok {
   font-size: 12px;
   padding: 3px 7px;
-  border-radius: 5px;
+  border-radius: var(--yaricap);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -274,7 +326,7 @@ html, body {
 
 .blok {
   position: absolute;
-  border-radius: 6px;
+  border-radius: var(--yaricap);
   padding: 3px 6px;
   overflow: hidden;
   cursor: pointer;
@@ -303,7 +355,7 @@ html, body {
   position: absolute;
   left: 0; right: 0;
   height: 2px;
-  background: #ff5c5c;
+  background: var(--vurgu);
   z-index: 5;
   pointer-events: none;
 }
@@ -312,8 +364,8 @@ html, body {
   position: absolute;
   left: -4px; top: -3px;
   width: 8px; height: 8px;
-  border-radius: 50%;
-  background: #ff5c5c;
+  border-radius: var(--yaricap);
+  background: var(--vurgu);
 }
 
 /* ---------- etkinlik paneli ---------- */
@@ -353,7 +405,7 @@ html, body {
   display: inline-block;
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 99px;
+  border-radius: var(--yaricap);
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
   color: var(--metin-soluk);
@@ -370,7 +422,7 @@ html, body {
   transform: translateX(-50%);
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 99px;
+  border-radius: var(--yaricap);
   padding: 5px 14px;
   font-size: 12px;
   color: var(--metin-soluk);
@@ -379,10 +431,10 @@ html, body {
 .hata {
   margin: 20px;
   padding: 14px 16px;
-  border: 1px solid #5b2626;
-  background: #2a1616;
-  border-radius: 8px;
-  color: #ffb4b4;
+  border: 1px solid var(--uyari-kenar);
+  background: color-mix(in srgb, var(--uyari-kenar) 30%, var(--yuzey));
+  border-radius: var(--yaricap);
+  color: var(--uyari-metin);
   font-size: 13px;
 }
 
@@ -396,9 +448,10 @@ html, body {
 
 .gorunum-anahtari {
   display: inline-flex;
+  height: var(--dugme-yukseklik);
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 7px;
+  border-radius: var(--yaricap);
   overflow: hidden;
 }
 .gorunum-dugme {
@@ -406,46 +459,74 @@ html, body {
   border: none;
   color: var(--metin-soluk);
   font: inherit;
-  padding: 6px 12px;
+  font-size: 13px;
+  padding: 0 12px;
   cursor: pointer;
 }
-.gorunum-dugme:hover { background: #252a35; color: var(--metin); }
-.gorunum-dugme.secili { background: var(--vurgu); color: #fff; }
+.gorunum-dugme:hover { background: var(--yuzey-3); color: var(--metin); }
+.gorunum-dugme.secili { background: var(--vurgu); color: var(--vurgu-ink); }
 
-.hizli-form { flex: 0 1 300px; display: flex; gap: 6px; }
-.hizli-girdi, .arama {
+/* Hızlı ekleme: 1180'de 320px, ≥1040'ta 200px'e kadar büzülür (tek esneyen
+   öğe -- diğer her şey sabit genişlik). < 1040px'te "+ Ekle" düğmesine
+   döner (bkz. app.js, durum.genisDugmeModu). */
+.hizli-form {
+  flex: 1 1 320px;
+  min-width: 200px;
+  max-width: 320px;
+  display: flex;
+  gap: var(--bosluk-2);
+}
+.hizli-girdi, .arama, .modal-girdi, select.modal-girdi {
+  height: var(--girdi-yukseklik);
+}
+/* GEÇİCİ: .arama tam ikon+açılır şeride dönüşene kadar (Aşama 2) çalışır
+   kalsın diye eski görünüm korunuyor. */
+.arama {
+  background: var(--yuzey-2);
+  border: 1px solid var(--cizgi);
+  border-radius: var(--yaricap);
+  color: var(--metin);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 11px;
+  flex: 0 1 150px;
+}
+.arama:focus { border-color: var(--vurgu); }
+.arama::placeholder { color: var(--metin-silik); }
+.hizli-girdi {
   width: 100%;
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 7px;
+  border-radius: var(--yaricap);
   color: var(--metin);
   font: inherit;
-  padding: 6px 11px;
+  font-size: 13px;
+  padding: 0 11px;
 }
-.arama { flex: 0 1 150px; }
 
 .hizli-dugme {
   flex: none;
-  width: 32px;
+  width: var(--dugme-yukseklik);
+  height: var(--dugme-yukseklik);
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 7px;
+  border-radius: var(--yaricap);
   color: var(--metin);
   font: inherit;
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
 }
-.hizli-dugme:hover { background: var(--vurgu); border-color: var(--vurgu); color: #fff; }
+.hizli-dugme:hover { background: var(--vurgu); border-color: var(--vurgu); color: var(--vurgu-ink); }
 .hizli-dugme:active { transform: translateY(1px); }
-.hizli-girdi:focus, .arama:focus { outline: none; border-color: var(--vurgu); }
-.hizli-girdi::placeholder, .arama::placeholder { color: var(--metin-silik); }
+.hizli-girdi:focus { border-color: var(--vurgu); }
+.hizli-girdi::placeholder { color: var(--metin-silik); }
 
 .arama-bolum { margin-top: 20px; }
 .arama-listesi { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .arama-satir {
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: var(--yaricap);
   cursor: pointer;
   font-size: 13px;
   border-left: 3px solid;
@@ -458,7 +539,7 @@ kbd {
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: var(--yaricap);
   padding: 0 4px;
   font-size: 11px;
   font-family: inherit;
@@ -504,7 +585,7 @@ kbd {
   gap: 2px;
   overflow: hidden;
 }
-.ay-hucre.disarida { background: #12141a; }
+.ay-hucre.disarida { background: var(--zemin); }
 .ay-hucre.disarida .ay-gun-no { color: var(--metin-silik); }
 .ay-hucre.bugun { background: var(--bugun); }
 
@@ -512,8 +593,8 @@ kbd {
 .ay-hucre.bugun .ay-gun-no {
   align-self: flex-start;
   background: var(--vurgu);
-  color: #fff;
-  border-radius: 99px;
+  color: var(--vurgu-ink);
+  border-radius: var(--yaricap);
   min-width: 20px;
   text-align: center;
 }
@@ -521,7 +602,7 @@ kbd {
 .ay-blok {
   font-size: 11px;
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: var(--yaricap);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -545,7 +626,7 @@ kbd {
 .islem-dugme {
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 7px;
+  border-radius: var(--yaricap);
   color: var(--metin);
   font: inherit;
   font-size: 13px;
@@ -553,9 +634,9 @@ kbd {
   cursor: pointer;
   text-align: left;
 }
-.islem-dugme:hover { background: #252a35; }
-.islem-dugme.tehlike { color: #ff9b9b; border-color: #4a2626; }
-.islem-dugme.tehlike:hover { background: #2a1616; }
+.islem-dugme:hover { background: var(--yuzey-3); }
+.islem-dugme.tehlike { color: var(--uyari-metin); border-color: var(--uyari-kenar); }
+.islem-dugme.tehlike:hover { background: color-mix(in srgb, var(--uyari-kenar) 30%, var(--yuzey)); }
 
 /* ---------- bildirim ---------- */
 
@@ -565,26 +646,26 @@ kbd {
   transform: translateX(-50%);
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 8px;
+  border-radius: var(--yaricap);
   padding: 9px 16px;
   font-size: 13px;
   max-width: 60ch;
   z-index: 100;
   box-shadow: 0 6px 20px rgba(0,0,0,.45);
 }
-.bildirim.hata { border-color: #5b2626; background: #2a1616; color: #ffb4b4; }
+.bildirim.hata { border-color: var(--uyari-kenar); background: color-mix(in srgb, var(--uyari-kenar) 30%, var(--yuzey)); color: var(--uyari-metin); }
 .bildirim { display: flex; align-items: center; gap: 12px; }
 .bildirim-dugme {
   background: var(--vurgu);
   border: none;
-  border-radius: 6px;
-  color: #fff;
+  border-radius: var(--yaricap);
+  color: var(--vurgu-ink);
   font: inherit;
   font-size: 12px;
   padding: 4px 10px;
   cursor: pointer;
 }
-.bildirim-dugme:hover { background: #3f7cf0; }
+.bildirim-dugme:hover { background: var(--vurgu-acik); }
 
 /* Izgara kolonlarının min-content yüzünden şişmesini engelle */
 .izgara-baslik, .tumgun-serit { grid-template-columns: var(--saat-genislik) repeat(7, minmax(0, 1fr)); }
@@ -613,7 +694,7 @@ kbd {
   left: 0; right: 0; bottom: 0;
   height: 7px;
   cursor: ns-resize;
-  border-radius: 0 0 6px 6px;
+  border-radius: var(--yaricap);
 }
 .blok:hover .boyut-tutamagi { background: rgba(255, 255, 255, .16); }
 
@@ -630,7 +711,7 @@ kbd {
   overflow-y: auto;
   background: var(--yuzey);
   border: 1px solid var(--cizgi);
-  border-radius: 10px;
+  border-radius: var(--yaricap);
   padding: 10px;
   box-shadow: 0 10px 34px rgba(0, 0, 0, .55);
   display: grid;
@@ -646,7 +727,7 @@ kbd {
 .gl-satir {
   font-size: 12px;
   padding: 5px 8px;
-  border-radius: 5px;
+  border-radius: var(--yaricap);
   border-left: 3px solid;
   cursor: pointer;
   overflow: hidden;
@@ -658,14 +739,14 @@ kbd {
   margin-top: 6px;
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
-  border-radius: 6px;
+  border-radius: var(--yaricap);
   color: var(--metin-soluk);
   font: inherit;
   font-size: 12px;
   padding: 6px;
   cursor: pointer;
 }
-.gl-gun-dugme:hover { background: #252a35; color: var(--metin); }
+.gl-gun-dugme:hover { background: var(--yuzey-3); color: var(--metin); }
 
 /* ---------- uygulama içi soru/onay penceresi ---------- */
 
@@ -686,7 +767,7 @@ kbd {
   width: min(420px, calc(100vw - 48px));
   background: var(--yuzey);
   border: 1px solid var(--cizgi);
-  border-radius: 12px;
+  border-radius: var(--yaricap);
   padding: 20px;
   box-shadow: 0 18px 48px rgba(0, 0, 0, .6);
 }
@@ -709,19 +790,19 @@ kbd {
   width: 100%;
   background: var(--zemin);
   border: 1px solid var(--cizgi);
-  border-radius: 7px;
+  border-radius: var(--yaricap);
   color: var(--metin);
   font: inherit;
   padding: 8px 10px;
 }
-.modal-girdi:focus { outline: none; border-color: var(--vurgu); }
+.modal-girdi:focus { border-color: var(--vurgu); }
 .modal-islemler {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   margin-top: 18px;
 }
-.dugme.birincil { background: var(--vurgu); border-color: var(--vurgu); color: #fff; }
-.dugme.birincil:hover { background: #3f7cf0; border-color: #3f7cf0; }
-.dugme.tehlike { background: #7f2727; border-color: #8d2f2f; color: #ffd9d9; }
-.dugme.tehlike:hover { background: #8f2d2d; }
+.dugme.birincil { background: var(--vurgu); border-color: var(--vurgu); color: var(--vurgu-ink); }
+.dugme.birincil:hover { background: var(--vurgu-acik); border-color: var(--vurgu-acik); }
+.dugme.tehlike { background: var(--uyari-kenar); border-color: var(--uyari-kenar); color: var(--uyari-metin); }
+.dugme.tehlike:hover { background: color-mix(in srgb, var(--uyari-kenar) 65%, var(--yuzey-3)); }
