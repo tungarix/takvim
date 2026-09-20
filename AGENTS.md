@@ -381,19 +381,23 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     bağlantı varken `replace` Windows kilidine takılıyor ve eski kod hatayı
     yutup "geri yüklendi" diyordu. Başarısızlık `RuntimeError`, sahte
     başarı yok; aynı depo nesnesi dönüyor.
-63. **Yapıştırma hedefi (`durum.imlecSaat`) TIKLAMA değil TAKİP.** Fare
-    gün/hafta ızgarasında hangi boş saatin üzerindeyse `Ctrl+V` oraya
-    yapıştırır; "önce tıkla, sonra yapıştır" akışı yok, bir tıklama-iptal
-    dansı gerekmiyor. `ciz()`'in HER çağrısında sıfırlanıyor: aksi hâlde
-    fare kıpırdamadan görünüm/tarih değiştirince (ör. hafta görünümünde bir
-    saati hoverlayıp fareyi oynatmadan `a`ya basıp ay görünümüne geçmek)
-    eski hedef sessizce geçerli sanılıp yanlış güne yapıştırma olurdu --
-    elle denendi, bulundu. Yapıştırılan kopya HER ZAMAN tekrarsız tek
-    etkinlik, tüm gün etkinlikler kapsam dışı (süre birimi dakika/gün
-    karışıklığı). `Ctrl+X` = kopyala + `ornegiSil` -- yeni bir silme yolu
-    açmıyor, mevcut onay + geri alma aynen çalışıyor. `Ctrl+Z` yeni bir
-    geri-alma mekanizması değil, görünen bildirimin "Geri al" düğmesini
-    tıklıyor.
+63. **Yapıştırma İKİ yoldan olur: tıklama VE Ctrl+V.** İlk sürümde yalnızca
+    Ctrl+V vardı (imleci götür, tuşa bas) ama kullanıcı "tıkladığım yere
+    yapışmıyor" dedi -- boş saate tıklamak hâlâ "Yeni etkinlik" kutusunu
+    açıyordu. Düzeltme: `izgaraTik` artık en başta `durum.pano` doluysa
+    doğrudan `panoyaYaz` çağırıyor, dialog araya girmiyor. Pano boşalana
+    kadar HER tıklama yapıştırır -- "Yeni etkinlik" kutusuna dönmenin yolu
+    `Escape`, o da panoyu temizliyor (`kisayollar.Escape`). `durum.imlecSaat`
+    (Ctrl+V'nin hedefi) fare takibiyle dolu kalıyor, `ciz()`'in HER
+    çağrısında sıfırlanıyor: aksi hâlde fare kıpırdamadan görünüm/tarih
+    değişince (ör. bir saati hoverlayıp fareyi oynatmadan `a`ya basıp ay
+    görünümüne geçmek) eski hedef sessizce geçerli sanılıp yanlış güne
+    yapıştırma olurdu -- elle denendi, bulundu. Yapıştırılan kopya HER ZAMAN
+    tekrarsız tek etkinlik, tüm gün etkinlikler kapsam dışı (süre birimi
+    dakika/gün karışıklığı). `Ctrl+X` = kopyala + `ornegiSil` -- yeni bir
+    silme yolu açmıyor, mevcut onay + geri alma aynen çalışıyor. `Ctrl+Z`
+    yeni bir geri-alma mekanizması değil, görünen bildirimin "Geri al"
+    düğmesini tıklıyor.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

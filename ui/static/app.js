@@ -585,6 +585,19 @@ async function izgaraTik(e, sutun, gun) {
   if (surukleme.tasindi || tumgunSurukleme.tasindi) return;
 
   const dakika = sutunDakika(e, sutun, gun);
+
+  /* Panoda bir şey varsa TIKLAMA = YAPIŞTIRMA: "Yeni etkinlik" kutusu
+   * araya girmiyor, kullanıcı tam tıkladığı saate düşen sonucu görüyor.
+   * Ctrl+V (imleci götür, tuşa bas) hâlâ AYRICA çalışıyor -- bu yalnızca
+   * "kopyaladıktan sonra tıklamak da yapıştırsın" isteğini karşılıyor.
+   * Pano boşalana kadar (Escape ya da yeni bir kopyalama) her tıklama
+   * yapıştırmaya devam eder; "Yeni etkinlik" kutusuna geri dönmek için
+   * Escape'le panoyu temizlemek yeterli. */
+  if (durum.pano) {
+    panoyaYaz(gun.date, dakika);
+    return;
+  }
+
   const bitis = Math.min(dakika + OLUSTUR_SURE, gun.dayMinutes);
 
   /* Çakışma uyarısı ENGELLEMEZ, BİLGİLENDİRİR: kullanıcı saati bilerek
@@ -1290,7 +1303,9 @@ function panoyaKopyala(occ) {
 
 function kopyala() {
   if (!durum.secili) { bildir("Kopyalamak için önce bir etkinlik seç", true); return; }
-  if (panoyaKopyala(durum.secili)) bildir(`"${durum.secili.title}" kopyalandı`);
+  if (panoyaKopyala(durum.secili)) {
+    bildir(`"${durum.secili.title}" kopyalandı — boş bir saate tıkla ya da Ctrl+V`);
+  }
 }
 
 /* Kes = kopyala + sil. Silme kısmı için YENİ bir yol AÇMIYORUZ: aynı
@@ -1346,7 +1361,7 @@ async function panoyaYaz(tarih, baslangicDk) {
 function yapistir() {
   if (!durum.pano) { bildir("Yapıştırmak için önce bir etkinlik kopyala (Ctrl+C)", true); return; }
   if (!durum.imlecSaat) {
-    bildir("Yapıştırmak için imleci gün/hafta görünümünde boş bir saatin üzerine getir", true);
+    bildir("Yapıştırmak için gün/hafta görünümünde boş bir saate tıkla ya da üzerine gelip Ctrl+V yap", true);
     return;
   }
   panoyaYaz(durum.imlecSaat.date, durum.imlecSaat.minutes);
@@ -1873,7 +1888,11 @@ document.addEventListener("keydown", (e) => {
     }
   }
   const kisayollar = {
-    Escape: () => { gunListesiKapat(); panelKapat(); },
+    // Panoda bir şey varken boş saate tıklamak YAPIŞTIRIR (izgaraTik); bu
+    // yüzden "Yeni etkinlik" kutusuna geri dönmenin bir yolu şart -- Escape
+    // panoyu temizliyor. Sessizce yapıyor: pano boşsa zaten yapacak bir şey
+    // yok, panoluyken her Escape'te "temizlendi" bildirimi gürültü olurdu.
+    Escape: () => { durum.pano = null; gunListesiKapat(); panelKapat(); },
     ArrowLeft: () => kaydir(-1),
     ArrowRight: () => kaydir(1),
     t: () => { durum.anchor = bugunISO(); yukle(); },

@@ -194,7 +194,7 @@ olduğunu taşımaz.
 | Klavyeyle silme | Etkinlik seçiliyken <kbd>Del</kbd> bu örneği, <kbd>Shift</kbd>+<kbd>Del</kbd> tüm seriyi siler (ikisi de onay sorar) |
 | Yeniden adlandırma | Etkinlik seçiliyken <kbd>F2</kbd> |
 | Kopyala / Kes | Etkinlik seçiliyken <kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>X</kbd> (kes = kopyala + mevcut sil onayı) |
-| Yapıştır | İmleci gün/hafta görünümünde boş bir saatin üzerine getirip <kbd>Ctrl</kbd>+<kbd>V</kbd> (ay görünümünde çalışmaz, tüm gün etkinlikler kopyalanamaz) |
+| Yapıştır | Kopyaladıktan sonra gün/hafta görünümünde boş bir saate **tıkla** (ya da imleci üzerine getirip <kbd>Ctrl</kbd>+<kbd>V</kbd>); pano boşalana kadar her tıklama yapıştırır, normal "Yeni etkinlik" kutusuna dönmek için <kbd>Esc</kbd> panoyu temizler (ay görünümünde çalışmaz, tüm gün etkinlikler kopyalanamaz) |
 | Çoğalt | Etkinlik seçiliyken <kbd>Ctrl</kbd>+<kbd>D</kbd>: aynı saatte ertesi güne bir kopya |
 | Geri al (kısayol) | <kbd>Ctrl</kbd>+<kbd>Z</kbd>: o an görünen bildirimin "Geri al" düğmesini tıklar |
 | Hatırlatıcı | Panelden ekle (0 = tam başlarken, 1440 = 1 gün önce) |
