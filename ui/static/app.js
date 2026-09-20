@@ -28,6 +28,11 @@ const durum = {
   pano: null,             // Ctrl+C/X ile kopyalanan etkinliğin özeti (yapıştırma için)
   imlecSaat: null,        // fare gün/hafta ızgarasında hangi boş saatin üzerinde ({date, minutes})
   saatYukseklik: SAAT_YUKSEKLIK_VARSAYILAN, // Ctrl+Scroll ile büyür/küçülür
+  // Kenar çubuğundaki mini ay takvimi hangi ayı gösteriyor (ISO, ayın 1'i).
+  // yukle() her çağrıldığında anchor'ın ayına senkronlanır -- mt-onceki/
+  // mt-sonraki bunu yukle() ÇAĞIRMADAN değiştirir, yani ana görünümü
+  // etkilemeden ileri geri gezilebiliyor.
+  miniAy: bugunISO().slice(0, 7) + "-01",
 };
 
 const el = (id) => document.getElementById(id);
@@ -285,6 +290,11 @@ function bildir(mesaj, hata = false, geriAl = null) {
 }
 
 async function yukle() {
+  // Mini takvim ana görünümü İZLİYOR: anchor'ı değiştiren her yol (gezinme,
+  // Bugün, arama sonucuna tıklama...) buraya çıkıyor, o yüzden tek yerde
+  // senkron yetiyor. Mini takvimin KENDİ ay gezinmesi (mt-onceki/sonraki)
+  // yukle()'yi hiç çağırmıyor, o yüzden burada ezilmiyor.
+  durum.miniAy = durum.anchor.slice(0, 7) + "-01";
   try {
     durum.veri = await istek(`/api/${durum.gorunum}?date=${durum.anchor}`);
     durum.veri.calendars.forEach((c) => {
@@ -316,8 +326,15 @@ function ciz() {
   durum.imlecSaat = null;
 
   el("baslik").textContent = veri.label;
-  el("tz-etiketi").textContent = veri.tzid;
+  el("tz-etiketi-tam").textContent = veri.tzid;
+  // Ray modunda (kenar çubuğu 56px'e inince) tam IANA adı sığmıyor; son
+  // parçadan (şehir) kaba bir kısaltma -- kusursuz değil ama araç ipucu
+  // (title) her zaman tam adı taşıyor, bilgi kaybolmuyor.
+  const sehir = veri.tzid.split("/").pop().replace(/_/g, " ");
+  el("tz-etiketi-kisa").textContent = sehir.slice(0, 3).toUpperCase();
+  el("tz-etiketi-kisa").title = veri.tzid;
   takvimleriCiz();
+  miniAyCiz();
 
   document.querySelectorAll(".gorunum-dugme").forEach((b) => {
     b.classList.toggle("secili", b.dataset.gorunum === durum.gorunum);
@@ -358,6 +375,56 @@ function takvimleriCiz() {
     liste.appendChild(li);
   });
 }
+
+/* ---------- mini ay takvimi (kenar çubuğu) ---------- */
+
+/* Saf tarih aritmetiği -- sunucuya hiç sormuyor (`veri.days` gibi bir
+ * occurrence listesi gerekmiyor, yalnızca hangi günün hangi haftanın
+ * hangi sütununa düştüğü lazım). `durum.miniAy` ayın 1'i, ISO. */
+function miniAyCiz() {
+  const [yil, ay] = durum.miniAy.split("-").map(Number);
+  el("mt-ay-adi").textContent = new Date(Date.UTC(yil, ay - 1, 1))
+    .toLocaleDateString("tr-TR", { month: "long", year: "numeric", timeZone: "UTC" });
+
+  const kap = el("mt-gunler");
+  kap.innerHTML = "";
+  ["P", "S", "Ç", "P", "C", "C", "P"].forEach((h, i) => {
+    const e = document.createElement("div");
+    e.className = "mt-gun-adi";
+    e.textContent = h;
+    // Salı/Cuma ile Perşembe/Cumartesi tek harfte ayırt edilemiyor;
+    // ekran okuyucu tam adı duysun diye.
+    e.title = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"][i];
+    kap.appendChild(e);
+  });
+
+  const ayBasi = new Date(Date.UTC(yil, ay - 1, 1));
+  const haftaGunu = (ayBasi.getUTCDay() + 6) % 7; // Pazartesi=0 tabanlı
+  const izgaraBasi = new Date(ayBasi);
+  izgaraBasi.setUTCDate(izgaraBasi.getUTCDate() - haftaGunu);
+
+  const bugun = bugunISO();
+  for (let i = 0; i < 42; i++) {
+    const g = new Date(izgaraBasi);
+    g.setUTCDate(g.getUTCDate() + i);
+    const iso = g.toISOString().slice(0, 10);
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "mt-gun" +
+      (iso.slice(0, 7) !== durum.miniAy.slice(0, 7) ? " mt-disarida" : "") +
+      (iso === bugun ? " mt-bugun" : "") +
+      (iso === durum.anchor ? " mt-secili" : "");
+    b.textContent = String(g.getUTCDate());
+    b.title = tarihBicim(g.toISOString(), "UTC");
+    // Ay dışı bir güne tıklamak o ayı da açsın -- Google Calendar'daki gibi;
+    // yukle() zaten miniAy'i yeni anchor'ın ayına senkronluyor.
+    b.onclick = () => { durum.anchor = iso; yukle(); };
+    kap.appendChild(b);
+  }
+}
+
+el("mt-onceki").onclick = () => { durum.miniAy = ayKaydir(durum.miniAy, -1); miniAyCiz(); };
+el("mt-sonraki").onclick = () => { durum.miniAy = ayKaydir(durum.miniAy, 1); miniAyCiz(); };
 
 /* ---------- takvim yönetimi ---------- */
 
@@ -1758,6 +1825,39 @@ el("onceki").onclick = () => kaydir(-1);
 el("sonraki").onclick = () => kaydir(1);
 el("bugun").onclick = () => { durum.anchor = bugunISO(); yukle(); };
 el("takvim-ekle").onclick = takvimEkle;
+
+/* Arama HER pencere boyutunda ikon + üstten inen şerit (Takvim Arayuz.pdf
+ * §"Arama her boyutta 32×32 ikon düğmesi"). #arama'nın KENDİ oninput'u
+ * (yukarıda) hiç değişmedi -- yalnızca görünürlüğünü/odağını yönetiyoruz. */
+function aramaSeridiAc() {
+  el("arama-serit").hidden = false;
+  el("arama").focus();
+}
+function aramaSeridiKapat() {
+  el("arama-serit").hidden = true;
+  el("arama").value = "";
+  aramaYap("");
+}
+el("arama-ac-dugme").onclick = () => {
+  if (el("arama-serit").hidden) aramaSeridiAc();
+  else aramaSeridiKapat();
+};
+el("arama-kapat").onclick = aramaSeridiKapat;
+el("arama").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.stopPropagation(); aramaSeridiKapat(); }
+});
+
+/* Dar pencerede (< 1040px) hızlı ekleme kutusu sığmıyor; "+ Ekle" düğmesi
+ * tek satırlık bir soru kutusuyla AYNI gönderim yolunu (#hizli-form'un
+ * submit'i) tetikliyor -- mantık İKİ YERDE yaşamasın diye. */
+el("hizli-ac-dugme").onclick = async () => {
+  const metin = await sor("Yeni etkinlik", "", "");
+  if (metin === null || !metin.trim()) return;
+  el("hizli-girdi").value = metin.trim();
+  const form = el("hizli-form");
+  if (form.requestSubmit) form.requestSubmit();
+  else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+};
 el("panel-kapat").onclick = panelKapat;
 el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
 el("yedekler").onclick = yedekleriAc;

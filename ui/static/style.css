@@ -95,11 +95,34 @@ html, body {
   border-bottom: 1px solid var(--cizgi);
 }
 
-.marka { font-weight: 650; letter-spacing: .2px; }
 .bosluk { flex: 1; }
-.tz-etiketi { color: var(--metin-silik); font-size: 12px; }
 
 .gezinme { display: flex; align-items: center; gap: 6px; }
+
+/* Arama üst çubuğun ALTINA iniyor, tam genişlik -- "üstüne inen şerit"
+   (Takvim Arayuz.pdf). #arama'nın kendi mantığı (oninput) değişmedi. */
+.arama-serit {
+  display: flex;
+  align-items: center;
+  gap: var(--bosluk-2);
+  height: var(--ust-yukseklik);
+  padding: 0 var(--bosluk-4);
+  background: var(--yuzey);
+  border-bottom: 1px solid var(--cizgi);
+}
+.arama-girdi {
+  flex: 1;
+  height: var(--girdi-yukseklik);
+  background: var(--yuzey-2);
+  border: 1px solid var(--cizgi);
+  border-radius: var(--yaricap);
+  color: var(--metin);
+  font: inherit;
+  font-size: 13px;
+  padding: 0 11px;
+}
+.arama-girdi:focus { border-color: var(--vurgu); }
+.arama-girdi::placeholder { color: var(--metin-silik); }
 
 /* Tek düğme ölçeği: yükseklik HER YERDE 32px (bkz. Takvim Arayuz.pdf,
    "Düğme yüksekliği 32px — tek ölçek"). Tek istisna bildirim şeridindeki
@@ -122,7 +145,18 @@ html, body {
 .dugme:hover, .ikon-dugme:hover { background: var(--yuzey-3); border-color: var(--cizgi); }
 .dugme:active, .ikon-dugme:active { transform: translateY(1px); }
 
-.hafta-etiketi { margin: 0; font-size: 15px; font-weight: 550; }
+/* Sarmıyor: "16–22 Şubat 2026" dar pencerede sıkışınca satır kırılıp üst
+   çubuğu taşırmak yerine "…" ile kısalır (bkz. Takvim Arayuz.pdf, "Tarih
+   başlığı gerekirse '…' ile kısalır, asla sarmaz"). */
+.hafta-etiketi {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 
 /* ---------- yerleşim ---------- */
 
@@ -133,13 +167,93 @@ html, body {
 }
 
 .kenar {
-  width: 210px;
+  width: var(--kenar-genislik);
   flex: none;
-  padding: 16px;
+  padding: var(--bosluk-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bosluk-4);
   background: var(--yuzey);
   border-right: 1px solid var(--cizgi);
   overflow-y: auto;
+  overflow-x: hidden;
 }
+
+.kenar-marka {
+  display: flex;
+  align-items: center;
+  gap: var(--bosluk-2);
+  font-weight: 650;
+  letter-spacing: .2px;
+  font-size: 15px;
+  flex: none;
+}
+.km-ikon {
+  display: none; /* yalnızca ray modunda görünür (aşağıdaki @media) */
+  width: 32px; height: 32px;
+  align-items: center; justify-content: center;
+  background: var(--vurgu);
+  color: var(--vurgu-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .3px;
+}
+
+/* ---------- mini ay takvimi ---------- */
+
+.mini-takvim { flex: none; }
+.mt-baslik {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--bosluk-2);
+}
+.mt-ay-adi {
+  font-size: 12px;
+  font-weight: 550;
+  text-transform: capitalize;
+}
+.mt-nav { display: flex; gap: 2px; }
+.mt-ok {
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none;
+  border: none;
+  color: var(--metin-soluk);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.mt-ok:hover { background: var(--yuzey-2); color: var(--metin); }
+
+.mt-gunler {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+}
+.mt-gun-adi {
+  font-size: 9px;
+  text-align: center;
+  color: var(--metin-silik);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  padding-bottom: 3px;
+}
+.mt-gun {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--metin);
+  font-size: 11px;
+  cursor: pointer;
+}
+.mt-gun:hover { background: var(--yuzey-2); }
+.mt-gun.mt-disarida { color: var(--metin-silik); }
+.mt-gun.mt-bugun { color: var(--vurgu); font-weight: 700; }
+.mt-gun.mt-secili { background: var(--vurgu); color: var(--vurgu-ink); font-weight: 700; }
 
 .kenar-baslik {
   margin: 0 0 10px;
@@ -204,7 +318,78 @@ html, body {
 }
 .kenar-ekle:hover { background: var(--yuzey-2); color: var(--metin); }
 
-.ipucu { margin-top: 18px; font-size: 12px; color: var(--metin-silik); line-height: 1.5; }
+.ipucu { margin: 0; font-size: 12px; color: var(--metin-silik); line-height: 1.5; flex: none; }
+
+/* Takvimler/arama/ipucu ile alttaki eylemler arasındaki boşluğu dolduruyor;
+   sonuç: İçe aktar/Dışa aktar/Yedekler/Ayarlar + saat dilimi HER ZAMAN
+   kenar çubuğunun ALTINA yaslanıyor, içerik ne kadar kısa olursa olsun. */
+.kenar-doldur { flex: 1; min-height: 0; }
+
+.kenar-eylemler {
+  flex: none;
+  display: grid;
+  gap: 2px;
+  padding-top: var(--bosluk-2);
+  border-top: 1px solid var(--cizgi-soluk);
+}
+.kenar-eylem {
+  display: flex;
+  align-items: center;
+  gap: var(--bosluk-3);
+  height: var(--dugme-yukseklik);
+  padding: 0 var(--bosluk-2);
+  background: none;
+  border: none;
+  color: var(--metin-soluk);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.kenar-eylem:hover { background: var(--yuzey-2); color: var(--metin); }
+.ke-ikon { flex: none; width: 16px; text-align: center; font-size: 14px; }
+.ke-metin { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.kenar-altbilgi {
+  flex: none;
+  padding-top: var(--bosluk-2);
+  font-size: 12px;
+  color: var(--metin-silik);
+}
+.tz-kisa { display: none; } /* yalnızca ray modunda görünür */
+
+/* ---------- < 1040px: kenar çubuğu 56px'lik ikon rayına iner ---------- */
+
+/* Tek eşik: hızlı ekleme düğmeye döner, arama zaten her boyutta ikon, tarih
+   başlığı kısa biçime geçer (JS'te haftaTemizle/etiketle ile değil, burada
+   yalnızca görsel taşma önleniyor -- metni sunucu zaten kısa gönderiyorsa
+   sorun yok, uzun gelirse "…" devreye girer). */
+@media (max-width: 1039px) {
+  .kenar { width: var(--kenar-ray); padding: var(--bosluk-2); align-items: center; }
+  .kenar-marka { justify-content: center; }
+  .km-ikon { display: inline-flex; }
+  .km-metin, .mini-takvim, .kb-metin, .takvim-ad, .ipucu,
+  .ke-metin, .tz-tam { display: none; }
+  .kenar-baslik { justify-content: center; }
+  .takvim-satir { justify-content: center; padding: 6px; }
+  .kenar-eylem { justify-content: center; padding: 0; }
+  .tz-kisa { display: block; text-align: center; }
+
+  #hizli-form { display: none; }
+  #hizli-ac-dugme { display: inline-flex; }
+
+  .panel {
+    position: absolute;
+    right: 0;
+    top: var(--ust-yukseklik);
+    bottom: 0;
+    z-index: 20;
+    box-shadow: -8px 0 24px rgba(0, 0, 0, .4);
+  }
+}
+@media (min-width: 1040px) {
+  #hizli-ac-dugme { display: none; }
+}
 
 /* ---------- ızgara ---------- */
 
@@ -371,11 +556,11 @@ html, body {
 /* ---------- etkinlik paneli ---------- */
 
 .panel {
-  width: 300px;
+  width: var(--panel-genislik);
   flex: none;
   background: var(--yuzey);
   border-left: 1px solid var(--cizgi);
-  padding: 18px;
+  padding: var(--bosluk-5);
   overflow-y: auto;
   position: relative;
 }
@@ -439,10 +624,6 @@ html, body {
 }
 
 /* Dar ekranda paneli alta al */
-@media (max-width: 900px) {
-  .kenar { display: none; }
-  .panel { position: absolute; right: 0; top: var(--ust-yukseklik); bottom: 0; z-index: 20; box-shadow: -8px 0 24px rgba(0,0,0,.4); }
-}
 
 /* ---------- görünüm anahtarı, hızlı ekleme, arama ---------- */
 
@@ -476,23 +657,9 @@ html, body {
   display: flex;
   gap: var(--bosluk-2);
 }
-.hizli-girdi, .arama, .modal-girdi, select.modal-girdi {
+.hizli-girdi, .modal-girdi, select.modal-girdi {
   height: var(--girdi-yukseklik);
 }
-/* GEÇİCİ: .arama tam ikon+açılır şeride dönüşene kadar (Aşama 2) çalışır
-   kalsın diye eski görünüm korunuyor. */
-.arama {
-  background: var(--yuzey-2);
-  border: 1px solid var(--cizgi);
-  border-radius: var(--yaricap);
-  color: var(--metin);
-  font: inherit;
-  font-size: 13px;
-  padding: 0 11px;
-  flex: 0 1 150px;
-}
-.arama:focus { border-color: var(--vurgu); }
-.arama::placeholder { color: var(--metin-silik); }
 .hizli-girdi {
   width: 100%;
   background: var(--yuzey-2);
