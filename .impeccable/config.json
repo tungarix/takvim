@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "ui/static/style.css"
+        ],
+        "createdAt": "2026-09-20T23:27:02.631Z",
+        "reason": "Etkinlik/takvim renk göstergesi: border-left rengi occ.color'a göre JS'te dinamik ayarlanıyor (blokYap, tumgunBasla, arama/gün-listesi satırları), dekoratif değil işlevsel. bf1ddbe (Faz 3, bu oturumdan çok önce) tanıtıldı."
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "ui/static/index.html"
+        ],
+        "createdAt": "2026-09-20T23:27:09.007Z",
+        "reason": "gorunum-anahtari (Gun/Hafta/Ay) 32px sabit yukseklikte -- kullanicinin kendi tasarim spesifikasyonu (Takvim Arayuz.pdf) uzerinde ust cubuktaki TUM dugmelerle hizali olmasini istiyor. 0->2px ic pay eklendi (duzeltme yapildi); 8px+ eklemek grubu komsu dugmelerden daha uzun yapip hizalamayi bozardi."
+      }
+    ]
+  }
+}

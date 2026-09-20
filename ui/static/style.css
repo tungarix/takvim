@@ -673,15 +673,21 @@ html, body {
 
 /* ---------- görünüm anahtarı, hızlı ekleme, arama ---------- */
 
+/* Grubun DIŞ yüksekliği yine 32px (üst çubuktaki diğer düğmelerle hizalı
+   kalsın diye), ama 2px iç pay var: düğmeler kenarlığa YAPIŞMASIN diye
+   (impeccable "cramped-padding" -- 32px'e sıkıştırırken bu payı yanlışlıkla
+   kaldırmıştım, düzeltildi). */
 .gorunum-anahtari {
   display: inline-flex;
   height: var(--dugme-yukseklik);
+  padding: 2px;
   background: var(--yuzey-2);
   border: 1px solid var(--cizgi);
   border-radius: var(--yaricap);
   overflow: hidden;
 }
 .gorunum-dugme {
+  height: 100%;
   background: none;
   border: none;
   color: var(--metin-soluk);
