@@ -616,10 +616,14 @@ function blokYap(occ, gun) {
   blok.style.background = zemin(occ.color);
   blok.style.borderLeftColor = occ.color;
 
+  // b-konum HER ZAMAN markup'ta, ama yalnızca çok yakınlaştırıldığında
+  // (>=100px/saat) CSS ile gösteriliyor -- bkz. "1i" (Ctrl+Scroll uçları,
+  // Takvim Arayuz.pdf): 24px'te başlık+saat, 160px'te +konum/takvim.
   blok.innerHTML =
     `<div class="b-baslik">${kacir(occ.title)}</div>` +
     `<div class="b-saat">${saatBicim(occ.startUtc, occ.tzid)}–${saatBicim(occ.endUtc, occ.tzid)}` +
     `${occ.clipped ? " ⇥" : ""}</div>` +
+    (occ.location ? `<div class="b-konum">${kacir(occ.location)}</div>` : "") +
     (occ.isOverride ? `<div class="b-rozet">· taşındı</div>` : "");
 
   blok.onclick = () => { if (!surukleme.tasindi) panelAc(occ); };
@@ -1815,11 +1819,27 @@ function izgaraYakinlastir(e) {
   );
   if (yeni === durum.saatYukseklik) return;
   durum.saatYukseklik = yeni;
+  yogunlukUygula();
   ciz();
 
   kaydirma.scrollTop = oran * (24 * durum.saatYukseklik) - (e.clientY - kutu.top);
 }
 el("izgara-kaydirma").addEventListener("wheel", izgaraYakinlastir, { passive: false });
+
+/* Zoom ucunda blok içeriği değişir (Takvim Arayuz.pdf "1i"): sıkışıkta
+ * (≤32px/saat) saat satırı bile sığmayabilir, ferahta (≥100px/saat) konum
+ * satırı için yer açılır. `#izgara` üstünde bir veri özniteliği -- CSS
+ * seçicileri onu okuyor, JS her blok için tekrar hesaplamıyor. `ciz()`
+ * `#gunler`in İÇİNİ boşaltıp yeniden dolduruyor ama `#izgara`nın kendisine
+ * dokunmuyor, o yüzden öznitelik render'lar arasında hayatta kalıyor. */
+function yogunlukUygula() {
+  const y = durum.saatYukseklik;
+  const izgara = el("izgara");
+  if (y <= 32) izgara.dataset.yogunluk = "sikisik";
+  else if (y >= 100) izgara.dataset.yogunluk = "ferah";
+  else delete izgara.dataset.yogunluk;
+}
+yogunlukUygula();
 
 el("onceki").onclick = () => kaydir(-1);
 el("sonraki").onclick = () => kaydir(1);

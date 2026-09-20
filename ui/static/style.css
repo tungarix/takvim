@@ -450,7 +450,7 @@ html, body {
 .tumgun-hucre {
   border-left: 1px solid var(--cizgi-soluk);
   padding: 4px;
-  min-height: 30px;
+  min-height: 34px;
   display: grid;
   gap: 3px;
   align-content: start;
@@ -531,10 +531,19 @@ html, body {
 }
 .blok .b-saat { font-size: 11px; opacity: .8; }
 .blok .b-rozet { font-size: 10px; opacity: .85; }
+/* Yalnızca FERAH yakınlaştırmada gösteriliyor (aşağıdaki [data-yogunluk]);
+   markup'ta hep var ki JS her zoom adımında bloğu yeniden kurmasın. */
+.blok .b-konum { display: none; font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Çok kısa etkinliklerde saati gizle, başlık sığsın */
 .blok.kisa { padding-top: 1px; }
 .blok.kisa .b-saat { display: none; }
+
+/* Ctrl+Scroll uçları (Takvim Arayuz.pdf "1i"): sıkışıkta saat de gizlenir
+   (yalnızca başlık kalır -- .kisa'nın etkinlik SÜRESİNE değil PENCERE
+   YÜKSEKLİĞİNE bağlı hâli), ferahta konum satırı için yer açılır. */
+#izgara[data-yogunluk="sikisik"] .blok .b-saat { display: none; }
+#izgara[data-yogunluk="ferah"] .blok .b-konum { display: block; }
 
 .simdi-cizgi {
   position: absolute;
