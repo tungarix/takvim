@@ -561,9 +561,9 @@ function blokYap(occ, gun) {
 
 /* ---------- boş saate tıklayarak oluşturma ---------- */
 
-// Oluştururken yarım saate yuvarlıyoruz. Sürüklemedeki 15 dakikadan kaba,
-// çünkü burada niyet "şu civarda bir şey" -- saati sonradan sürükleyerek
-// ince ayarlamak zaten mümkün.
+// Oluştururken yarım saate yuvarlıyoruz. Sürüklemedeki SNAP'ten (5 dk) daha
+// kaba, çünkü burada niyet "şu civarda bir şey" -- saati sonradan
+// sürükleyerek ince ayarlamak zaten mümkün.
 const OLUSTUR_SNAP = 30;
 const OLUSTUR_SURE = 60; // dakika
 
@@ -678,7 +678,7 @@ async function izgaraTik(e, sutun, gun) {
  * çalıştığı için elimizdeki iki değer doğrudan bunlar.
  */
 
-const SNAP = 15; // dakika
+const SNAP = 5; // dakika -- eskiden 15'ti, kullanıcı isteğiyle inceltildi
 const ESIK = 4;  // px: bu kadar oynamadan sürükleme başlamaz (tık kaybolmasın)
 
 const surukleme = { aktif: false, tasindi: false };

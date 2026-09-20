@@ -183,7 +183,7 @@ olduğunu taşımaz.
 | Gezinme | `←` `→` ileri-geri, `T` bugün |
 | Etkinlik ekleme | **Izgarada boş bir saate tıkla**, başlığı yaz — hangi haftaya bakıyorsan oraya eklenir |
 | Hızlı ekleme | Üstteki kutuya "yarın 14:00 diş hekimi" yaz. Bu kutu her zaman BUGÜNÜ referans alır: ileri hafta için "haftaya salı 14:00 ..." ya da "22 eylül 14:00 ..." yaz |
-| Taşıma | Bloğu sürükle (15 dk'ya yuvarlanır, günler arası serbest) |
+| Taşıma | Bloğu sürükle (5 dk'ya yuvarlanır, günler arası serbest); dakikası dakikasına ayar için Düzenle panelinden saati yaz |
 | Süre değiştirme | Bloğun alt kenarını sürükle |
 | Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |
 | Ayrıntı / işlem | Bloğa tıkla, sağda panel açılır |
@@ -573,7 +573,7 @@ bildirim "Windows PowerShell" adıyla görünüyor.
 
 ### Sürükle-bırak ve bulduğu hata
 
-Bloğu sürükleyip bırakmak örneği taşıyor — 15 dakikaya yuvarlanır, günler
+Bloğu sürükleyip bırakmak örneği taşıyor — 5 dakikaya yuvarlanır, günler
 arası serbest. Hedef sunucuya **tarih + gün başından dakika** olarak
 gönderiliyor: JS'te "şu IANA diliminde şu duvar saati" kurmak güvenilir değil,
 sunucuda `from_wall_clock` zaten var ve test edilmiş.
