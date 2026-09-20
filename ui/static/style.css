@@ -394,6 +394,7 @@ html, body {
 /* ---------- ızgara ---------- */
 
 .izgara-sarmal {
+  position: relative; /* .bos-durum'un inset:0 ile buna göre konumlanması için */
   flex: 1;
   min-width: 0;
   min-height: 0;
@@ -632,7 +633,43 @@ html, body {
   font-size: 13px;
 }
 
-/* Dar ekranda paneli alta al */
+/* ---------- boş durum (yalnızca gerçek ilk açılış) ---------- */
+
+.bos-durum {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--zemin);
+}
+.bd-icerik { max-width: 380px; padding: var(--bosluk-5); text-align: center; }
+.bd-baslik {
+  margin: 0 0 var(--bosluk-2);
+  font-size: 20px;
+  font-weight: 650;
+}
+.bd-alt { margin: 0 0 var(--bosluk-4); color: var(--metin-soluk); font-size: 13px; }
+.bd-aciklama {
+  margin: 0 0 var(--bosluk-5);
+  color: var(--metin-silik);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.bd-ornekler {
+  list-style: none;
+  margin: 0 0 var(--bosluk-5);
+  padding: var(--bosluk-3) var(--bosluk-4);
+  background: var(--yuzey);
+  border: 1px solid var(--cizgi);
+  display: grid;
+  gap: var(--bosluk-2);
+  text-align: left;
+  font-size: 12px;
+  color: var(--metin-soluk);
+}
+.bd-eylemler { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--bosluk-2); }
 
 /* ---------- görünüm anahtarı, hızlı ekleme, arama ---------- */
 

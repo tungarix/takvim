@@ -128,6 +128,31 @@
       <div class="ay-basliklar" id="ay-basliklar"></div>
       <div class="ay-izgara" id="ay-izgara"></div>
     </div>
+
+    <!-- Yalnızca GERÇEK ilk açılışta gösteriliyor (app.js: tek takvim
+         "Kişisel" + görünen pencerede hiç etkinlik yok) -- normal kullanımda
+         boş bir hafta bu ekranı TETİKLEMEZ, kalıcı bayrak ilk yukle()'den
+         sonra düşüyor. -->
+    <div id="bos-durum" class="bos-durum" hidden>
+      <div class="bd-icerik">
+        <h2 class="bd-baslik">Takvim hazır</h2>
+        <p class="bd-alt">Henüz hiç etkinlik yok</p>
+        <p class="bd-aciklama">
+          Her şey bu bilgisayarda kalır; hesap açman gerekmez. Üstteki kutuya
+          düz yazıyla yazarak başlayabilirsin.
+        </p>
+        <ul class="bd-ornekler">
+          <li>↵ yarın 14:00 diş hekimi</li>
+          <li>↵ her salı 19:00 yüzme</li>
+          <li>↵ 3 mart tüm gün Bodrum</li>
+        </ul>
+        <div class="bd-eylemler">
+          <button type="button" id="bd-etkinlik-ekle" class="dugme birincil">Etkinlik ekle</button>
+          <button type="button" id="bd-ice-aktar" class="dugme">.ics içe aktar</button>
+          <button type="button" id="bd-yedekler" class="dugme">Yedekten geri yükle</button>
+        </div>
+      </div>
+    </div>
   </main>
 
   <aside class="panel" id="panel" hidden>

@@ -33,6 +33,13 @@ const durum = {
   // mt-sonraki bunu yukle() ÇAĞIRMADAN değiştirir, yani ana görünümü
   // etkilemeden ileri geri gezilebiliyor.
   miniAy: bugunISO().slice(0, 7) + "-01",
+  // Boş durum ekranının AÇILMASI yalnızca GERÇEK ilk açılışta bir şans
+  // buluyor: ciz() ilk kez çalıştığında bu false'a düşüyor, kontrolü bir
+  // daha hiç açmıyor -- kullanıcı gezinip boş bir haftaya denk gelse bile
+  // "karşılama ekranı" yeniden çıkmasın. KAPANMASI ayrı: bir kez açıldıysa,
+  // sonraki her yukle()'de veri artık boş değilse kapatılıyor (kullanıcı
+  // "Etkinlik ekle"den bir şey oluşturunca ekranda asılı kalmasın diye).
+  ilkYuklemeKaldi: true,
 };
 
 const el = (id) => document.getElementById(id);
@@ -335,6 +342,7 @@ function ciz() {
   el("tz-etiketi-kisa").title = veri.tzid;
   takvimleriCiz();
   miniAyCiz();
+  bosDurumKontrol(veri);
 
   document.querySelectorAll(".gorunum-dugme").forEach((b) => {
     b.classList.toggle("secili", b.dataset.gorunum === durum.gorunum);
@@ -374,6 +382,35 @@ function takvimleriCiz() {
     };
     liste.appendChild(li);
   });
+}
+
+/* ---------- boş durum (yalnızca gerçek ilk açılış) ---------- */
+
+/** Hafta/gün `days[i]` = {timed,allDay}; ay `days[i]` = {events}. */
+function veriBosMu(veri) {
+  if (!veri.days) return true;
+  return veri.days.every((g) =>
+    (g.timed || []).length === 0 &&
+    (g.allDay || []).length === 0 &&
+    (g.events || []).length === 0
+  );
+}
+
+function bosDurumKontrol(veri) {
+  if (!durum.ilkYuklemeKaldi) {
+    // Karar zaten verildi (açıldı ya da açılmadı). Açıldıysa ve veri artık
+    // boş değilse (kullanıcı bir şey ekledi/içe aktardı) kapatıyoruz;
+    // aksi hâlde dokunmuyoruz -- boş bir haftaya gezinmek onu KAPATMAZ.
+    if (!el("bos-durum").hidden && !veriBosMu(veri)) el("bos-durum").hidden = true;
+    return;
+  }
+  durum.ilkYuklemeKaldi = false;
+  // "Gerçek ilk açılış" ikili sinyal: tek, varsayılan adlı takvim VE
+  // görünen pencerede hiç etkinlik yok. Yalnızca ikinciye bakmak, aktif
+  // bir kullanıcının sakin bir haftaya denk gelmesini "kurulum" sanardı.
+  const ilkKurulumGibi =
+    veri.calendars.length === 1 && veri.calendars[0].name === "Kişisel";
+  el("bos-durum").hidden = !(ilkKurulumGibi && veriBosMu(veri));
 }
 
 /* ---------- mini ay takvimi (kenar çubuğu) ---------- */
@@ -1880,6 +1917,16 @@ el("hizli-ac-dugme").onclick = async () => {
 };
 el("panel-kapat").onclick = panelKapat;
 el("disa-aktar").onclick = () => { window.location.href = "/api/export"; };
+
+// Boş durum ekranının üç düğmesi: gerçek eylemleri TEKRAR YAZMIYOR, zaten
+// var olan yolları tetikliyor. "Etkinlik ekle" pencere genişliğine göre
+// doğru girdiye gidiyor (geniş: kutuya odaklan, dar: aynı soru kutusu).
+el("bd-etkinlik-ekle").onclick = () => {
+  if (getComputedStyle(el("hizli-form")).display !== "none") el("hizli-girdi").focus();
+  else el("hizli-ac-dugme").click();
+};
+el("bd-ice-aktar").onclick = () => el("ice-aktar").click();
+el("bd-yedekler").onclick = () => el("yedekler").click();
 el("yedekler").onclick = yedekleriAc;
 el("ayarlar").onclick = ayarlariAc;
 el("ice-aktar").onclick = () => el("ice-aktar-dosya").click();
