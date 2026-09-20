@@ -5,7 +5,7 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/) biçimini ve
 GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 `Takvim.exe` ekiyle yayınlanır.
 
-## [Yayınlanmamış]
+## [1.0.2] - 2026-09-20
 
 ### Düzeltildi
 - Tepsi modunda pencere her kapatıldığında YENİ bir `NotifyIcon` kuruluyordu,

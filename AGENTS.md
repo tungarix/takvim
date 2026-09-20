@@ -474,7 +474,7 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E + v1.0.1 tamamlandı** (README §1, §10,
+**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 tamamlandı** (README §1, §10,
 [CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden önce SOR -- kapsam
 dışı listesi bilinçli olarak kısa tutuluyor.
 
@@ -487,8 +487,7 @@ v1.0.1'de bitenler (ayrıntı CHANGELOG.md'de):
 - Seri bölme, otomatik başlatma kısayolu ve sessiz yedek geri yükleme
   hatalarının düzeltilmesi (CHANGELOG.md [1.0.1]).
 
-Yayınlanmamış (henüz release'e girmedi, ayrıntı CHANGELOG.md'nin
-"Yayınlanmamış" bölümünde):
+v1.0.2'de bitenler (ayrıntı CHANGELOG.md'de):
 
 - Tepsi ikonu her kapanışta yeniden kuruluyordu, eskisi Dispose
   edilmiyordu (`ui/pencere.py`, `kapanirken`); artık varsa yeniden
