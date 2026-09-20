@@ -8,12 +8,12 @@ yine de açılıyor mu.
 from __future__ import annotations
 
 import sqlite3
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
 from store import Repo, yedek_al, yedek_klasoru, yedekten_don
-from store.yedek import SAKLANAN, yedek_dosyalari
+from store.yedek import ONCEKI_SAKLANAN, SAKLANAN, onceki_dosyalari, yedek_dosyalari
 
 
 def _depo(yol) -> Repo:
@@ -113,6 +113,24 @@ def test_yedekten_don_mevcut_hali_kenara_alir(tmp_path):
     assert len(kenara) == 1
     with Repo.open(str(kenara[0])) as geri:
         assert [c.name for c in geri.list_calendars()] == ["Kişisel"]
+
+
+def test_onceki_fazlasi_budanir(tmp_path):
+    """`onceki-takvim-*.db` -- takvim-*.db deseninin dışında kaldığı için
+    `_budama`'nın görmediği dosyalar -- kendi penceresinde budanıyor."""
+    db = tmp_path / "takvim.db"
+    son_damga = None
+    with _depo(db) as repo:
+        yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 1))
+        for saniye in range(ONCEKI_SAKLANAN + 3):
+            simdi = datetime(2026, 9, 13, 10, 0, saniye)
+            son_damga = simdi.strftime("%Y-%m-%d-%H%M%S")
+            repo = yedekten_don(repo, str(db), "takvim-2026-09-01.db", simdi=simdi)
+        repo.close()
+
+    kalan = onceki_dosyalari(yedek_klasoru(tmp_path))
+    assert len(kalan) == ONCEKI_SAKLANAN, "en fazla ONCEKI_SAKLANAN tanesi kalmalı"
+    assert kalan[-1].name == f"onceki-takvim-{son_damga}.db", "en yeni durmalı"
 
 
 def test_yedekten_don_liste_disi_adi_reddeder(tmp_path):

@@ -5,6 +5,18 @@ Bu proje [Keep a Changelog](https://keepachangelog.com/) biçimini ve
 GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 `Takvim.exe` ekiyle yayınlanır.
 
+## [Yayınlanmamış]
+
+### Düzeltildi
+- Tepsi modunda pencere her kapatıldığında YENİ bir `NotifyIcon` kuruluyordu,
+  eskisi `Dispose` edilmiyordu -- "tepsiye in, geri aç, tekrar tepsiye in"
+  döngüsü tepside hayalet ikon biriktiriyordu. Artık varsa mevcut ikon
+  yeniden kullanılıyor.
+- `yedekten_don`'un kenara aldığı `onceki-takvim-*.db` anlık görüntüleri
+  düzenli yedeklerin `takvim-*.db` deseninin dışında kaldığı için hiç
+  budanmıyordu, her geri yükleme denemesinde bir tam DB kopyası kalıcı
+  olarak birikiyordu. Kendi penceresi eklendi (`ONCEKI_SAKLANAN = 5`).
+
 ## [1.0.1] - 2026-09-20
 
 ### Eklendi

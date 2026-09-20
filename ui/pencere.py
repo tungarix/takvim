@@ -358,18 +358,27 @@ def pencere_ac(
             except Exception:
                 isteniyor = False  # ayar okunamadı: güvenli tarafta kal
             if isteniyor:
-                from .tepsi import Tepsi, simge_bul
+                # Simge zaten kuruluysa YENİDEN KULLAN: `on_ac` (tepsiden
+                # "Aç"/çift tık) yalnızca pencereyi gösteriyor, simgeyi
+                # kaldırmıyor -- yani ikon, pencere geri gelince de tepside
+                # kalıyor. Buradaki koşul yokken her "tepsiye in -> geri aç ->
+                # tekrar tepsiye in" turu eskisini Dispose etmeden yeni bir
+                # NotifyIcon kuruyordu; tepside hayalet ikon biriktiriyordu.
+                if tutamac["tepsi"] is None:
+                    from .tepsi import Tepsi, simge_bul
 
-                tepsi = Tepsi.kur(
-                    pencere.show, gercek_kapat, simge_yolu=simge_bul()
-                )
-                if tepsi is None:
-                    return None  # simge kurulamadı: normal kapan
-                tutamac["tepsi"] = tepsi
+                    tepsi = Tepsi.kur(
+                        pencere.show, gercek_kapat, simge_yolu=simge_bul()
+                    )
+                    if tepsi is None:
+                        return None  # simge kurulamadı: normal kapan
+                    tutamac["tepsi"] = tepsi
                 try:
                     pencere.hide()
                 except Exception:
-                    tutamac["tepsi"] = None
+                    if tutamac["tepsi"] is not None:
+                        tutamac["tepsi"].kapat()
+                        tutamac["tepsi"] = None
                     return None
                 return False
         if tutamac["tepsi"] is not None:

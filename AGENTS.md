@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**383 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
+**396 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
 "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
@@ -474,8 +474,28 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E tamamlandı** (README §1, §10). Yeni özellik eklemeden
-önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+**v1 kapsamı + Faz A–E + v1.0.1 tamamlandı** (README §1, §10,
+[CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden önce SOR -- kapsam
+dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.0.1'de bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Klavye panosu**: `Ctrl+C/X/V/D/Z` (kopyala/kes/yapıştır/çoğalt/son
+  işlemi geri al); kopyaladıktan sonra boş saate tıklamak da yapıştırır.
+- **`Ctrl`+tekerlek ile ızgara yakınlaştırma** (24–160px/saat, imleç sabit
+  kalır); sürükleme yuvarlaması 15dk'dan 5dk'ya indirildi.
+- Seri bölme, otomatik başlatma kısayolu ve sessiz yedek geri yükleme
+  hatalarının düzeltilmesi (CHANGELOG.md [1.0.1]).
+
+Yayınlanmamış (henüz release'e girmedi, ayrıntı CHANGELOG.md'nin
+"Yayınlanmamış" bölümünde):
+
+- Tepsi ikonu her kapanışta yeniden kuruluyordu, eskisi Dispose
+  edilmiyordu (`ui/pencere.py`, `kapanirken`); artık varsa yeniden
+  kullanılıyor.
+- `onceki-takvim-*.db` (yedekten dönüş öncesi kenara alınan anlık
+  görüntüler) `takvim-*.db` deseninin dışında kaldığı için hiç
+  budanmıyordu; kendi penceresi eklendi (`ONCEKI_SAKLANAN`).
 
 Faz A–E'de bitenler (detay README §10'da):
 
@@ -491,3 +511,8 @@ Faz A–E'de bitenler (detay README §10'da):
 
 Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menümüz, monitör başına DPI
 farkındalığı, bildirimde kendi uygulama adı (PowerShell AUMID'i ödünç).
+
+Düşünülüp ertelenenler (bkz. son sohbet): CI yok (`.github/workflows`),
+ön yüzün (`ui/static/app.js`) hiç otomatik testi yok, `.exe` imzasız
+(SmartScreen uyarısı). Bunlar hata değil, bilinçli/gelecekteki yatırım
+kararları.

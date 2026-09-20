@@ -24,11 +24,22 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-__all__ = ["SAKLANAN", "yedek_al", "yedek_dosyalari", "yedek_klasoru", "yedekten_don"]
+__all__ = [
+    "ONCEKI_SAKLANAN",
+    "SAKLANAN",
+    "onceki_dosyalari",
+    "yedek_al",
+    "yedek_dosyalari",
+    "yedek_klasoru",
+    "yedekten_don",
+]
 
 # Kaç günlük yedek saklanacak. Yedi gün, "geçen hafta yanlışlıkla sildim"
 # senaryosunu kurtarmaya yetiyor; daha fazlası disk ve karmaşa.
 SAKLANAN = 7
+# Kaç "geri yükleme öncesi" anlık görüntü saklanacak (`onceki-takvim-*.db`).
+# Gün başına değil, DENEME başına bir tane oluştuğu için pencere daha küçük.
+ONCEKI_SAKLANAN = 5
 
 
 def yedek_klasoru(veri_dizini: str | Path) -> Path:
@@ -110,8 +121,36 @@ def _eski_gecicileri_temizle(klasor: Path, hedef_ad: str) -> None:
 
 def _budama(klasor: Path) -> list[Path]:
     """En eski yedekleri siler, `SAKLANAN` tanesini bırakır; silinenleri döndürür."""
-    dosyalar = yedek_dosyalari(klasor)
-    silinecek = dosyalar[: max(0, len(dosyalar) - SAKLANAN)]
+    return _n_tanesini_birak(yedek_dosyalari(klasor), SAKLANAN)
+
+
+def onceki_dosyalari(klasor: str | Path) -> list[Path]:
+    """`yedekten_don`'un kenara aldığı `onceki-takvim-*.db` anlık görüntüleri.
+
+    `yedek_dosyalari`'nin `takvim-*.db` deseniyle KASTEN eşleşmiyorlar (bkz.
+    o fonksiyonun docstring'i); bu yüzden ayrı bir liste ve ayrı bir budama
+    gerekiyor -- yoksa hiç budanmadan sonsuza kadar birikirler.
+    """
+    try:
+        return sorted(Path(klasor).glob("onceki-takvim-*.db"))
+    except OSError:
+        return []
+
+
+def _onceki_budama(klasor: Path) -> list[Path]:
+    """En eski `onceki-takvim-*.db` anlık görüntülerini siler, `ONCEKI_SAKLANAN`
+    tanesini bırakır.
+
+    Günlük yedeklerden AYRI bir politika: bunlar gün başına değil, her
+    "yedekten dön" denemesinde bir tane oluşuyor -- art arda birkaç yedek
+    denenirse hızla birikebilir, o yüzden pencere daha küçük.
+    """
+    return _n_tanesini_birak(onceki_dosyalari(klasor), ONCEKI_SAKLANAN)
+
+
+def _n_tanesini_birak(dosyalar: list[Path], n: int) -> list[Path]:
+    """ESKİDEN YENİYE sıralı bir listenin en eskilerini siler, son `n` tanesini bırakır."""
+    silinecek = dosyalar[: max(0, len(dosyalar) - n)]
     silinen = []
     for d in silinecek:
         try:
@@ -122,7 +161,9 @@ def _budama(klasor: Path) -> list[Path]:
     return silinen
 
 
-def yedekten_don(repo, db_yolu, ad: str, *, check_same_thread: bool = True):
+def yedekten_don(
+    repo, db_yolu, ad: str, *, check_same_thread: bool = True, simdi: datetime | None = None
+):
     """Seçili yedeği CANLI veritabanına yazar; AYNI depoyu döndürür.
 
     SQLite `backup` API'siyle, dosya DEĞİŞTİRMEKSİZİN: bağlantı açıkken
@@ -134,6 +175,10 @@ def yedekten_don(repo, db_yolu, ad: str, *, check_same_thread: bool = True):
     `takvim-*.db` örüntüsünün DIŞINDA) -> yedeği canlı bağlantıya kopyala.
     Başarısızlıkta RuntimeError; ASLA sahte başarı yok. `check_same_thread`
     imza uyumu için duruyor (bağlantı yeniden açılmıyor, mevcut korunuyor).
+
+    `simdi` dışarıdan verilebiliyor: testler saniye çözünürlüklü damgayı
+    (`onceki-takvim-{...}.db`) art arda ilerletebilsin diye (`yedek_al`'ın
+    `bugun` parametresiyle aynı desen).
     """
     if db_yolu is None or str(db_yolu) == ":memory:":
         raise ValueError("bellek veritabanına yedekten dönülemez")
@@ -158,13 +203,17 @@ def yedekten_don(repo, db_yolu, ad: str, *, check_same_thread: bool = True):
         kenara: Path | None = None
         if db.exists():
             try:
-                damga = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+                damga = (simdi or datetime.now()).strftime("%Y-%m-%d-%H%M%S")
                 kenara = klasor / f"onceki-takvim-{damga}.db"
                 kenara_baglanti = sqlite3.connect(str(kenara))
                 try:
                     repo.conn.backup(kenara_baglanti)
                 finally:
                     kenara_baglanti.close()
+                # `takvim-*.db` deseniyle eşleşmediği için `_budama`'nın
+                # dışında kalıyorlardı; budamazsak her denemede bir tam DB
+                # kopyası kalıcı olarak birikir.
+                _onceki_budama(klasor)
             except (sqlite3.Error, OSError):
                 # Kenara alınamadı; geri dönüş yine denenir. Yarım kalmış
                 # kenara dosyası varsa temizle ki "sağlam kenara" sanılmasın.
