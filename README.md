@@ -2,6 +2,8 @@
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
+![Takvim ekran görüntüsü](docs/screenshot.png)
+
 **Durum:** v1 tamamlandı. Masaüstündeki **Takvim** kısayolu tek dosyalık
 `Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
