@@ -18,6 +18,8 @@ const durum = {
   secili: null,          // seçili occurrence (panel için)
   takvimGorunur: new Map(),
   kaydirildi: false,
+  pano: null,             // Ctrl+C/X ile kopyalanan etkinliğin özeti (yapıştırma için)
+  imlecSaat: null,        // fare gün/hafta ızgarasında hangi boş saatin üzerinde ({date, minutes})
 };
 
 const el = (id) => document.getElementById(id);
@@ -296,6 +298,15 @@ function ciz() {
   const veri = durum.veri;
   if (!veri) return;
 
+  // Yapıştırma hedefi (imlecSaat) her yeniden çizimde GEÇERSİZ sayılıyor:
+  // görünüm ya da tarih değişmiş olabilir ve fare hiç kıpırdamamış olsa
+  // bile eski hedef artık ekranda görünmeyen/anlamsız bir günü işaret
+  // edebilir (örn. "h" ile hafta görünümündeyken fareyi kıpırdatmadan "a"ya
+  // basıp ay görünümüne geçmek). Geçerliyse zaten ilk mousemove'da yeniden
+  // dolacak; sessizce yanlış bir güne yapıştırmaktansa Ctrl+V'nin "hedef
+  // yok" demesi çok daha güvenli.
+  durum.imlecSaat = null;
+
   el("baslik").textContent = veri.label;
   el("tz-etiketi").textContent = veri.tzid;
   takvimleriCiz();
@@ -481,6 +492,16 @@ function zamanCiz(veri) {
     // alıyor ve "sonraki haftaya nasıl eklerim" sorusu buradan çıkmıştı.
     sutun.addEventListener("click", (e) => izgaraTik(e, sutun, g));
 
+    // Ctrl+V'nin hedefi: fareyle üzerinde durulan boş saat. Tıklama değil
+    // TAKİP -- kullanıcı imleci nereye götürürse yapıştırma da oraya gider,
+    // eski bir tıklamayı "hatırlamak" gerekmiyor. Bir etkinliğin üzerindeyken
+    // hedef yok (izgaraTik'teki ".blok" kaçışıyla aynı mantık).
+    sutun.addEventListener("mousemove", (e) => {
+      if (e.target.closest(".blok")) { durum.imlecSaat = null; return; }
+      durum.imlecSaat = { date: g.date, dayMinutes: g.dayMinutes, minutes: sutunDakika(e, sutun, g) };
+    });
+    sutun.addEventListener("mouseleave", () => { durum.imlecSaat = null; });
+
     g.timed.filter(gorunurMu).forEach((occ) => sutun.appendChild(blokYap(occ, g)));
 
     if (g.date === bugun) {
@@ -546,16 +567,24 @@ function blokYap(occ, gun) {
 const OLUSTUR_SNAP = 30;
 const OLUSTUR_SURE = 60; // dakika
 
+/** Fare/işaretçi konumunu sütun içinde yarım saate yuvarlanmış dakikaya çevirir.
+ * Hem tıklayıp oluşturma (izgaraTik) hem yapıştırma hedefi takibi bunu kullanıyor
+ * -- ikisi AYNI ızgarada AYNI yuvarlamayı görmeli, yoksa fareyle durduğun yerle
+ * tıklayınca açılan saat birbirini tutmaz. */
+function sutunDakika(e, sutun, gun) {
+  const kutu = sutun.getBoundingClientRect();
+  const oran = (e.clientY - kutu.top) / kutu.height;
+  let dakika = Math.floor((oran * gun.dayMinutes) / OLUSTUR_SNAP) * OLUSTUR_SNAP;
+  return Math.max(0, Math.min(dakika, gun.dayMinutes - OLUSTUR_SNAP));
+}
+
 async function izgaraTik(e, sutun, gun) {
   // Etkinliğin üstüne tıklandıysa burası karışmasın: panel açılacak.
   if (e.target.closest(".blok")) return;
   // Sürüklemeden SONRA da bir tık olayı geliyor; onu oluşturma sanmayalım.
   if (surukleme.tasindi || tumgunSurukleme.tasindi) return;
 
-  const kutu = sutun.getBoundingClientRect();
-  const oran = (e.clientY - kutu.top) / kutu.height;
-  let dakika = Math.floor((oran * gun.dayMinutes) / OLUSTUR_SNAP) * OLUSTUR_SNAP;
-  dakika = Math.max(0, Math.min(dakika, gun.dayMinutes - OLUSTUR_SNAP));
+  const dakika = sutunDakika(e, sutun, gun);
   const bitis = Math.min(dakika + OLUSTUR_SURE, gun.dayMinutes);
 
   /* Çakışma uyarısı ENGELLEMEZ, BİLGİLENDİRİR: kullanıcı saati bilerek
@@ -1231,6 +1260,122 @@ async function silmeyiGeriAl(occ) {
   }, "Geri alındı");
 }
 
+/* ---------- pano: kopyala / kes / yapıştır / çoğalt / geri al ---------- */
+
+/* Yapıştırılan kopya HER ZAMAN tekrarsız TEK bir etkinlik -- kaynak
+ * tekrarlıysa bile. "Boş saate tıkla" akışı zaten böyle çalışıyor (tekrar
+ * seçimi kullanıcıya soruluyor, biz onun yerine karar vermiyoruz) ve
+ * yapıştırmanın "bu seriye bir örnek daha ekle" sanılması daha kötü bir
+ * yanlış anlaşılma olurdu.
+ *
+ * Tüm gün etkinlikler şimdilik KAPSAM DIŞI: "boş saate tıkla" akışının süre
+ * birimi dakika, tüm gün etkinliğinki gün -- ikisini tek bir pano nesnesinde
+ * doğru taşımak ayrı bir iş, burada yarım yapıp yanlış süreyle sessizce
+ * yapıştırmaktansa açıkça reddetmek daha güvenli. */
+function panoyaKopyala(occ) {
+  if (occ.allDay) {
+    bildir("Tüm gün etkinlikler şu an kopyalanamıyor", true);
+    return false;
+  }
+  durum.pano = {
+    title: occ.title,
+    location: occ.location || "",
+    description: occ.description || "",
+    calendarId: occ.calendarId,
+    durationMin: Math.round((new Date(occ.endUtc) - new Date(occ.startUtc)) / 60000),
+    reminders: (occ.reminders || []).map((r) => r.minutesBefore),
+  };
+  return true;
+}
+
+function kopyala() {
+  if (!durum.secili) { bildir("Kopyalamak için önce bir etkinlik seç", true); return; }
+  if (panoyaKopyala(durum.secili)) bildir(`"${durum.secili.title}" kopyalandı`);
+}
+
+/* Kes = kopyala + sil. Silme kısmı için YENİ bir yol AÇMIYORUZ: aynı
+ * ornegiSil çağrılıyor, yani aynı onay kutusu ve aynı "Geri al" zaten var.
+ * Seri kesme yok (Shift+Ctrl+X gibi bir şey de) -- yapıştırma zaten hep tek
+ * örnek ürettiği için "seriyi kes" kavramının karşılığı olmazdı. */
+function kes() {
+  if (!durum.secili) { bildir("Kesmek için önce bir etkinlik seç", true); return; }
+  if (!panoyaKopyala(durum.secili)) return;
+  ornegiSil(durum.secili);
+}
+
+/** Panodaki etkinliği verilen tarih/dakikaya yazar; "Geri al" yeni kaydı siler. */
+async function panoyaYaz(tarih, baslangicDk) {
+  const p = durum.pano;
+  const bitisDk = Math.min(baslangicDk + p.durationMin, 48 * 60);
+  let yeniId = null;
+  await eylem(
+    async () => {
+      const yanit = await istek("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: p.title, date: tarih, minutes: baslangicDk, endMinutes: bitisDk,
+          calendarId: p.calendarId,
+        }),
+      });
+      yeniId = yanit.event.id;
+      if (p.location || p.description) {
+        await istek(`/api/events/${yeniId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ location: p.location, description: p.description }),
+        });
+      }
+      for (const dk of p.reminders) {
+        await istek(`/api/events/${yeniId}/reminders`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minutesBefore: dk }),
+        });
+      }
+    },
+    `"${p.title}" yapıştırıldı`,
+    () => eylem(() => istek(`/api/events/${yeniId}`, { method: "DELETE" }), "Yapıştırma geri alındı"),
+  );
+}
+
+/* Hedef fareyle takip edilen boş saat (durum.imlecSaat) -- gün/hafta
+ * görünümünde imleci ızgaranın üzerine getirip Ctrl+V basmak yeter, ayrıca
+ * tıklamaya gerek yok. Ay görünümünde saat ızgarası olmadığı için kapsam
+ * dışı; kullanıcıyı gün/hafta görünümüne yönlendiriyoruz. */
+function yapistir() {
+  if (!durum.pano) { bildir("Yapıştırmak için önce bir etkinlik kopyala (Ctrl+C)", true); return; }
+  if (!durum.imlecSaat) {
+    bildir("Yapıştırmak için imleci gün/hafta görünümünde boş bir saatin üzerine getir", true);
+    return;
+  }
+  panoyaYaz(durum.imlecSaat.date, durum.imlecSaat.minutes);
+}
+
+/* Çoğalt: kopyalamadan geçmeden TEK adımda "aynı saatte yarın bir tane daha"
+ * -- Ctrl+V'nin "imleci hedefe götür" akışına göre daha hızlı bir kısayol.
+ * Yine de panoyu doldurur, ardından istenirse başka bir yere de Ctrl+V
+ * yapılabilir. */
+function cogalt() {
+  if (!durum.secili) { bildir("Çoğaltmak için önce bir etkinlik seç", true); return; }
+  const occ = durum.secili;
+  if (!panoyaKopyala(occ)) return;
+  const tarih = tarihKaydir(yerelTarihISO(occ.startUtc, occ.tzid), 1);
+  const bas = dakikayaCevir(yerelSaatISO(occ.startUtc, occ.tzid));
+  panoyaYaz(tarih, bas);
+}
+
+/* Ctrl+Z: o an görünen bildirimin "Geri al" düğmesi varsa onu tıklar.
+ * Yeni bir geri-alma mekanizması DEĞİL -- var olan düğmeyi klavyeden de
+ * erişilebilir yapıyor. Bildirim kapalıysa ya da düğmesi yoksa hiçbir şey
+ * yapmaz. */
+function geriAlKisayolu() {
+  const kutu = el("bildirim");
+  if (kutu.hidden) return;
+  const dugme = kutu.querySelector(".bildirim-dugme");
+  if (dugme) dugme.click();
+}
+
 /** Seriyi tamamen siler. Sayı ONAYDAN ÖNCE sunucudan geliyor (`series_info`);
  * geri alma sunucu anlık görüntüsünden diriliyor (override + hatırlatıcı +
  * fired geçmişi dahil), istemcinin yeniden kurmasından değil. */
@@ -1680,15 +1825,30 @@ document.addEventListener("keydown", (e) => {
   // "a" harfine basmak ay görünümüne atlıyordu.
   if (modalAcik()) return;
 
-  /* Değiştirici tuşlu birleşimler bizim değil: Ctrl+A (tümünü seç),
-   * Ctrl+H, Ctrl+T gibi birleşimleri kaçırırsak kullanıcı metni seçemez
-   * ya da beklediği davranış yerine görünüm değişir. Tek harflik
-   * kısayollar yalnızca ÇIPLAK basıldığında geçerli. */
-  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  // Alt'lı birleşimlere hiç karışmıyoruz (menü erişim tuşları vb.).
+  if (e.altKey) return;
+
+  const yaziKutusu = ["INPUT", "TEXTAREA"].includes(e.target.tagName);
+
+  /* Pano kısayolları: Ctrl/Cmd + C/X/V/D/Z. Diğer TÜM Ctrl birleşimleri
+   * (Ctrl+A tümünü seç, Ctrl+H, Ctrl+T...) bizim değil -- onları
+   * yakalarsak kullanıcı metni seçemez ya da beklediği tarayıcı/işletim
+   * sistemi davranışı yerine bizim bir şeyimiz çalışır. Yazı kutusundayken
+   * de devre dışı: arama kutusunda ya da düzenleme formunda kullanıcının
+   * kendi kopyala/yapıştırı çalışmalı, bizim etkinlik panomuz değil. */
+  if (e.ctrlKey || e.metaKey) {
+    if (yaziKutusu) return;
+    const panoKisayollari = { c: kopyala, x: kes, v: yapistir, d: cogalt, z: geriAlKisayolu };
+    const islev = panoKisayollari[e.key.toLowerCase()];
+    if (!islev) return;
+    e.preventDefault();
+    islev();
+    return;
+  }
 
   // Yazarken kısayollar devreye girmesin. Del ve Backspace için bu ŞART:
   // hızlı ekleme kutusunda yazarken Del etkinlik silmemeli, harf silmeli.
-  if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) {
+  if (yaziKutusu) {
     if (e.key === "Escape") e.target.blur();
     return;
   }
