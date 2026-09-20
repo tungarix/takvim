@@ -149,6 +149,8 @@ Migration yazılmadı — sessizce geçilmedi, uyarıyla gözetim altına alınd
 
 ## 5. Kullanım
 
+> **İlk kurulum:** [Releases](https://github.com/tungarix/takvim/releases/latest) sayfasından `Takvim.exe`'yi indir, çift tıkla çalıştır. Kurulum yok, Python gerekmez. Windows "Bilgisayarınızı korudu" uyarısı çıkarsa **Ek bilgi → Yine de çalıştır**.
+
 Masaüstündeki **Takvim** kısayoluna çift tıkla. Uygulama **kendi
 penceresinde** açılır: tarayıcı yok, adres çubuğu yok, sekme yok; görev
 çubuğunda kendi ikonu var. Kapatmak için pencereyi kapat, hepsi bu.
