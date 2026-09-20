@@ -8,7 +8,14 @@
  * yüzdeleri ona bölmek ızgarayı o günlerde de doğru hizalıyor.
  */
 
-const SAAT_YUKSEKLIK = 48; // CSS'teki --saat-yukseklik ile aynı olmalı
+// Varsayılan saat yüksekliği; CANLI değer durum.saatYukseklik'te (Ctrl+Scroll
+// değiştirir). CSS'teki --saat-yukseklik bununla EŞİTLENİYOR (ciz() her
+// çağrıda yazıyor) -- ikisi elle aynı tutulan iki sabit değil, biri diğerini
+// besliyor.
+const SAAT_YUKSEKLIK_VARSAYILAN = 48;
+const SAAT_YUKSEKLIK_MIN = 24;
+const SAAT_YUKSEKLIK_MAKS = 160;
+const SAAT_YAKINLASTIR_ADIM = 4; // px/saat, her Ctrl+Scroll notch'unda
 const AY_MAKS_BLOK = 3;    // ay hücresinde gösterilecek en fazla etkinlik
 
 const durum = {
@@ -20,6 +27,7 @@ const durum = {
   kaydirildi: false,
   pano: null,             // Ctrl+C/X ile kopyalanan etkinliğin özeti (yapıştırma için)
   imlecSaat: null,        // fare gün/hafta ızgarasında hangi boş saatin üzerinde ({date, minutes})
+  saatYukseklik: SAAT_YUKSEKLIK_VARSAYILAN, // Ctrl+Scroll ile büyür/küçülür
 };
 
 const el = (id) => document.getElementById(id);
@@ -474,7 +482,10 @@ function zamanCiz(veri) {
   }
 
   gunlerKap.innerHTML = "";
-  gunlerKap.style.height = `${24 * SAAT_YUKSEKLIK}px`;
+  gunlerKap.style.height = `${24 * durum.saatYukseklik}px`;
+  // Saat etiketleri (.saat-etiket) yüksekliğini CSS değişkeninden okuyor;
+  // ızgara ile aynı ölçekte kalsınlar diye burada senkronize ediyoruz.
+  document.documentElement.style.setProperty("--saat-yukseklik", `${durum.saatYukseklik}px`);
 
   veri.days.forEach((g) => {
     const sutun = document.createElement("div");
@@ -520,7 +531,7 @@ function zamanCiz(veri) {
 
   if (!durum.kaydirildi) {
     durum.kaydirildi = true;
-    el("izgara-kaydirma").scrollTop = (7 / 24) * 24 * SAAT_YUKSEKLIK;
+    el("izgara-kaydirma").scrollTop = (7 / 24) * 24 * durum.saatYukseklik;
   }
 }
 
@@ -1713,6 +1724,35 @@ function kaydir(yon) {
   }
   yukle();
 }
+
+/* Ctrl+Scroll (trackpad'de pinch de tarayıcıda ctrlKey:true'lu wheel olarak
+ * gelir, o yüzden bu ikisini AYRI ele almaya gerek yok) ızgarayı büyütür/
+ * küçültür. preventDefault ŞART: yoksa tarayıcı SAYFAYI yakınlaştırır,
+ * ızgarayı değil. İmlecin altındaki saat SABİT kalır (Figma/Google Maps'teki
+ * gibi): önce o anın toplam yükseklikteki payını hesaplıyoruz, yükseklik
+ * değiştikten sonra aynı payı yine imlecin altına getirecek scrollTop'u
+ * yazıyoruz -- yoksa her tekerlek hareketinde ekran farklı bir saate zıplar. */
+function izgaraYakinlastir(e) {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+
+  const kaydirma = el("izgara-kaydirma");
+  const kutu = kaydirma.getBoundingClientRect();
+  const imlecKonum = e.clientY - kutu.top + kaydirma.scrollTop;
+  const oran = imlecKonum / (24 * durum.saatYukseklik);
+
+  const adim = e.deltaY < 0 ? SAAT_YAKINLASTIR_ADIM : -SAAT_YAKINLASTIR_ADIM;
+  const yeni = Math.max(
+    SAAT_YUKSEKLIK_MIN,
+    Math.min(SAAT_YUKSEKLIK_MAKS, durum.saatYukseklik + adim),
+  );
+  if (yeni === durum.saatYukseklik) return;
+  durum.saatYukseklik = yeni;
+  ciz();
+
+  kaydirma.scrollTop = oran * (24 * durum.saatYukseklik) - (e.clientY - kutu.top);
+}
+el("izgara-kaydirma").addEventListener("wheel", izgaraYakinlastir, { passive: false });
 
 el("onceki").onclick = () => kaydir(-1);
 el("sonraki").onclick = () => kaydir(1);

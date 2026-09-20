@@ -398,6 +398,19 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     silme yolu açmıyor, mevcut onay + geri alma aynen çalışıyor. `Ctrl+Z`
     yeni bir geri-alma mekanizması değil, görünen bildirimin "Geri al"
     düğmesini tıklıyor.
+64. **Saat yüksekliği artık SABİT değil, `durum.saatYukseklik`.** Ctrl+Scroll
+    (`izgaraYakinlastir`, `#izgara-kaydirma` üzerinde) 24–160px/saat arasında
+    değiştiriyor; `ciz()` her çağrıda hem `gunlerKap.style.height`'ı hem CSS
+    değişkeni `--saat-yukseklik`'i (`.saat-etiket` ondan okuyor) YENİDEN
+    YAZIYOR -- ikisi elle senkron tutulan iki sabit değil, biri diğerini
+    besliyor. Etkinlik blokları (`blokYap`, sürükleme, boyutlandırma) zaten
+    YÜZDE ile konumlanıyordu, bu yüzden yükseklik değişince ekstra hesap
+    gerekmedi. İmlecin altındaki saat sabit kalsın diye zoom öncesi/sonrası
+    aynı oranı hedefleyen bir `scrollTop` hesabı var -- yoksa her tekerlek
+    hareketinde ekran farklı bir saate zıplardı. `wheel` dinleyicisi
+    `{ passive: false }`: `preventDefault` olmadan tarayıcı SAYFAYI
+    yakınlaştırırdı, ızgarayı değil. Yalnızca `e.ctrlKey` true'yken
+    devreye giriyor; düz kaydırma dokunulmadan tarayıcıya bırakılıyor.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

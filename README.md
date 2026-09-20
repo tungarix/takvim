@@ -185,6 +185,7 @@ olduğunu taşımaz.
 | Hızlı ekleme | Üstteki kutuya "yarın 14:00 diş hekimi" yaz. Bu kutu her zaman BUGÜNÜ referans alır: ileri hafta için "haftaya salı 14:00 ..." ya da "22 eylül 14:00 ..." yaz |
 | Taşıma | Bloğu sürükle (5 dk'ya yuvarlanır, günler arası serbest); dakikası dakikasına ayar için Düzenle panelinden saati yaz |
 | Süre değiştirme | Bloğun alt kenarını sürükle |
+| Yakınlaştır / uzaklaştır | Gün/hafta ızgarasında <kbd>Ctrl</kbd>+fare tekerleği (trackpad pinch de olur); imlecin altındaki saat sabit kalır, 24–160 px/saat arası |
 | Tüm gün taşıma | Üst şeritteki bloğu yana sürükle |
 | Ayrıntı / işlem | Bloğa tıkla, sağda panel açılır |
 | Tekrarlı etkinlik | "her salı 10:00 ders" yaz, ya da ızgaraya tıklayıp açılan kutuda tekrar seç |
