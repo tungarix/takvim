@@ -671,3 +671,9 @@ ile açılıyor ama sunucu hâlâ TEK THREAD'li, yani erişim yine sıralı.
 3. **`hidden` özniteliği `display: flex`'i yenemiyor.** Modal katmanı daha
    uygulama açılırken ekranda duruyordu; `.perde[hidden] { display: none }`
    gerekti. İkisi de ancak uygulamayı ELLE açınca görüldü — testler görmedi.
+
+---
+
+## 13. Lisans
+
+MIT — bkz. [LICENSE](LICENSE). Kullan, değiştir, dağıt; sorumluluk kabul edilmez.
