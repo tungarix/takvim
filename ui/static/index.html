@@ -169,7 +169,7 @@
      bunu kullanıyoruz: onlar masaüstü penceresinde "Bu sayfayı şunu diyor:"
      başlığıyla çıkıyor ve uygulamayı web sayfası gibi gösteriyor. -->
 <div class="perde" id="perde" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-baslik">
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-baslik">
     <h2 class="modal-baslik" id="modal-baslik"></h2>
     <p class="modal-metin" id="modal-metin"></p>
     <!-- Alanlar JS tarafından kuruluyor: tek satırlık soru da, çok alanlı
@@ -177,6 +177,9 @@
     <div class="modal-alanlar" id="modal-alanlar" hidden></div>
     <div class="modal-islemler">
       <button type="button" class="dugme" id="modal-iptal">İptal</button>
+      <!-- Yalnızca çakışma onayı gibi 3 seçenekli kutularda gösteriliyor
+           (bkz. app.js modalAc `ucuncu` parametresi); varsayılan hidden. -->
+      <button type="button" class="dugme" id="modal-ucuncu" hidden></button>
       <button type="button" class="dugme birincil" id="modal-tamam">Tamam</button>
     </div>
   </div>

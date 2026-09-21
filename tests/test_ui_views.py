@@ -212,6 +212,34 @@ def test_api_hizli_ekleme_taninmayan_zamani_bildirir(sunucu):
     assert sonuc["parsed"]["allDay"] is True
 
 
+def test_api_hizli_ekleme_onizleme_kaydetmez(sunucu):
+    """POST /api/events/parse ayrıştırır ama DB'ye YAZMAZ (Takvim Arayuz.pdf §1f).
+
+    Çakışma onayı kaydetmeden önce bunu çağırıyor; yan etkisiz olduğunu
+    doğrulamak için önizlemeden sonra aramanın boş kaldığını kontrol ediyoruz.
+    """
+    onizleme = _post(sunucu, "/api/events/parse", {"text": "9 eylül 2026 14:00 diş hekimi"})
+
+    assert onizleme["title"] == "diş hekimi"
+    assert onizleme["matched"]
+    assert onizleme["allDay"] is False
+    assert onizleme["recurring"] is False
+    assert onizleme["startUtc"] and onizleme["endUtc"] and onizleme["tzid"]
+    assert _get(sunucu, "/api/search?q=" + urllib.parse.quote("diş hekimi"))["results"] == []
+
+
+def test_api_hizli_ekleme_onizleme_tekrarli_isaretler(sunucu):
+    """Tekrarlı bir ifade `recurring: true` döner; ön yüz onay kutusunu atlar."""
+    onizleme = _post(sunucu, "/api/events/parse", {"text": "her salı 19:00 yüzme"})
+    assert onizleme["recurring"] is True
+
+
+def test_api_hizli_ekleme_onizleme_bos_metin_400(sunucu):
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        _post(sunucu, "/api/events/parse", {"text": "   "})
+    assert hata.value.code == 400
+
+
 def test_api_tek_ornek_iptali(sunucu):
     """Serinin tek örneği iptal edilince diğerleri kalır."""
     onceki = _get(sunucu, "/api/week?date=2026-09-14")

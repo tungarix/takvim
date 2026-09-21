@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import re
+import sqlite3
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -23,7 +25,7 @@ from urllib.parse import parse_qs, urlparse
 from core import UTC, Event, from_wall_clock, parse_iso
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
-from store import Repo, new_uid, yedek_dosyalari, yedek_klasoru, yedekten_don
+from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
 
 from . import otomatik
 from .ayarlar import VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
@@ -285,6 +287,48 @@ class _Handler(BaseHTTPRequestHandler):
             )
         self._json({"conflicts": bulunan})
 
+    def _yedek_veri_dizini(self) -> Path:
+        """Yedeklerin (ve dolayısıyla veritabanının) durduğu klasör.
+
+        `_ayar_kaydet`'teki aynı hesaplamanın tekrarı (bkz. satır ~221) --
+        oraya da dokunmadım, ikisini ortak bir yardımcıya taşımak bu
+        değişikliğin kapsamı dışında.
+        """
+        db_yolu = self._db_yolu
+        if db_yolu is None or str(db_yolu) == ":memory:":
+            raise ValueError("yedek işlemleri dosya tabanlı bir veritabanı gerektirir")
+        return Path(str(db_yolu)).resolve().parent
+
+    def _yedek_al_simdi(self) -> None:
+        """POST /api/backups — kullanıcı isteğiyle ANINDA yedek alır.
+
+        Aynı `yedek_al`'ı çağırıyor: günde tek dosya kuralı burada da geçerli,
+        yani bugün zaten otomatik bir yedek varsa bu çağrı onu TAZE veriyle
+        günceller (yeni bir dosya değil) -- "şimdi yedekle" için doğru
+        davranış zaten bu.
+        """
+        dizin = self._yedek_veri_dizini()
+        alinan = yedek_al(self.repo.conn, dizin, bugun=date.today())
+        if alinan is None:
+            self._hata("yedek alınamadı (disk/izin sorunu olabilir)", 500)
+            return
+        self._json({"backups": _yedek_listesi(self._db_yolu)}, 201)
+
+    def _yedek_klasoru_ac(self) -> None:
+        """POST /api/backups/open — yedek klasörünü Gezgin'de açar.
+
+        Yalnızca Windows'ta anlamlı (`os.startfile`); zaten uygulama Windows
+        dışında paketlenmiyor (bkz. README §5, "masaüstü penceresi").
+        """
+        dizin = self._yedek_veri_dizini() / "yedek"
+        dizin.mkdir(parents=True, exist_ok=True)
+        try:
+            os.startfile(dizin)  # type: ignore[attr-defined]
+        except OSError as exc:
+            self._hata(f"klasör açılamadı: {exc}", 500)
+            return
+        self._json({"opened": str(dizin)})
+
     def _yedekten_don(self) -> None:
         """POST /api/backups/restore {"ad"} — dosyayı değiştirir, depoyu yeniler.
 
@@ -404,6 +448,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._etkinlik_olustur()
                 return
 
+            if parcalar == ["api", "events", "parse"]:
+                self._etkinlik_onizle()
+                return
+
             if parcalar == ["api", "calendars"]:
                 self._takvim_olustur()
                 return
@@ -426,6 +474,14 @@ class _Handler(BaseHTTPRequestHandler):
 
             if parcalar == ["api", "backups", "restore"]:
                 self._yedekten_don()
+                return
+
+            if parcalar == ["api", "backups"]:
+                self._yedek_al_simdi()
+                return
+
+            if parcalar == ["api", "backups", "open"]:
+                self._yedek_klasoru_ac()
                 return
 
             if parcalar == ["api", "events", "restore_last"]:
@@ -531,6 +587,37 @@ class _Handler(BaseHTTPRequestHandler):
         self._hata("bulunamadı", 404)
 
     # -- işlem gövdeleri ----------------------------------------------------
+
+    def _etkinlik_onizle(self) -> None:
+        """POST /api/events/parse {"text"} — DB'YE DOKUNMADAN ayrıştırır.
+
+        Hızlı ekleme akışı normalde ayrıştırıp DOĞRUDAN kaydediyor
+        (`_etkinlik_olustur`); çakışma varsa önce kullanıcıya sormak
+        (Takvim Arayuz.pdf §1f: "Yine de kaydet / Saati değiştir / Vazgeç")
+        kayıttan ÖNCE bir önizleme gerektiriyor. `import`taki `?dry_run=1`
+        ile aynı fikir: aynı ayrıştırıcı, yan etkisiz.
+        """
+        govde = self._govde()
+        metin = (govde.get("text") or "").strip()
+        if not metin:
+            self._hata("metin boş")
+            return
+        cozum = parse_quick_add(metin, now=datetime.now(UTC), tzid=self.tzid)
+        self._json(
+            {
+                "title": cozum.title,
+                "matched": cozum.matched,
+                "allDay": cozum.all_day,
+                "startUtc": cozum.start_utc.isoformat(),
+                "endUtc": cozum.end_utc.isoformat(),
+                "tzid": cozum.tzid,
+                # Ön yüz tekrarlı seride çakışma onay kutusunu ATLAR: o kutunun
+                # 5 alanında "Tekrar" yok, RRULE'u oraya sığdırmaya çalışmak
+                # kayıp/hatalı bir dönüşüm olurdu. Tekrarlıda eski davranış
+                # geçerli: kaydet, çakışırsa sonradan bildir + geri al.
+                "recurring": cozum.rrule is not None,
+            }
+        )
 
     def _etkinlik_olustur(self) -> None:
         """Etkinlik yaratır. İki biçim var:
@@ -919,12 +1006,31 @@ def _event_ozet(e: Event) -> dict:
     }
 
 
+def _yedek_etkinlik_sayisi(yol: Path) -> int | None:
+    """Bir yedek dosyasındaki etkinlik sayısı; okunamazsa None.
+
+    Salt okunur URI modunda açılıyor (`mode=ro`): yedek dosyasını KİLİTLEMEDEN
+    okuyoruz, aynı anda başka bir işlem (budama, yeni yedek) dosyaya
+    dokunuyorsa çakışmasın. Bozuk/kilitli/uyumsuz şema -- hepsi sessizce None,
+    listenin geri kalanını engellemez.
+    """
+    try:
+        baglanti = sqlite3.connect(f"file:{yol.as_posix()}?mode=ro", uri=True)
+        try:
+            return baglanti.execute("SELECT COUNT(*) FROM events").fetchone()[0]
+        finally:
+            baglanti.close()
+    except sqlite3.Error:
+        return None
+
+
 def _yedek_listesi(db_yolu) -> list:
     """Yedek dosyaları, YENİDEN ESKİYE sıralı sözlük listesi.
 
     `yedek_dosyalari` eskiden yeniye veriyor (`takvim-YYYY-AA-GG.db` adı
-    kronolojik sıralanıyor); arayüzde en yeni en üstte olmalı. Boyut da
-    ekleniyor ki kullanıcı boş/şüpheli dosyayı ayırt edebilsin.
+    kronolojik sıralanıyor); arayüzde en yeni en üstte olmalı. Boyut ve
+    etkinlik sayısı da ekleniyor ki kullanıcı boş/şüpheli dosyayı ayırt
+    edebilsin (Takvim Arayuz.pdf §1h).
     """
     if db_yolu is None or str(db_yolu) == ":memory:":
         return []
@@ -938,7 +1044,9 @@ def _yedek_listesi(db_yolu) -> list:
             boyut = yol.stat().st_size
         except OSError:
             continue  # arada silinmiş; listede hayalet bırakma
-        liste.append({"ad": yol.name, "boyut": boyut})
+        liste.append(
+            {"ad": yol.name, "boyut": boyut, "etkinlikSayisi": _yedek_etkinlik_sayisi(yol)}
+        )
     liste.reverse()
     return liste
 

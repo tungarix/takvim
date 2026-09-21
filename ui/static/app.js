@@ -121,12 +121,19 @@ function modalAcik() {
 
 /* Tek çekirdek, üç kullanım: onay kutusu, tek satırlık soru ve çok alanlı
  * form. Açma/kapama, Esc/Enter, perdeye tıklama ve odağı geri verme TEK
- * yerde -- üç ayrı kopya olsaydı biri düzeltilip diğerleri unutulurdu. */
-function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku, iptalDegeri }) {
+ * yerde -- üç ayrı kopya olsaydı biri düzeltilip diğerleri unutulurdu.
+ *
+ * `ucuncu`: isteğe bağlı üçüncü düğme ({etiket, anahtar}) -- şimdilik tek
+ * kullanıcısı çakışma onayı (Takvim Arayuz.pdf §1f: "Yine de kaydet / Saati
+ * değiştir / Vazgeç"). Tıklanınca formdaki DEĞERLER kaybolmadan (`oku()` yine
+ * çağrılıyor) sonuca `{[anahtar]: true}` ekleniyor -- çağıran taraf hangi
+ * düğmeye basıldığını böyle ayırt ediyor. */
+function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku, iptalDegeri, ucuncu = null, genislik = null }) {
   const perde = el("perde");
   const govde = el("modal-alanlar");
   const tamam = el("modal-tamam");
   const iptal = el("modal-iptal");
+  const ucuncuDugme = el("modal-ucuncu");
   const oncekiOdak = document.activeElement;
 
   el("modal-baslik").textContent = baslik;
@@ -136,12 +143,12 @@ function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku
   tamam.textContent = onay;
   tamam.classList.toggle("tehlike", tehlike);
   tamam.classList.toggle("birincil", !tehlike);
+  ucuncuDugme.hidden = !ucuncu;
+  if (ucuncu) ucuncuDugme.textContent = ucuncu.etiket;
+  // Varsayılan 420px; çok alanlı ya da liste içeren kutular (yeni etkinlik
+  // çakışması, yedekler) Takvim Arayuz.pdf §1j'deki 460/540px'i burada geçer.
+  el("modal").style.width = genislik ? `min(${genislik}px, calc(100vw - 48px))` : "";
   perde.hidden = false;
-
-  const ilkOdak = kur ? kur(govde) : null;
-  govde.hidden = govde.children.length === 0;
-  (ilkOdak || tamam).focus();
-  if (ilkOdak && ilkOdak.select) ilkOdak.select();
 
   return new Promise((cozumle) => {
     const bitir = (deger) => {
@@ -150,11 +157,20 @@ function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku
       document.removeEventListener("keydown", tus, true);
       tamam.onclick = null;
       iptal.onclick = null;
+      ucuncuDugme.onclick = null;
       modalDurum = null;
       // Odağı geri ver: kutu kapanınca klavye kısayolları yine çalışsın.
       if (oncekiOdak && oncekiOdak.focus) oncekiOdak.focus();
       cozumle(deger);
     };
+    // `kur`e de veriliyor: yedekler listesi gibi satır başına kendi eylemi
+    // olan içerikler (bkz. yedekleriAc), tamam/iptal'i beklemeden kutuyu
+    // doğrudan bu değerle kapatabilsin.
+    const ilkOdak = kur ? kur(govde, bitir) : null;
+    govde.hidden = govde.children.length === 0;
+    (ilkOdak || tamam).focus();
+    if (ilkOdak && ilkOdak.select) ilkOdak.select();
+
     const perdeTik = (e) => { if (e.target === perde) bitir(iptalDegeri); };
     /* YAKALAMA aşamasında dinliyoruz: aşağıdaki genel kısayol dinleyicisi
      * (g/h/a/t) modal açıkken arkadaki görünümü değiştirmesin. */
@@ -173,6 +189,9 @@ function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku
     document.addEventListener("keydown", tus, true);
     tamam.onclick = () => bitir(oku());
     iptal.onclick = () => bitir(iptalDegeri);
+    if (ucuncu) {
+      ucuncuDugme.onclick = () => bitir({ ...(oku ? oku() : {}), [ucuncu.anahtar]: true });
+    }
   });
 }
 
@@ -212,13 +231,15 @@ function onayla(baslik, metin, onay = "Tamam", tehlike = false) {
  * işletim sistemi hallediyor; kendi tarih seçicimizi yazmak bu uygulamanın
  * kazanacağı bir savaş değil.
  */
-function modalForm(baslik, metin, alanlar, onay = "Kaydet") {
+function modalForm(baslik, metin, alanlar, onay = "Kaydet", ucuncu = null, genislik = null) {
   const girdiler = {};
   return modalAc({
     baslik,
     metin,
     onay,
     iptalDegeri: null,
+    ucuncu,
+    genislik,
     kur: (govde) => {
       let ilk = null;
       alanlar.forEach((a) => {
@@ -1551,53 +1572,107 @@ async function seriyiSil(occ) {
   );
 }
 
-/* Yedek listesi + geri yükleme. Seçim kutusu `modalForm`un `secim` türü;
- * çift onay var (seçim + tehlike onayı): dosyanın üstüne yazma geri alınabilir
- * olsa da (kenara alınıyor) kullanıcının ne yaptığını bilmesi şart. Sonunda
- * tam sayfa yenileme: takvimler dahil her şey değişmiş olabilir. */
+/* Yedekler kutusu (Takvim Arayuz.pdf §1h): tek bir <select> yerine satır
+ * başına "Geri yükle" olan gerçek bir liste + "Şimdi yedekle / Klasörü aç /
+ * Kapat". Döngü içinde: "Şimdi yedekle" ve "Klasörü aç" kutuyu KAPATMAZ,
+ * liste tazelenip aynı kutu yeniden açılır -- kullanıcı arka arkaya birkaç
+ * eylem yapabilsin diye (bkz. modalAc `ucuncu` ve `kur`e verilen `bitir`).
+ * Geri yükleme kendi onay adımından geçer (tehlikeli, geri dönüşü var ama
+ * CANLI dosyanın üstüne yazıyor), sonunda tam sayfa yenileme. */
 async function yedekleriAc() {
-  let veri;
-  try {
-    veri = await istek("/api/backups");
-  } catch (hata) {
-    bildir(hata.message, true);
-    return;
-  }
-  if (!veri.backups.length) {
-    bildir("Henüz yedek yok — yedek her açılışta alınır.");
-    return;
-  }
-  const secim = await modalForm("Yedekten dön",
-    "Seçili yedek CANLI veritabanının üstüne yazılır. Mevcut hâl önce yedek " +
-    "klasörüne kenara alınır (onceki-takvim-….db).",
-    [{
-      ad: "yedek",
-      etiket: "Yedek",
-      tur: "secim",
-      deger: veri.backups[0].ad,
-      secenekler: veri.backups.map((b) => ({
-        deger: b.ad,
-        etiket: `${b.ad} (${(b.boyut / 1024).toFixed(1)} KB)`,
-      })),
-    }],
-    "Geri yükle");
-  if (!secim) return;
-  const tamam = await onayla(
-    "Yedekten dön",
-    `"${secim.yedek}" geri yüklenecek, sayfa yeniden yüklenir.`,
-    "Geri yükle",
-    true,
-  );
-  if (!tamam) return;
-  try {
-    await istek("/api/backups/restore", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ad: secim.yedek }),
+  for (;;) {
+    let veri;
+    try {
+      veri = await istek("/api/backups");
+    } catch (hata) {
+      bildir(hata.message, true);
+      return;
+    }
+
+    const sonuc = await modalAc({
+      baslik: "Yedekler",
+      metin: veri.backups.length ? "" : "Henüz yedek yok — yedek her açılışta alınır.",
+      onay: "Şimdi yedekle",
+      iptalDegeri: { eylem: "kapat" },
+      ucuncu: { etiket: "Klasörü aç", anahtar: "_klasorAc" },
+      genislik: 540,
+      oku: () => ({ eylem: "yedekle_simdi" }),
+      kur: (govde, kapat) => {
+        if (!veri.backups.length) return null;
+        const yol = document.createElement("p");
+        yol.className = "yedek-yol";
+        // Sabit metin: SAKLANAN (store/yedek.py) API'ye sızdırılmıyor, README
+        // §5 de aynı sayıyı yazıyor -- ikisi birlikte güncellenir.
+        yol.textContent = "%LOCALAPPDATA%\\Takvim\\yedek · günlük, son 7 gün";
+        govde.appendChild(yol);
+
+        const liste = document.createElement("div");
+        liste.className = "yedek-liste";
+        veri.backups.forEach((b) => {
+          const satir = document.createElement("div");
+          satir.className = "yedek-satir";
+
+          const bilgi = document.createElement("span");
+          bilgi.className = "yedek-bilgi";
+          const tarih = b.ad.replace(/^takvim-/, "").replace(/\.db$/, "");
+          const sayi = b.etkinlikSayisi == null ? "?" : b.etkinlikSayisi;
+          bilgi.textContent = `${tarih} · ${sayi} etkinlik · ${(b.boyut / 1024).toFixed(0)} KB`;
+
+          const dugme = document.createElement("button");
+          dugme.type = "button";
+          dugme.className = "dugme";
+          dugme.textContent = "Geri yükle";
+          dugme.onclick = () => kapat({ eylem: "geri_yukle", ad: b.ad });
+
+          satir.append(bilgi, dugme);
+          liste.appendChild(satir);
+        });
+        govde.appendChild(liste);
+        return null;
+      },
     });
-    window.location.reload();
-  } catch (hata) {
-    bildir(hata.message, true);
+
+    if (sonuc.eylem === "kapat") return;
+
+    if (sonuc._klasorAc) {
+      try {
+        await istek("/api/backups/open", { method: "POST" });
+      } catch (hata) {
+        bildir(hata.message, true);
+      }
+      continue;
+    }
+
+    if (sonuc.eylem === "yedekle_simdi") {
+      try {
+        await istek("/api/backups", { method: "POST" });
+        bildir("Yedek alındı");
+      } catch (hata) {
+        bildir(hata.message, true);
+      }
+      continue;
+    }
+
+    // sonuc.eylem === "geri_yukle"
+    const tamam = await onayla(
+      "Yedekten dön",
+      `"${sonuc.ad}" geri yüklenecek, sayfa yeniden yüklenir. Mevcut hâl önce ` +
+      "yedek klasörüne kenara alınır (onceki-takvim-….db).",
+      "Geri yükle",
+      true,
+    );
+    if (!tamam) continue; // listeye dön
+    try {
+      await istek("/api/backups/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ad: sonuc.ad }),
+      });
+      window.location.reload();
+    } catch (hata) {
+      bildir(hata.message, true);
+    }
+    return;
   }
 }
 
@@ -1736,54 +1811,138 @@ el("hizli-form").onsubmit = async (e) => {
   const girdi = el("hizli-girdi");
   const metin = girdi.value.trim();
   if (!metin) return;
+  await hizliEkleBaslat(metin, girdi);
+};
+
+/* Hızlı ekleme akışı, iki yola ayrılıyor:
+ * - Çakışma yok (ya da tekrarlı bir seri): ESKİ tek istekli yol -- doğrudan
+ *   kaydet, çakışırsa (tekrarlıda) sonradan bildir + geri al. Hız burada
+ *   kaybetmesin diye kasıtlı: çoğu ekleme hiç çakışmıyor.
+ * - Tekrarsız VE çakışıyor: Takvim Arayuz.pdf §1f -- kaydetmeden ÖNCE
+ *   düzenlenebilir alanlarla 3 düğmeli bir onay kutusu açılır (`/api/events/
+ *   parse` ile DB'ye dokunmadan önizleme alınıyor). */
+async function hizliEkleBaslat(metin, girdi) {
+  let onizleme;
+  try {
+    onizleme = await istek("/api/events/parse", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: metin }),
+    });
+  } catch (hata) {
+    bildir(hata.message, true);
+    return;
+  }
+
+  let cakisma = [];
+  if (onizleme.matched && !onizleme.allDay && !onizleme.recurring) {
+    try {
+      const c = await istek(
+        `/api/conflicts?startUtc=${encodeURIComponent(onizleme.startUtc)}` +
+        `&endUtc=${encodeURIComponent(onizleme.endUtc)}`,
+      );
+      cakisma = c.conflicts;
+    } catch {
+      // Çakışma sorgusu başarısızsa engellemeden devam.
+    }
+  }
+
+  if (cakisma.length) {
+    await cakismaOnayiVeKaydet(onizleme, cakisma, girdi);
+    return;
+  }
 
   try {
-    const sonuc = await istek("/api/events", {
+    await istek("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: metin }),
     });
     girdi.value = "";
-    const p = sonuc.parsed;
-    // Neyin zaman olarak tanındığını SÖYLÜYORUZ. Tanınmayan ifade sessizce
-    // yanlış saate kaydedilmiş bir randevuya dönüşmesin.
-    if (!p.matched) {
+    if (!onizleme.matched) {
       bildir(
-        `Eklendi: ${p.title} — zaman ifadesi tanınmadı, tüm gün olarak kaydedildi`,
+        `Eklendi: ${onizleme.title} — zaman ifadesi tanınmadı, tüm gün olarak kaydedildi`,
         true,
       );
     } else {
-      // Çakışma kontrolü yalnızca İLK örnek için (tekrarlı serinin devamı
-      // denetlenmiyor) ve kendi kaydımız hariç. Engellemiyor: bilgi + geri al.
-      let cakisma = [];
-      if (!p.allDay) {
-        try {
-          const c = await istek(
-            `/api/conflicts?startUtc=${encodeURIComponent(p.startUtc)}` +
-            `&endUtc=${encodeURIComponent(p.endUtc)}`,
-          );
-          cakisma = c.conflicts.filter((x) => x.eventId !== sonuc.event.id);
-        } catch {
-          // Uyarı alınamazsa ekleme haberi yine verilir.
-        }
-      }
-      if (!cakisma.length) {
-        bildir(`Eklendi: ${p.title} (${p.matched})`);
-      } else {
-        const adlar = cakisma.map((x) =>
-          `${x.title} (${saatBicim(x.startUtc, x.tzid)}–${saatBicim(x.endUtc, x.tzid)})`
-        ).join(", ");
-        bildir(`Eklendi ama çakışıyor: ${adlar}`, false, () => eylem(
-          () => istek(`/api/events/${sonuc.event.id}`, { method: "DELETE" }),
-          "Geri alındı",
-        ));
-      }
+      bildir(`Eklendi: ${onizleme.title} (${onizleme.matched})`);
     }
     await yukle();
   } catch (hata) {
     bildir(hata.message, true);
   }
-};
+}
+
+/* Çakışma onay kutusu (Takvim Arayuz.pdf §1f): "Yine de kaydet / Saati
+ * değiştir / Vazgeç". "Saati değiştir" formu KAPATMIYORMUŞ gibi davranır --
+ * teknik olarak her düğme modalAc'ı kapatıyor (bkz. modalAc), burada aynı
+ * (düzenlenmiş) değerlerle YENİDEN açarak aynı izlenimi veriyoruz. Kaydetme
+ * DATE/MINUTES yoluyla (`_etkinlik_olustur_acik`): kullanıcı alanları
+ * değiştirmiş olabilir, orijinal metni tekrar göndermek o düzenlemeleri
+ * yok sayardı. */
+async function cakismaOnayiVeKaydet(onizleme, cakisma, girdi) {
+  const gorunurTakvim = durum.veri.calendars.find((c) => durum.takvimGorunur.get(c.id) !== false)
+    || durum.veri.calendars[0] || {};
+  const adlar = cakisma.map((x) =>
+    `${x.title} · ${saatBicim(x.startUtc, x.tzid)}–${saatBicim(x.endUtc, x.tzid)}`
+  ).join("\n");
+
+  let deger = {
+    baslik: onizleme.title,
+    tarih: yerelTarihISO(onizleme.startUtc, onizleme.tzid),
+    baslangic: yerelSaatISO(onizleme.startUtc, onizleme.tzid),
+    bitis: yerelSaatISO(onizleme.endUtc, onizleme.tzid),
+    takvim: String(gorunurTakvim.id || ""),
+  };
+
+  for (;;) {
+    const s = await modalForm(
+      "Bu saatte başka bir etkinlik var",
+      `${adlar}\nKaydedersen iki blok yan yana gösterilir.`,
+      [
+        { ad: "baslik", etiket: "Başlık", tur: "metin", deger: deger.baslik },
+        { ad: "tarih", etiket: "Tarih", tur: "tarih", deger: deger.tarih },
+        { ad: "baslangic", etiket: "Başlangıç", tur: "saat", deger: deger.baslangic, dar: true },
+        { ad: "bitis", etiket: "Bitiş", tur: "saat", deger: deger.bitis, dar: true },
+        {
+          ad: "takvim", etiket: "Takvim", tur: "secim", deger: deger.takvim,
+          secenekler: durum.veri.calendars.map((c) => ({ deger: String(c.id), etiket: c.name })),
+        },
+      ],
+      "Yine de kaydet",
+      { etiket: "Saati değiştir", anahtar: "_saatDegistir" },
+      460,
+    );
+
+    if (s === null) { girdi.value = ""; return; } // Vazgeç / Esc / perdeye tık: hiçbir şey oluşturulmaz
+
+    deger = { baslik: s.baslik, tarih: s.tarih, baslangic: s.baslangic, bitis: s.bitis, takvim: s.takvim };
+    if (s._saatDegistir) continue; // aynı değerlerle yeniden aç, kullanıcı düzenlesin
+
+    const ad = deger.baslik.trim();
+    if (!ad) { bildir("Başlık boş olamaz", true); continue; }
+    const basDk = dakikayaCevir(deger.baslangic);
+    const bitDk = dakikayaCevir(deger.bitis);
+    if (bitDk <= basDk) { bildir("Bitiş, başlangıçtan sonra olmalı", true); continue; }
+
+    await eylem(
+      () => istek("/api/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: ad,
+          date: deger.tarih,
+          minutes: basDk,
+          endMinutes: bitDk,
+          calendarId: deger.takvim ? Number(deger.takvim) : undefined,
+        }),
+      }),
+      `Eklendi: ${ad}`,
+    );
+    girdi.value = "";
+    return;
+  }
+}
 
 /* ---------- arama ---------- */
 

@@ -1025,3 +1025,22 @@ kbd {
 .dugme.birincil:hover { background: var(--vurgu-acik); border-color: var(--vurgu-acik); }
 .dugme.tehlike { background: var(--uyari-kenar); border-color: var(--uyari-kenar); color: var(--uyari-metin); }
 .dugme.tehlike:hover { background: color-mix(in srgb, var(--uyari-kenar) 65%, var(--yuzey-3)); }
+
+/* Yedekler kutusu (Takvim Arayuz.pdf §1h): satır başına "Geri yükle" olan
+   liste. Kutunun kendi kaydırma çubuğu yok -- 7 günlük pencere zaten ekrana
+   sığıyor, sığmasa `.modal`in max-height'i yok, bilerek: bu proje ölçeğinde
+   kendi scroll alanı açmak fazla mühendislik olurdu. */
+.yedek-yol { margin: 0 0 10px; font-size: 12px; color: var(--metin-silik); }
+.yedek-liste { display: grid; gap: 6px; }
+.yedek-satir {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  background: var(--zemin);
+  border: 1px solid var(--cizgi);
+  border-radius: var(--yaricap);
+}
+.yedek-bilgi { font-size: 12px; color: var(--metin-soluk); }
+.yedek-satir .dugme { flex-shrink: 0; padding: 4px 10px; height: 28px; }

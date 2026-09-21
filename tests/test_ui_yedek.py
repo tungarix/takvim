@@ -155,3 +155,57 @@ def test_silme_anlik_goruntulu_ve_geri_alinabilir(repo, ders, sunucu):
 def test_bos_geri_alma_404(sunucu):
     """Geri alınacak silme yoksa 404."""
     assert _post_hata(sunucu, "/api/events/restore_last", {}) == 404
+
+
+def test_yedek_listesi_etkinlik_sayisi_tasir(repo, ders, db, sunucu, tmp_path):
+    """Takvim Arayuz.pdf §1h: listede boyutun yanında etkinlik sayısı da var."""
+    repo.add_event(Event(
+        id=None, uid=new_uid(), calendar_id=ders.id, title="Sınav",
+        start_utc=ist(2026, 9, 12, 10, 0), end_utc=ist(2026, 9, 12, 11, 0), tzid=IST,
+    ))
+    yedek_al(repo.conn, tmp_path, bugun=date(2026, 9, 12))
+    liste = _get(sunucu, "/api/backups")["backups"]
+    assert liste[0]["etkinlikSayisi"] == 1
+
+
+def test_yedek_simdi_al(repo, ders, sunucu):
+    """POST /api/backups -- anında yedek alır, güncel listeyi döndürür."""
+    yanit = _post(sunucu, "/api/backups", {})
+    assert len(yanit["backups"]) == 1
+    assert yanit["backups"][0]["ad"] == f"takvim-{date.today().isoformat()}.db"
+
+
+def test_yedek_simdi_al_bellek_veritabaninda_400():
+    """`:memory:` veritabanında yedek anlamsız -- açık hata, sessiz no-op değil."""
+    with Repo.open(":memory:") as repo:
+        repo.add_calendar("Ders", "#e0524a")
+        httpd = make_server(repo, IST, host="127.0.0.1", port=0)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            temel = f"http://127.0.0.1:{httpd.server_address[1]}"
+            assert _post_hata(temel, "/api/backups", {}) == 400
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+def test_yedek_klasoru_ac(repo, ders, sunucu, tmp_path, monkeypatch):
+    """POST /api/backups/open -- Gezgin'i GERÇEKTEN açmadan, doğru klasörü açtığını doğrular."""
+    acilanlar = []
+    monkeypatch.setattr("ui.server.os.startfile", lambda yol: acilanlar.append(yol))
+
+    yanit = _post(sunucu, "/api/backups/open", {})
+
+    assert acilanlar == [tmp_path / "yedek"]
+    assert yanit["opened"] == str(tmp_path / "yedek")
+    assert (tmp_path / "yedek").is_dir()  # klasör yoksa oluşturulmuş olmalı
+
+
+def test_yedek_klasoru_ac_hata_yayilir(repo, ders, sunucu, monkeypatch):
+    """Gezgin açılamazsa (ör. kabuk entegrasyonu bozuk) sessizce yutulmaz."""
+    def patlar(yol):
+        raise OSError("kabuk hatası")
+
+    monkeypatch.setattr("ui.server.os.startfile", patlar)
+    assert _post_hata(sunucu, "/api/backups/open", {}) == 500
