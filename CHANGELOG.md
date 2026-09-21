@@ -7,6 +7,38 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.1.0] - 2026-09-21
+
+### Değişti
+- **Arayüz baştan tasarlandı** (Claude Design ile üretilen spesifikasyona
+  göre, kontrast oranları elle hesaplanıp WCAG AA (4.5:1) karşısında
+  doğrulandı): asıl sorun üst çubuğun 1398px'e ihtiyaç duyması,
+  varsayılan pencerede (1180px) bile ezilmesiydi. Kök çözüm yapısal --
+  ikincil eylemler (İçe/Dışa aktar, Yedekler, Ayarlar, saat dilimi, takvim
+  listesi) üst çubuktan kenar çubuğuna taşındı; kenar çubuğuna ana
+  görünümden bağımsız gezinen bir mini ay takvimi eklendi. Dar pencerede
+  (<1040px) kenar çubuğu ikon rayına iniyor, arama üstten inen bir
+  şeride taşınıyor. Renk paleti, köşe yarıçapı, boşluk/tipografi ölçeği
+  ve düğme yükseklikleri tek bir belirteç kümesine bağlandı.
+- Yakınlaştırma uçlarında (24px–160px saat yüksekliği) blok içeriği
+  yoğunluğa göre uyarlanıyor: en sıkışıkta yalnızca başlık, en ferahta
+  etkinliğin konumu da görünüyor.
+
+### Eklendi
+- **İlk açılış ekranı**: hiç etkinlik yoksa (yalnızca varsayılan
+  "Kişisel" takvimle) artık boş bir ızgara yerine "Takvim hazır"
+  karşılama ekranı ve üç örnek eylem (Etkinlik ekle / .ics içe aktar /
+  Yedekten geri yükle) gösteriliyor; bir etkinlik oluşturulunca
+  kendiliğinden kapanıyor.
+
+### Düzeltildi
+- Bir etkinliği kopyaladıktan (`Ctrl+C`) sonra tıklanan HER boş saat aynı
+  etkinliği yapıştırıyordu, pano yalnızca `Escape` ile ya da yeniden
+  kopyalayarak temizleniyordu -- kullanıcı gözünde "sonsuza kadar
+  yapıştırma" gibi görünüyordu. Artık bir yapıştırma (tıklama, `Ctrl+V`
+  ya da Çoğalt) başarıyla tamamlanınca pano kendiliğinden boşalıyor;
+  tekrar yapıştırmak için yeniden kopyalamak gerekiyor.
+
 ### Güvenlik
 Harici bir API güvenlik denetiminin beş bulgusu da elle (gerçek HTTP
 istekleri, ham soketler, ölçülen süreler) doğrulanıp düzeltildi:
@@ -29,14 +61,6 @@ istekleri, ham soketler, ölçülen süreler) doğrulanıp düzeltildi:
   ayarlanırsa artık `--ag-erisimine-izin-ver` bayrağı şart.
 
 Ayrıntı: `tests/test_guvenlik.py` (16 yeni test).
-
-### Düzeltildi
-- Bir etkinliği kopyaladıktan (`Ctrl+C`) sonra tıklanan HER boş saat aynı
-  etkinliği yapıştırıyordu, pano yalnızca `Escape` ile ya da yeniden
-  kopyalayarak temizleniyordu -- kullanıcı gözünde "sonsuza kadar
-  yapıştırma" gibi görünüyordu. Artık bir yapıştırma (tıklama, `Ctrl+V`
-  ya da Çoğalt) başarıyla tamamlanınca pano kendiliğinden boşalıyor;
-  tekrar yapıştırmak için yeniden kopyalamak gerekiyor.
 
 ## [1.0.2] - 2026-09-20
 
