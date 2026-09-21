@@ -307,7 +307,13 @@ def test_klavye_kisayollari_gorunum_degistirir(page, sunucu):
     page.wait_for_selector("#zaman-gorunum:not([hidden])")
     assert "secili" in page.get_attribute('button[data-gorunum="day"]', "class")
 
+    # "week" da "day" ile aynı #zaman-gorunum kabını kullanıyor (zaten
+    # görünür), o yüzden konteynerin görünürlüğünü değil DOĞRUDAN düğmenin
+    # "secili" sınıfını bekliyoruz -- yoksa yukle()/ciz() asenkron zincirinin
+    # bitmesini beklemeden assert çalışıp yarış koşuluna düşüyor (CI'da
+    # görüldü: yerel makinede zamanlama farkıyla gizleniyordu).
     page.keyboard.press("h")
+    page.wait_for_selector('button[data-gorunum="week"].secili')
     assert "secili" in page.get_attribute('button[data-gorunum="week"]', "class")
 
 
