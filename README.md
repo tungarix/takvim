@@ -149,7 +149,22 @@ Migration yazılmadı — sessizce geçilmedi, uyarıyla gözetim altına alınd
 
 ## 5. Kullanım
 
-> **İlk kurulum:** [Releases](https://github.com/tungarix/takvim/releases/latest) sayfasından `Takvim.exe`'yi indir, çift tıkla çalıştır. Kurulum yok, Python gerekmez. Windows "Bilgisayarınızı korudu" uyarısı çıkarsa **Ek bilgi → Yine de çalıştır**.
+> **İlk kurulum:** [Releases](https://github.com/tungarix/takvim/releases/latest) sayfasından `Takvim.exe`'yi indir, çift tıkla çalıştır. Kurulum yok, Python gerekmez.
+
+**"Windows bilgisayarınızı korudu" uyarısı çıkarsa:** `.exe` kod imzalama
+sertifikasıyla imzalanmadığı için Microsoft Defender SmartScreen ilk
+çalıştırmada bunu uyarır. Bu normal — uygulama açık kaynak, kod burada
+gözünün önünde. Devam etmek için:
+
+1. Mavi/gri pencerede **Daha fazla bilgi** (bazı sürümlerde **Ek bilgi**)
+   yazısına tıkla — pencerenin sol alt köşesinde, küçük yazıyla.
+2. Açılan ek bilgide uygulama adı görünür ve altında **Yine de çalıştır**
+   düğmesi çıkar; ona tıkla.
+3. Takvim normal şekilde açılır. Bu uyarı yalnızca **ilk çalıştırmada**
+   çıkar, sonraki açılışlarda görünmez.
+
+Uyarıyı tamamen ortadan kaldırmak için ücretli bir kod imzalama sertifikası
+gerekir; şu an için bilinçli olarak atlanmış bir adım.
 
 Masaüstündeki **Takvim** kısayoluna çift tıkla. Uygulama **kendi
 penceresinde** açılır: tarayıcı yok, adres çubuğu yok, sekme yok; görev
@@ -225,7 +240,7 @@ Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı pencer
 - **Hiçbir şey olmuyor** — `.exe` artık penceresiz derlendiği için ekranda
   konsol yok; ne olduğu `%LOCALAPPDATA%\Takvim	akvim.log` dosyasında yazıyor.
 - **"Windows bilgisayarınızı korudu"** — `.exe` imzasız olduğu için SmartScreen
-  ilk çalıştırmada uyarabilir: *Ek bilgi* → *Yine de çalıştır*.
+  ilk çalıştırmada uyarabilir. Adım adım: bkz. §5, "İlk kurulum" altı.
 
 ### Bilinçli sınırlar
 
