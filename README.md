@@ -1,5 +1,9 @@
 # Takvim
 
+[![CI](https://github.com/tungarix/takvim/actions/workflows/ci.yml/badge.svg)](https://github.com/tungarix/takvim/actions/workflows/ci.yml)
+[![Son sürüm](https://img.shields.io/github/v/release/tungarix/takvim)](https://github.com/tungarix/takvim/releases/latest)
+[![Lisans](https://img.shields.io/github/license/tungarix/takvim)](LICENSE)
+
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
 ![Takvim ekran görüntüsü](docs/screenshot.png)
