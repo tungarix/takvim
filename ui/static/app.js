@@ -709,9 +709,11 @@ async function izgaraTik(e, sutun, gun) {
    * araya girmiyor, kullanıcı tam tıkladığı saate düşen sonucu görüyor.
    * Ctrl+V (imleci götür, tuşa bas) hâlâ AYRICA çalışıyor -- bu yalnızca
    * "kopyaladıktan sonra tıklamak da yapıştırsın" isteğini karşılıyor.
-   * Pano boşalana kadar (Escape ya da yeni bir kopyalama) her tıklama
-   * yapıştırmaya devam eder; "Yeni etkinlik" kutusuna geri dönmek için
-   * Escape'le panoyu temizlemek yeterli. */
+   * TEK SEFERLİK: panoyaYaz başarılı yazımdan sonra durum.pano'yu kendi
+   * temizliyor, bir sonraki tıklama otomatik olarak normal "yeni etkinlik"
+   * akışına döner -- art arda tıklayınca sonsuza kadar aynı etkinliğin
+   * kopyalanması kafa karıştırıyordu (kullanıcı bildirimi). Tekrar
+   * yapıştırmak için yeniden kopyalamak (Ctrl+C) gerekir. */
   if (durum.pano) {
     panoyaYaz(gun.date, dakika);
     return;
@@ -1467,6 +1469,12 @@ async function panoyaYaz(tarih, baslangicDk) {
           body: JSON.stringify({ minutesBefore: dk }),
         });
       }
+      // Yapıştırma TEK SEFERLİK: başarılı yazımdan sonra pano temizlenir,
+      // bir sonraki tıklama normal "yeni etkinlik" akışına döner. Tekrar
+      // yapıştırmak için yeniden kopyalamak (Ctrl+C) gerekir. İstek
+      // başarısız olursa (yukarıda fırlar, eylem() yakalar) pano dolu
+      // kalır -- kullanıcı kopyaladığını kaybetmesin.
+      durum.pano = null;
     },
     `"${p.title}" yapıştırıldı`,
     () => eylem(() => istek(`/api/events/${yeniId}`, { method: "DELETE" }), "Yapıştırma geri alındı"),
@@ -1488,8 +1496,8 @@ function yapistir() {
 
 /* Çoğalt: kopyalamadan geçmeden TEK adımda "aynı saatte yarın bir tane daha"
  * -- Ctrl+V'nin "imleci hedefe götür" akışına göre daha hızlı bir kısayol.
- * Yine de panoyu doldurur, ardından istenirse başka bir yere de Ctrl+V
- * yapılabilir. */
+ * panoyaYaz TEK SEFERLİK olduğu için yazımdan sonra pano yine boşalır;
+ * başka bir yere de yapıştırmak istenirse yeniden kopyalamak gerekir. */
 function cogalt() {
   if (!durum.secili) { bildir("Çoğaltmak için önce bir etkinlik seç", true); return; }
   const occ = durum.secili;

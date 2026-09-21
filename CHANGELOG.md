@@ -30,6 +30,14 @@ istekleri, ham soketler, ölçülen süreler) doğrulanıp düzeltildi:
 
 Ayrıntı: `tests/test_guvenlik.py` (16 yeni test).
 
+### Düzeltildi
+- Bir etkinliği kopyaladıktan (`Ctrl+C`) sonra tıklanan HER boş saat aynı
+  etkinliği yapıştırıyordu, pano yalnızca `Escape` ile ya da yeniden
+  kopyalayarak temizleniyordu -- kullanıcı gözünde "sonsuza kadar
+  yapıştırma" gibi görünüyordu. Artık bir yapıştırma (tıklama, `Ctrl+V`
+  ya da Çoğalt) başarıyla tamamlanınca pano kendiliğinden boşalıyor;
+  tekrar yapıştırmak için yeniden kopyalamak gerekiyor.
+
 ## [1.0.2] - 2026-09-20
 
 ### Düzeltildi
