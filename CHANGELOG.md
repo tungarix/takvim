@@ -7,6 +7,26 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.2.0] - 2026-09-21
+
+### Eklendi
+- Yedekler penceresinde **"Şimdi yedekle"** ve **"Klasörü aç"** artık
+  çalışıyor (önceden yalnızca listeleme/geri yükleme vardı).
+- Ön yüzün ilk otomatik testleri: gerçek başsız tarayıcıyla (Playwright)
+  sayfa açılışı, hızlı ekleme, görünüm geçişi ve çakışma onay kutusunu
+  kapsayan 4 duman testi. `app.js` daha önce hiç test edilmiyordu.
+- CI: her push/PR'da `ruff` + `mypy` + `pytest` (424 test) + `app.js`
+  sözdizimi + ön yüz duman testleri otomatik çalışıyor.
+
+### Değişti
+- **Hızlı eklemede çakışma** artık "ekle, sonra bildir + geri al" değil:
+  kaydetmeden ÖNCE düzenlenebilir bir onay kutusu açılıyor (Başlık/Tarih/
+  Başlangıç/Bitiş/Takvim + "Yine de kaydet / Saati değiştir / Vazgeç").
+  Tekrarlı ifadeler bu akışı atlıyor, eski davranış onlarda geçerli.
+- **Yedekler penceresi** tek bir açılır listeden, her yedeğin tarihini,
+  etkinlik sayısını ve boyutunu gösteren gerçek bir listeye dönüştü.
+- README'nin hero ekran görüntüsü yeni tasarımla güncellendi.
+
 ## [1.1.0] - 2026-09-21
 
 ### Değişti

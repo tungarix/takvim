@@ -23,8 +23,9 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**412 test geçiyor.** Görev bitmeden önce hepsinin geçtiğini göstermeden
-"tamamlandı" deme.
+**424 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+`.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
+göstermeden "tamamlandı" deme.
 
 Ayrıntılı gerekçeler ve kapsam listesi: [README.md](README.md).
 
@@ -521,9 +522,23 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 tamamlandı** (README §1,
-§10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden önce SOR --
-kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 tamamlandı**
+(README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden
+önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.2.0'da bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Çakışma onay kutusu**: hızlı eklemede çakışma artık kaydetmeden ÖNCE
+  düzenlenebilir bir onay kutusu açıyor (Yine de kaydet / Saati değiştir
+  / Vazgeç) -- Takvim Arayuz.pdf §1f. Yeni `POST /api/events/parse`
+  (DB'ye dokunmadan önizleme, import'taki `dry_run` ile aynı fikir).
+- **Yedekler penceresi**: gerçek liste (tarih/sayı/boyut) + "Şimdi
+  yedekle" (`POST /api/backups`) + "Klasörü aç" (`POST /api/backups/
+  open`, `os.startfile`) -- Takvim Arayuz.pdf §1h.
+- **CI** (`.github/workflows/ci.yml`): her push/PR'da ruff + mypy +
+  pytest + `app.js` sözdizimi, ayrı bir işte Playwright duman testleri.
+- **Ön yüzün ilk otomatik testleri** (`tests/test_frontend_smoke.py`,
+  `pytest-playwright`, ayrı `test-ui` extra'sında).
 
 v1.1.0'da bitenler (ayrıntı CHANGELOG.md'de):
 
