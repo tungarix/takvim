@@ -521,9 +521,22 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 tamamlandı** (README §1, §10,
-[CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden önce SOR -- kapsam
-dışı listesi bilinçli olarak kısa tutuluyor.
+**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 tamamlandı** (README §1,
+§10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden önce SOR --
+kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.1.0'da bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Arayüz baştan tasarlandı** (Claude Design spesifikasyonuna göre): üst
+  çubuktaki ikincil eylemler kenar çubuğuna taşındı (asıl dar-pencere
+  taşma sorununu bu çözdü), mini ay takvimi + ilk açılış ekranı eklendi,
+  renk paleti WCAG AA'ya çekildi.
+- **5 güvenlik bulgusu düzeltildi** (harici denetim, TKV-API-001..005):
+  RRULE DoS, içe aktarmada dosya yolu okuma, statik dosya yol geçişi, tek
+  istekle sunucu kilitlenmesi, ağa açık kimlik doğrulamasız API
+  (`tests/test_guvenlik.py`, 16 test).
+- Yapıştırma (`Ctrl+V`/tıkla) artık tek seferlik; önceden pano
+  temizlenene kadar her tıklama aynı etkinliği yapıştırıyordu.
 
 v1.0.1'de bitenler (ayrıntı CHANGELOG.md'de):
 
