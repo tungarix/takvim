@@ -32,3 +32,25 @@ jobs:
 
       - name: app.js sözdizimi
         run: node --check ui/static/app.js
+
+  test-ui:
+    # Ayrı iş: Chromium indirmesi (~115 MB) `test` işini yavaşlatmasın, ikisi
+    # paralel koşsun. tests/test_frontend_smoke.py pytest-playwright kurulu
+    # değilse zaten kendini atlıyor (importorskip) -- bu iş onu GERÇEKTEN
+    # çalıştıran tek yer.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıkları kur
+        run: python -m pip install -e ".[dev,test-ui]"
+
+      - name: Chromium indir
+        run: python -m playwright install chromium
+
+      - name: Ön yüz duman testleri
+        run: python -m pytest tests/test_frontend_smoke.py -q

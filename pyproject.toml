@@ -28,6 +28,10 @@ dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13", "types-python-dateutil>=2.9"]
 # Son kullanıcıya verilecek tek dosyalık .exe için; ÇALIŞMA ZAMANI
 # bağımlılığı değil, yalnızca paketleme aşamasında gerekiyor.
 build = ["pyinstaller>=6"]
+# app.js duman testleri (tests/test_frontend_smoke.py) için ayrı bir grup:
+# `pip install -e ".[dev]"` çalıştıran herkes ~115 MB'lık bir Chromium
+# indirmeyi zorunlu tutmasın, yalnızca bu testleri koşan istesin.
+test-ui = ["pytest-playwright>=0.5"]
 
 [tool.setuptools]
 package-data = { store = ["schema.sql", "migrations/*.sql"], ui = ["static/*"] }
