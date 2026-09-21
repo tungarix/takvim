@@ -181,6 +181,22 @@ function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku
         // Çok satırlı alanda Enter yeni satır demek; formu göndermemeli.
         if (e.target && e.target.tagName === "TEXTAREA") return;
         e.preventDefault(); e.stopPropagation(); bitir(oku());
+      } else if (e.key === "Tab") {
+        // Odak kutunun DIŞINA kaçmasın: `perde` tıklamayla kapatıyor ama
+        // Tab'ı hiç sınırlamıyor -- sınırlamadan arkadaki (perdenin altında
+        // görsel olarak gizli) düğmelere geçilebiliyordu; klavye kullanıcısı
+        // ekranda görünmeyen bir yere odaklanıp "neredeyim" diye kalıyordu.
+        const odaklanabilirler = Array.from(
+          el("modal").querySelectorAll('button, input, textarea, select, [tabindex]:not([tabindex="-1"])'),
+        ).filter((n) => !n.disabled && n.offsetParent !== null);
+        if (odaklanabilirler.length === 0) return;
+        const ilkNode = odaklanabilirler[0];
+        const sonNode = odaklanabilirler[odaklanabilirler.length - 1];
+        if (e.shiftKey && document.activeElement === ilkNode) {
+          e.preventDefault(); sonNode.focus();
+        } else if (!e.shiftKey && document.activeElement === sonNode) {
+          e.preventDefault(); ilkNode.focus();
+        }
       }
     };
 
@@ -290,6 +306,15 @@ function modalForm(baslik, metin, alanlar, onay = "Kaydet", ucuncu = null, genis
 }
 
 let bildirimZaman = null;
+
+// Ekran okuyucu bildirim kutusunun `hidden` değişimini KENDİLİĞİNDEN fark
+// etmiyor -- canlı bölge (aria-live) olmadan "Etkinlik eklendi" ya da
+// "Veri alınamadı" gibi mesajlar yalnızca görsel kalıyor, klavye/ekran
+// okuyucu kullanan biri ne olduğunu hiç duymuyor. `atomic` olmadan da
+// yalnızca DEĞİŞEN düğüm (ör. sonradan eklenen "Geri al" düğmesi) okunur,
+// mesaj metni değil.
+el("bildirim").setAttribute("aria-live", "polite");
+el("bildirim").setAttribute("aria-atomic", "true");
 
 /* Bildirim kutusu bir EYLEM taşıyabiliyor: silmenin yanına "Geri al".
  * Onay kutusu tek başına yetmiyor -- onay kutuları refleksle onaylanır ve
@@ -588,6 +613,9 @@ function zamanCiz(veri) {
       const blok = document.createElement("div");
       blok.className = "tumgun-blok";
       blok.textContent = occ.title;
+      // Şerit dar olunca başlık CSS ile kırpılıyor (ellipsis); tam metin
+      // araç ipucunda kalsın.
+      blok.title = occ.title;
       blok.style.background = zemin(occ.color);
       blok.style.borderLeftColor = occ.color;
       blok.onclick = () => { if (!tumgunSurukleme.tasindi) panelAc(occ); };
@@ -683,6 +711,11 @@ function blokYap(occ, gun) {
     `${occ.clipped ? " ⇥" : ""}</div>` +
     (occ.location ? `<div class="b-konum">${kacir(occ.location)}</div>` : "") +
     (occ.isOverride ? `<div class="b-rozet">· taşındı</div>` : "");
+
+  // Sıkışık yakınlaştırmada ya da kısa etkinlikte başlık CSS ile kırpılabiliyor
+  // (.kisa, [data-yogunluk]); imleci üzerine getirince tam başlık ve saat yine
+  // de görünsün diye tarayıcının kendi araç ipucuna (title) da yazıyoruz.
+  blok.title = `${occ.title} · ${saatBicim(occ.startUtc, occ.tzid)}–${saatBicim(occ.endUtc, occ.tzid)}`;
 
   blok.onclick = () => { if (!surukleme.tasindi) panelAc(occ); };
   blok.addEventListener("pointerdown", (e) => surukleBasla(e, blok, occ, gun, "tasi"));
@@ -1088,11 +1121,17 @@ function ayCiz(veri) {
 
     const gorunurler = g.events.filter(gorunurMu);
     gorunurler.slice(0, AY_MAKS_BLOK).forEach((occ) => {
-      const blok = document.createElement("div");
+      // <button>: eskiden <div onclick>'ti -- yalnızca fareyle açılabiliyordu.
+      // Ay hücresi dar olduğu için başlık sık sık CSS ile kırpılıyor, o yüzden
+      // tam metni ayrıca title'a (araç ipucu) da yazıyoruz.
+      const blok = document.createElement("button");
+      blok.type = "button";
       blok.className = "ay-blok";
-      blok.textContent = occ.allDay
+      const metin = occ.allDay
         ? occ.title
         : `${saatBicim(occ.startUtc, occ.tzid)} ${occ.title}`;
+      blok.textContent = metin;
+      blok.title = metin;
       blok.style.background = zemin(occ.color);
       blok.style.borderLeftColor = occ.color;
       blok.onclick = (e) => { e.stopPropagation(); panelAc(occ); };
@@ -1100,10 +1139,15 @@ function ayCiz(veri) {
     });
 
     if (gorunurler.length > AY_MAKS_BLOK) {
-      const daha = document.createElement("div");
+      // <button>: "Gün görünümünde aç" (gl-gun-dugme) gibi klavyeyle de
+      // erişilebilsin -- fare olayının clientX/clientY'si yerine düğmenin
+      // KENDİ konumu kullanılıyor (bkz. gunListesiAc), o yüzden burada olay
+      // değil düğmenin kendisi veriliyor.
+      const daha = document.createElement("button");
+      daha.type = "button";
       daha.className = "ay-daha";
       daha.textContent = `+${gorunurler.length - AY_MAKS_BLOK} daha`;
-      daha.onclick = (e) => { e.stopPropagation(); gunListesiAc(g, gorunurler, e); };
+      daha.onclick = (e) => { e.stopPropagation(); gunListesiAc(g, gorunurler, daha); };
       hucre.appendChild(daha);
     }
 
@@ -1124,7 +1168,12 @@ function gunListesiKapat() {
   if (eski) eski.remove();
 }
 
-function gunListesiAc(gun, occurrences, olay) {
+/** `ankraj`: kutuyu konumlandırmak için kullanılan eleman ("+N daha" düğmesi).
+ * Eskiden tıklama olayının clientX/clientY'si kullanılıyordu; bu, düğme artık
+ * klavyeyle (Enter/Space) de tetiklenebildiği için yanlıştı -- klavye
+ * kaynaklı bir `click` olayında clientX/clientY 0'dır ve kutu ekranın sol üst
+ * köşesine fırlardı. Düğmenin KENDİ konumu tetikleme yönteminden bağımsız. */
+function gunListesiAc(gun, occurrences, ankraj) {
   gunListesiKapat();
 
   const kutu = document.createElement("div");
@@ -1139,18 +1188,25 @@ function gunListesiAc(gun, occurrences, olay) {
   kutu.appendChild(baslik);
 
   occurrences.forEach((occ) => {
-    const satir = document.createElement("div");
+    // <button>: eskiden <div onclick>'ti, yalnızca fareyle açılabiliyordu --
+    // "Gün görünümünde aç" zaten düğmeydi, satırlar da aynı klavye erişimini
+    // hak ediyor.
+    const satir = document.createElement("button");
+    satir.type = "button";
     satir.className = "gl-satir";
     satir.style.borderLeftColor = occ.color;
     satir.style.background = zemin(occ.color);
-    satir.textContent = occ.allDay
+    const metin = occ.allDay
       ? occ.title
       : `${saatBicim(occ.startUtc, occ.tzid)} ${occ.title}`;
+    satir.textContent = metin;
+    satir.title = metin;
     satir.onclick = () => { gunListesiKapat(); panelAc(occ); };
     kutu.appendChild(satir);
   });
 
   const gunDugme = document.createElement("button");
+  gunDugme.type = "button";
   gunDugme.className = "gl-gun-dugme";
   gunDugme.textContent = "Gün görünümünde aç";
   gunDugme.onclick = () => {
@@ -1163,12 +1219,19 @@ function gunListesiAc(gun, occurrences, olay) {
 
   document.body.appendChild(kutu);
 
-  // Ekran dışına taşmasın
+  // Ekran dışına taşmasın; "+N daha" düğmesinin hemen altına açılır.
+  const ankrajKutu = ankraj.getBoundingClientRect();
   const k = kutu.getBoundingClientRect();
-  const x = Math.min(olay.clientX, window.innerWidth - k.width - 12);
-  const y = Math.min(olay.clientY, window.innerHeight - k.height - 12);
+  const x = Math.min(ankrajKutu.left, window.innerWidth - k.width - 12);
+  const y = Math.min(ankrajKutu.bottom + 4, window.innerHeight - k.height - 12);
   kutu.style.left = `${Math.max(8, x)}px`;
   kutu.style.top = `${Math.max(8, y)}px`;
+
+  // Odağı içeri taşı: modalAc de aynısını yapıyor (bkz. orada `ilkOdak`) --
+  // klavyeyle (Enter) açan biri odağın "+N daha" düğmesinde kalıp kutunun
+  // tab sırasında nerede olduğunu aramak zorunda kalmasın.
+  const ilkOdak = kutu.querySelector(".gl-satir, .gl-gun-dugme");
+  if (ilkOdak) ilkOdak.focus();
 
   setTimeout(() => {
     document.addEventListener("click", gunListesiKapat, { once: true });
@@ -1968,18 +2031,25 @@ async function aramaYap(anahtar) {
     }
     sonuc.results.forEach((ev) => {
       const takvim = durum.veri.calendars.find((c) => c.id === ev.calendarId);
+      // <li> yalnızca liste öğesi çerçevesi; asıl tıklanabilir yüzey içindeki
+      // <button> -- eskiden <li onclick>'ti, klavye/ekran okuyucu kullanan
+      // biri arama sonucuna hiç gidemiyordu (bkz. ay-blok/gl-satir'daki aynı
+      // düzeltme).
       const li = document.createElement("li");
-      li.className = "arama-satir";
-      li.style.borderLeftColor = takvim ? takvim.color : "#6b7280";
-      li.innerHTML =
+      const dugme = document.createElement("button");
+      dugme.type = "button";
+      dugme.className = "arama-satir";
+      dugme.style.borderLeftColor = takvim ? takvim.color : "#6b7280";
+      dugme.innerHTML =
         `<div>${kacir(ev.title)}${ev.recurring ? " ↻" : ""}</div>` +
         `<div class="a-tarih">${tarihBicim(ev.startUtc, ev.tzid)}</div>`;
       // Sonuca tıklayınca o tarihe git
-      li.onclick = () => {
+      dugme.onclick = () => {
         durum.anchor = new Intl.DateTimeFormat("en-CA", { timeZone: ev.tzid })
           .format(new Date(ev.startUtc));
         yukle();
       };
+      li.appendChild(dugme);
       liste.appendChild(li);
     });
     bolum.hidden = false;

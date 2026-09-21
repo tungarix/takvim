@@ -7,6 +7,56 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Monitör başına (per-monitor) DPI farkındalığı** (`ui/pencere.py`
+  `dpi_farkindaligini_ac`, `pencere_ac()`in en başında çağrılıyor) — pywebview
+  bunu kendisi ayarlamıyordu, çoklu monitör/farklı ölçekli (%125, %150 vb.)
+  kurulumlarda pencere bulanık görünebiliyor ya da bu dosyanın piksel
+  matematiği yanlış ölçekte çalışabiliyordu. Windows 10 1703+'ta modern
+  `SetProcessDpiAwarenessContext`, olmayan sistemlerde `SetProcessDpiAwareness`
+  fallback'i ile (`tests/test_ui_pencere.py`, toplam 436 test).
+- Ön yüz duman testlerine 4 yeni senaryo: silme + bildirimden geri alma,
+  tekrarlı seride "Bu örneği sil" / "Seriyi tamamen sil" ikisinin birden
+  görünmesi, arama kutusunun yeni oluşturulan etkinliği bulması, panelin
+  tıklanan etkinliğin gerçek başlık/saatini göstermesi (`tests/
+  test_frontend_smoke.py`, toplam 8 duman testi).
+- Ön yüz duman testlerine 6 senaryo daha: ay görünümündeki etkinlik bloğunun
+  ve "+N daha" düğmesinin klavyeyle açılması, gün listesi satırına tıklamanın
+  doğru etkinliği açması, `g`/`h`/`a` görünüm kısayolları, boş bir saate
+  tıklayarak yapıştırma (Ctrl+V basmadan), arama şeridinin Escape ile
+  kapanması (`tests/test_frontend_smoke.py`, toplam 14 duman testi →
+  434 test).
+- Ön yüz duman testlerine 1 senaryo daha: arama sonucuna klavyeyle
+  (Tab + Enter) gidilebilmesi (`tests/test_frontend_smoke.py`, toplam 15
+  duman testi → 435 test).
+
+### Düzeltildi
+- **Modal kutularda Tab tuşu artık odağı kutunun dışına kaçırmıyor**
+  (`ui/static/app.js` `modalAc`) — önceden Tab, perdenin altında görsel
+  olarak gizli kalan arka plan öğelerine geçebiliyordu; klavye/ekran
+  okuyucu kullanan biri ekranda görünmeyen bir yere odaklanmış oluyordu.
+- **Bildirim kutusuna `aria-live="polite"` eklendi** (`ui/static/app.js`)
+  — "Etkinlik eklendi" / "Veri alınamadı" gibi mesajlar önceden yalnızca
+  görsel kalıyordu, ekran okuyucu hiç duyurmuyordu.
+- **Ay görünümünde etkinlik bloğu ve "+N daha" yalnızca fareyle açılabiliyordu**
+  (`<div onclick>`) — klavye/ekran okuyucu kullanan biri ay görünümünde HİÇBİR
+  etkinliği açamıyordu. İkisi de artık `<button>`. Gün listesi kutusunun
+  konumu da artık tıklama olayının clientX/clientY'si değil, "+N daha"
+  düğmesinin kendi konumu (`ui/static/app.js` `gunListesiAc`) — klavyeyle
+  (Enter) tetiklenen bir `click`'te clientX/clientY 0 olduğu için kutu
+  eskiden ekranın sol üst köşesine fırlıyordu.
+- **Kısa/dar bloklarda CSS ile kırpılan başlık artık `title` (araç ipucu)
+  olarak da yazılıyor** (zaman ızgarası, ay görünümü, tüm gün şeridi, gün
+  listesi) — üzerine gelince tam başlık (ve saat) görünüyor.
+- **Arama sonuçları da yalnızca fareyle açılabiliyordu** (`<li onclick>`) —
+  aynı sınıf hata ay görünümündeki bloklarda da vardı. `<li>` artık yalnızca
+  liste çerçevesi, tıklanabilir yüzey içindeki `<button>` (`ui/static/app.js`
+  `aramaYap`).
+- README/AGENTS.md'deki eski test sayısı (424) ve AGENTS.md §5'teki "kod
+  tanımlayıcıları İngilizce" satırı güncel değildi; ikisi de düzeltildi
+  (bkz. AGENTS.md §5, §6). Test sayısı bu değişikliklerle birlikte 435'e
+  çıktı.
+
 ## [1.2.0] - 2026-09-21
 
 ### Eklendi

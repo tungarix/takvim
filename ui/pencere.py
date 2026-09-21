@@ -33,6 +33,7 @@ __all__ = [
     "BASLIK",
     "Geometri",
     "VARSAYILAN",
+    "dpi_farkindaligini_ac",
     "ekrana_sigdir",
     "geometri_dosyasi",
     "geometri_oku",
@@ -192,6 +193,50 @@ def ekrana_sigdir(
     return Geometri(genislik, yukseklik, None, None, g.buyutulmus)
 
 
+def dpi_farkindaligini_ac() -> bool:
+    """Süreci monitör başına (per-monitor) DPI farkında yapar.
+
+    pywebview BUNU KENDİSİ yapmıyor (kontrol edildi: `webview` paketinde
+    `SetProcessDpi*` çağrısı yok) ve `python.exe`/`pythonw.exe` de DPI-farkında
+    bir manifest taşımıyor. Ayarlanmazsa Windows pencereyi bulanık ölçeklenmiş
+    gösterir VE bu dosyadaki piksel matematiği (`ekrana_sigdir`, `sanal_ekran`,
+    `monitorde_mi` — hepsi gerçek Win32 piksel koordinatı okuyor) farklı
+    ölçekli çoklu monitörde yanlış hesaplar.
+
+    Windows PENCERE/DC OLUŞTURULMADAN ÖNCE çağrılmasını önerir, bu yüzden
+    `pencere_ac()`in en başında çalışıyor.
+
+    Windows olmayan platformda ayarlanacak bir şey yok: True dönüyoruz ki
+    çağıran "başarısız oldu" diye yorumlamasın.
+    """
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+
+        # Önce modern API (Windows 10 1703+): non-client alan ve iletişim
+        # kutusu ölçeklemesini de düzgün yapıyor. DPI_AWARENESS_CONTEXT_
+        # PER_MONITOR_AWARE_V2 = -4.
+        try:
+            sonuc = ctypes.windll.user32.SetProcessDpiAwarenessContext(  # type: ignore[attr-defined]
+                ctypes.c_void_p(-4)
+            )
+            if sonuc:
+                return True
+        except (AttributeError, OSError):
+            pass
+
+        # Eski API'ye düş (Windows 8.1+): PROCESS_PER_MONITOR_DPI_AWARE = 2.
+        # HRESULT S_OK = 0. E_ACCESSDENIED (süreç DPI farkındalığı zaten bir
+        # kez ayarlanmış) da kabul edilebilir -- ikinci kez ayarlamaya
+        # çalışmak hata değil, sadece gereksiz.
+        E_ACCESSDENIED = -2147024891
+        hresult = ctypes.windll.shcore.SetProcessDpiAwareness(2)  # type: ignore[attr-defined]
+        return hresult in (0, E_ACCESSDENIED)
+    except (AttributeError, OSError):
+        return False
+
+
 def monitorde_mi(x: int, y: int) -> bool:
     """Verilen noktada gerçekten bir monitör var mı.
 
@@ -292,6 +337,11 @@ def pencere_ac(
     `ImportError`/`Exception` YUKARI aktarılıyor: geri düşüşe (tarayıcı) karar
     vermek çağıranın işi, bu fonksiyonun değil.
     """
+    # Pencere/DC oluşmadan ÖNCE: Windows DPI farkındalığını ilk pencereden
+    # önce ayarlamayı öneriyor. Başarısız olsa da (eski Windows, API yok)
+    # pencere yine açılır -- yalnızca bulanık/yanlış ölçekli görünür.
+    dpi_farkindaligini_ac()
+
     if sys.platform == "win32" and webview2_surumu() is None:
         raise RuntimeError(
             "WebView2 çalışma zamanı bulunamadı. "

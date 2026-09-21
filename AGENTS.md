@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**424 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**436 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -486,7 +486,11 @@ yapmıyor. Faz 2'de gerçek veride karşılaşırsan `events` tablosuna
 ## 5. Kod ve test konvansiyonları
 
 - **Yorumlar ve docstring'ler Türkçe.** Test adları da Türkçe
-  (`test_tek_ornek_iptali`). Kod tanımlayıcıları İngilizce.
+  (`test_tek_ornek_iptali`). **Kod tanımlayıcıları da fiilen Türkçe**
+  (`pencere_ac`, `sanal_ekran`, `monitorde_mi`, `kur`, `kaldir`,
+  `kurulu_mu`, `ciz`, `hizliEkleBaslat`…) — bu satır önceden "İngilizce"
+  diyordu, gerçek kod hiçbir zaman öyle olmadı. Yeni bir tanımlayıcı
+  eklerken dokunduğun dosyadaki mevcut adlandırma desenini taklit et.
 - Her public fonksiyona **tip ipucu ve kısa docstring**.
 - Yorum *ne* yaptığını değil **neden** yaptığını anlatsın. Mevcut yorumlar bu
   tonda; aynı yoğunluğu koru.
@@ -583,10 +587,15 @@ Faz A–E'de bitenler (detay README §10'da):
 - **Lint/tip**: `ruff` + `mypy` (`core/` + `store/` katı); istisnalar
   `pyproject.toml`'da gerekçeli.
 
-Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menümüz, monitör başına DPI
-farkındalığı, bildirimde kendi uygulama adı (PowerShell AUMID'i ödünç).
+Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menümüz, bildirimde kendi
+uygulama adı (PowerShell AUMID'i ödünç — Başlat menüsü kaydı + kayıt defteri
+yazmak gerektirir, sistem düzeyi değişiklik, kullanıcı onayı bekliyor).
+Monitör başına DPI farkındalığı artık AÇIK (`ui/pencere.py`
+`dpi_farkindaligini_ac`, `pencere_ac()`in en başında çağrılıyor).
 
-Düşünülüp ertelenenler (bkz. son sohbet): CI yok (`.github/workflows`),
-ön yüzün (`ui/static/app.js`) hiç otomatik testi yok, `.exe` imzasız
-(SmartScreen uyarısı). Bunlar hata değil, bilinçli/gelecekteki yatırım
-kararları.
+Düşünülüp ertelenenler: `.exe` imzasız (SmartScreen uyarısı) — ücretli kod
+imzalama sertifikası gerektiriyor, bilinçli/gelecekteki bir yatırım kararı.
+CI artık var (`.github/workflows/ci.yml`: ruff + mypy + pytest + ayrı
+`test-ui` işinde Playwright duman testleri) ve ön yüzün ilk otomatik
+testleri de var (`tests/test_frontend_smoke.py`, v1.2.0) — bu ikisi daha
+önce burada "yok" diye listeleniyordu, o satır güncel değildi.

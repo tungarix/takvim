@@ -254,7 +254,6 @@ Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı pencer
   (`python -m remind`) — bkz. §9.
 - **Sağ tık menüsü yok.** Pencerede tarayıcının menüsü kapalı (uygulama gibi
   dursun diye). Kopyala/yapıştır klavyeyle çalışıyor: `Ctrl+C`, `Ctrl+V`.
-- **`.ics` içe aktarma arayüzde yok**, yalnızca API'de (`POST /api/import`).
 - **Seri düzenleme sınırlı.** Tekrarlı bir etkinliğin başlığını/konumunu
   değiştirmek TÜM seriyi, tarih/saatini değiştirmek yalnızca o örneği etkiler.
   "Bundan sonrası için değiştir" paneldeki "Bundan sonrasını değiştir"
@@ -304,7 +303,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**424 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**436 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli

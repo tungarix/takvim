@@ -743,7 +743,17 @@ html, body {
 
 .arama-bolum { margin-top: 20px; }
 .arama-listesi { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+/* .arama-satir artık <button> (klavye/ekran okuyucu erişimi için) -- ilk
+   satırlar tarayıcının düğme varsayılanlarını eski <li>'yle aynı görünsün
+   diye sıfırlıyor, bkz. .ay-blok'taki not. */
 .arama-satir {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
   padding: 6px 8px;
   border-radius: var(--yaricap);
   cursor: pointer;
@@ -818,7 +828,17 @@ kbd {
   text-align: center;
 }
 
+/* .ay-blok / .ay-daha artık <button> (klavye/ekran okuyucu erişimi için) --
+   bu üç satır tarayıcının düğme varsayılanlarını (arkaplan/kenarlık/hizalama)
+   önceki <div>'le aynı görünsün diye sıfırlıyor. */
 .ay-blok {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
   font-size: 11px;
   padding: 1px 5px;
   border-radius: var(--yaricap);
@@ -828,7 +848,18 @@ kbd {
   white-space: nowrap;
   border-left: 3px solid;
 }
-.ay-daha { font-size: 11px; color: var(--metin-silik); padding: 0 5px; cursor: pointer; }
+.ay-daha {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  font: inherit;
+  font-size: 11px;
+  color: var(--metin-silik);
+  padding: 0 5px;
+  cursor: pointer;
+}
 .ay-daha:hover { color: var(--metin); }
 
 /* ---------- panel işlemleri ---------- */
@@ -943,7 +974,16 @@ kbd {
   color: var(--metin-silik);
   padding: 0 4px 6px;
 }
+/* <button> (klavye erişimi için) -- ilk dört satır tarayıcı varsayılanını
+   önceki <div>'le aynı görünsün diye sıfırlıyor, bkz. .ay-blok'taki not. */
 .gl-satir {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  text-align: left;
+  color: inherit;
+  font: inherit;
   font-size: 12px;
   padding: 5px 8px;
   border-radius: var(--yaricap);

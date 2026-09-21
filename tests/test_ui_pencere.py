@@ -198,6 +198,16 @@ def test_monitorde_mi_gercek_ortamda_calisir():
     assert monitorde_mi(10, 10) is True
 
 
+def test_dpi_farkindaligi_gercek_ortamda_calisir():
+    """Süreç DPI farkındalığı Windows'ta yalnızca BİR KEZ ayarlanabilir;
+    ikinci çağrı da çökmeden mantıklı bir cevap vermeli (zaten ayarlı
+    durumunu sınar)."""
+    from ui.pencere import dpi_farkindaligini_ac
+
+    assert isinstance(dpi_farkindaligini_ac(), bool)
+    assert isinstance(dpi_farkindaligini_ac(), bool)
+
+
 def test_bom_ile_yazilmis_dosya_okunur(tmp_path):
     """Windows araçları dosyanın başına BOM koyuyor; kayıt kaybolmasın.
 
