@@ -7,6 +7,8 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.3.0] - 2026-09-21
+
 ### Eklendi
 - **Monitör başına (per-monitor) DPI farkındalığı** (`ui/pencere.py`
   `dpi_farkindaligini_ac`, `pencere_ac()`in en başında çağrılıyor) — pywebview
@@ -56,6 +58,17 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
   tanımlayıcıları İngilizce" satırı güncel değildi; ikisi de düzeltildi
   (bkz. AGENTS.md §5, §6). Test sayısı bu değişikliklerle birlikte 435'e
   çıktı.
+- `test_klavye_kisayollari_gorunum_degistirir` CI'da yarış koşulu yüzünden
+  aralıklı kırılıyordu ("h" tuşundan hemen sonra assert, `yukle()/ciz()`
+  asenkron zincirinin bitmesini beklemeden) — diğer adımlarla aynı desende
+  düğmenin "secili" sınıfını bekleyecek şekilde düzeltildi. Test sayısı 436.
+
+### Değişti
+- **Köşe yarıçapı 0'dan 6px'e çıkarıldı** (`ui/static/style.css` `--yaricap`)
+  — tüm kutular (etkinlik blokları, düğmeler, panel, modal, "bugün" rozeti)
+  tek bir merkezi değişkenden besleniyor, tek satırlık değişiklik her yere
+  otomatik yayıldı. Önceki `0px` değeri "KASITLI: her yerde keskin köşe"
+  yorumuyla bilinçli bir karardı; kullanıcı isteğiyle tersine çevrildi.
 
 ## [1.2.0] - 2026-09-21
 

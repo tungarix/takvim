@@ -45,7 +45,7 @@
 
   --dugme-yukseklik: 32px;
   --girdi-yukseklik: 32px;
-  --yaricap: 0px; /* KASITLI: her yerde keskin köşe */
+  --yaricap: 6px;
 
   --saat-genislik: 64px;
   --saat-yukseklik: 48px;

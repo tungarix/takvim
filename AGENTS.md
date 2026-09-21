@@ -526,9 +526,21 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 tamamlandı**
-(README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik eklemeden
-önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0
+tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
+eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.3.0'da bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Monitör başına DPI farkındalığı** (`ui/pencere.py`
+  `dpi_farkindaligini_ac`).
+- **Ön yüz erişilebilirlik düzeltmeleri**: ay görünümü/gün listesi/arama
+  sonuçları artık klavyeyle de açılabiliyor (`<div onclick>` → `<button>`),
+  modal'da Tab odağı kaçmıyor, bildirim kutusu `aria-live`.
+- **Köşe yarıçapı 0 → 6px** (`ui/static/style.css` `--yaricap`, tek merkezi
+  değişken).
+- Ön yüz duman testleri 4 → 15 (`tests/test_frontend_smoke.py`); toplam
+  436 test.
 
 v1.2.0'da bitenler (ayrıntı CHANGELOG.md'de):
 
