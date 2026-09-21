@@ -242,7 +242,7 @@ Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı pencer
 - **Bildirim görünmüyor** — Odaklanma Yardımı toast'ları bastırıyor olabilir.
   Sınamak için: `Takvim.exe` yerine `python -m remind --test`.
 - **Hiçbir şey olmuyor** — `.exe` artık penceresiz derlendiği için ekranda
-  konsol yok; ne olduğu `%LOCALAPPDATA%\Takvim	akvim.log` dosyasında yazıyor.
+  konsol yok; ne olduğu `%LOCALAPPDATA%\Takvim\takvim.log` dosyasında yazıyor.
 - **"Windows bilgisayarınızı korudu"** — `.exe` imzasız olduğu için SmartScreen
   ilk çalıştırmada uyarabilir. Adım adım: bkz. §5, "İlk kurulum" altı.
 
@@ -557,8 +557,9 @@ arayüzdeki ⚙ Ayarlar kutusundaki anahtar yeterli (kurulumu da kaldırılması
 oradan). Elle yapmak istersen karşılığı:
 
 ```powershell
-$hedef = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Takvim Hatirlatici.lnk"
-$kok = "C:\Users\Arda\Desktop\Aktenak\Projeler\takvim"
+# Takvim proje kökünde çalıştır (bu klasörde .venv\ olmalı).
+$hedef = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\Takvim Hatırlatıcı.lnk"
+$kok = (Get-Location).Path
 $w = New-Object -ComObject WScript.Shell
 $k = $w.CreateShortcut($hedef)
 $k.TargetPath = "$kok\.venv\Scripts\pythonw.exe"
@@ -622,10 +623,12 @@ v1 sonrası eklenenler (kapsamı büyütmeden, konfor + güvenlik):
 - Sistem tepsisine küçült + Ayarlar kutusu + otomatik başlatma kaydı
   (ikisi de varsayılan kapalı)
 - "Bundan sonrasını değiştir" (seri bölme, THISANDFUTURE karşılığı)
+- Monitör başına DPI farkındalığı (çoklu monitör/farklı ölçekte bulanıklık
+  düzeltildi) + köşeler yumuşatıldı + ay görünümü/arama/gün listesi klavye
+  ve ekran okuyucuyla da kullanılabiliyor (bkz. CHANGELOG [1.3.0])
 
-Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menüsü, monitör başına DPI
-farkındalığı, bildirimde kendi uygulama adı (PowerShell AUMID'i ödünç
-alınıyor; kaydı sistem değişikliği).
+Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menüsü, bildirimde kendi
+uygulama adı (PowerShell AUMID'i ödünç alınıyor; kaydı sistem değişikliği).
 
 ---
 
