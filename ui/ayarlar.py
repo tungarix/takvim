@@ -1,9 +1,10 @@
 """Kullanıcı ayarları (`ayarlar.json`, veritabanının yanında).
 
-Tek dosya, iki anahtar: tepsiye küçült + otomatik başlatma. İkisi de
-varsayılan KAPALI — pencereyi kapatmak uygulamayı kapatır (mevcut davranış),
-Başlangıç klasörüne yazmak sistem düzeyinde değişiklik (AGENTS 24). Açmak
-kullanıcının bilinçli kararı, arayüzdeki Ayarlar kutusundan.
+Tek dosya, üç anahtar: tepsiye küçült + otomatik başlatma + dil. Üçü de
+varsayılan KAPALI/TR — pencereyi kapatmak uygulamayı kapatır (mevcut davranış),
+Başlangıç klasörüne yazmak sistem düzeyinde değişiklik (AGENTS 24), arayüz
+dili değişince sayfa yeniden yüklenir. Açmak kullanıcının bilinçli kararı,
+arayüzdeki Ayarlar kutusundan.
 
 `geometri_oku` ile aynı disiplin: bozuk/eksik dosyada istisna YOK, varsayılan
 dönüyor. Ayar okunamadığı için uygulamayı açmamak ya da tepsiyi yanlış
@@ -21,7 +22,17 @@ __all__ = ["VARSAYILANLAR", "ayar_dosyasi", "ayar_oku", "ayar_yaz"]
 VARSAYILANLAR: dict[str, Any] = {
     "tepsiye_kucult": False,
     "otomatik_baslat": False,
+    # Arayüz dili: "tr" | "en". Ön yüz `t()` sözlüğünü ve `Intl` yerini,
+    # sunucu gün/ay adlarını ve hata kodlarını buna göre seçiyor. Hızlı ekleme
+    # kutusu her iki dilde de Türkçe cümle bekliyor (bkz. README §1).
+    "dil": "tr",
 }
+
+# `isinstance` denetimi "de" gibi bir dizeyi de geçirir; dil kapalı kümeden
+# gelmeli, serbest metin değil (AGENTS 50'deki tekrar kuralıyla aynı gerekçe:
+# tanınmayan değer sessizce varsayılana düşmüyor, burada varsayılan DÖNÜYOR
+# çünkü bozuk ayar dosyasıyla uygulamayı açmamak kabul edilemez).
+DILLER = ("tr", "en")
 
 
 def ayar_dosyasi(veri_dizini: str | Path) -> Path:
@@ -47,6 +58,8 @@ def ayar_oku(yol: str | Path) -> dict[str, Any]:
         deger = ham.get(anahtar, varsayilan)
         if isinstance(deger, type(varsayilan)):
             sonuc[anahtar] = deger
+    if sonuc["dil"] not in DILLER:
+        sonuc["dil"] = VARSAYILANLAR["dil"]
     return sonuc
 
 

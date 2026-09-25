@@ -126,8 +126,10 @@ class TkNotifier:
     kapatıyor; kullanıcı bir şeye tıklamak zorunda kalmasın.
     """
 
-    def __init__(self, saniye: int = 12) -> None:
+    def __init__(self, saniye: int = 12, dil: str = "tr") -> None:
         self.saniye = saniye
+        # Tek düğmenin yazısı; başlık ("Takvim") ürün adı, çevrilmiyor.
+        self.dil = dil
 
     def available(self) -> bool:
         """tkinter kurulu ve bir ekran var mı."""
@@ -166,7 +168,7 @@ class TkNotifier:
                 font=("Segoe UI", 10), justify="left", anchor="w",
             ).pack(fill="x", pady=(4, 0))
             tk.Button(
-                cerceve, text="Tamam", command=kok.destroy,
+                cerceve, text="OK" if self.dil == "en" else "Tamam", command=kok.destroy,
                 bg="#1e222b", fg="#e6e8ee", relief="flat", padx=14,
             ).pack(pady=(12, 0))
 
@@ -186,10 +188,12 @@ class TkNotifier:
             return False
 
 
-def pick_notifier(tercih: str = "auto") -> Notifier:
+def pick_notifier(tercih: str = "auto", dil: str = "tr") -> Notifier:
     """Ortama uygun bildirim arka ucunu seçer.
 
-    `tercih`: "auto" | "toast" | "tk" | "console".
+    `tercih`: "auto" | "toast" | "tk" | "console". `dil` yalnızca Tk
+    düğmesini etkiliyor (toast gövdesi `daemon.bildirim_metni`'nden
+    geliyor, konsol ise işletmene bakıyor).
     """
     arka_uclar = {
         "toast": WindowsToastNotifier,
@@ -199,6 +203,8 @@ def pick_notifier(tercih: str = "auto") -> Notifier:
     if tercih != "auto":
         if tercih not in arka_uclar:
             raise ValueError(f"bilinmeyen bildirim arka ucu: {tercih!r}")
+        if tercih == "tk":
+            return TkNotifier(dil=dil)
         return arka_uclar[tercih]()
 
     for sinif in (WindowsToastNotifier, TkNotifier, ConsoleNotifier):

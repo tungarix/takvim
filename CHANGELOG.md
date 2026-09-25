@@ -7,6 +7,23 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Türkçe / İngilizce arayüz dili** (⚙ Ayarlar → Dil, varsayılan Türkçe,
+  `ayarlar.json` → `dil`): arayüz ya tamamen Türkçe ya tamamen İngilizce.
+  Yeni `ui/static/i18n.js` (`TR`/`EN` sözlükleri, `index.html`de `app.js`'ten
+  önce yükleniyor), `app.js`te `t()` + dile göre `tr-TR`/`en-GB` yer seçimi,
+  `index.html`de `data-i18n*` öznitelikleri, gün/ay adları ve başlıklar için
+  sunucu tarafı yerelleştirme (`ui/presenter.py` → `dil` parametresi),
+  hatırlatıcı toast'ı dahil (`remind/daemon.py` → `dil`). Sunucu artık hata
+  MESAJIYLA birlikte `error_code` da dönüyor (`{"error": ..., "error_code":
+  "baslik_bos", ...}`); çeviri istemcide, `error` alanı eski sözleşmeyle
+  birebir aynı kalıyor. İSTİSNA: hızlı ekleme kutusu İngilizce modda da
+  Türkçe cümle bekliyor (ayrıştırıcı `core/quickadd.py` değişmedi) — README
+  §8 "Dil" satırında açıkça yazıyor. İlk kurulumdaki varsayılan takvim adı
+  dile göre ("Kişisel"/"Personal"). Testler: `tests/test_dil.py` (18),
+  duman testlerine 2 EN senaryo (`tests/test_frontend_smoke.py`, 17 duman
+  testi → 456 test).
+
 ## [1.3.0] - 2026-09-21
 
 ### Eklendi

@@ -28,7 +28,7 @@ from ics import export_repo, import_ics
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
 
 from . import otomatik
-from .ayarlar import VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
+from .ayarlar import DILLER, VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
 from .presenter import day_payload, month_payload, week_payload
 
 __all__ = ["serve", "make_server"]
@@ -46,6 +46,62 @@ TEKRAR_SECENEKLERI = {
     "yillik": "FREQ=YEARLY",
 }
 _MAKS_GOVDE = 8 * 1024 * 1024  # 8 MB: .ics içe aktarma için fazlasıyla yeterli
+
+
+class _KodluHata(ValueError):
+    """Kod taşıyan istemci hatası.
+
+    `str(hata)` ESKİ Türkçe mesaj (tel uyumluluğu: `{"error"}` alanı hiç
+    değişmiyor, eski istemciler ve mevcut testler aynen çalışıyor); `kod`
+    ön yüzün `t("hata_"+kod)` ile çevireceği anahtar, `param` şablonun
+    yer tutucuları (`{"dakika": 1500}` gibi, her zaman sözlük ya da None).
+    """
+
+    def __init__(self, kod: str, mesaj: str, param: dict | None = None) -> None:
+        super().__init__(mesaj)
+        self.kod = kod
+        self.param = param
+
+
+def _hata_esle(mesaj: str) -> tuple[str | None, dict | None]:
+    """`core/` + `store/` katmanından gelen BİLİNEN mesajı koda çevirir.
+
+    Bu katmanlara DOKUNMUYORUZ (AGENTS §2: `core/` saf kalıyor, `store/`
+    mesajları testlere kilitli) -- eşleme burada, öneke göre. Bilinmeyen
+    mesajda `(None, None)`: istemci ham metni gösterir (bugünkü davranış).
+    """
+    if mesaj.startswith("Etkinlik bulunamadı: id="):
+        return "etkinlik_bulunamadi", {"id": mesaj.rsplit("=", 1)[-1]}
+    # Sunucunun kendi kaldırdığı LookupError'lar (id'siz, küçük harf).
+    if mesaj in ("etkinlik bulunamadı", "takvim bulunamadı"):
+        return mesaj.split()[0] + "_bulunamadi", None
+    if mesaj == "Boş metin ayrıştırılamaz":
+        return "metin_bos", None
+    if mesaj == "çok kurallı seriler bölünemez":
+        return "seri_bolunemez_cok_kuralli", None
+    if mesaj == "tekrarsız seri bölünemez":
+        return "seri_bolunemez_tekrarsiz", None
+    if mesaj == "bölme noktası serinin bir örneği olmalı":
+        return "bolme_noktasi_gecersiz", None
+    if mesaj == "ilk örnekten bölünemez; tümünü düzenle":
+        return "bolme_ilk_ornek", None
+    if mesaj == "minutes_before negatif olamaz":
+        return "hatirlatici_negatif", None
+    if mesaj == "Serinin takvimi silinmiş; önce takvimi oluşturup yeniden dene":
+        return "geri_alma_takvim_yok", None
+    if mesaj == "bellek veritabanına yedekten dönülemez":
+        return "yedek_bellekte_yok", None
+    if mesaj.startswith("yedek bulunamadı: "):
+        return "yedek_bulunamadi", {"ad": mesaj.split(": ", 1)[-1]}
+    if mesaj.startswith("Yedek açılamadı ("):
+        return "yedek_acilamadi", {"ayrinti": mesaj[len("Yedek açılamadı ("):]}
+    if mesaj.startswith("Yedek bozuk ("):
+        return "yedek_bozuk", {"ayrinti": mesaj[len("Yedek bozuk ("):]}
+    if mesaj.startswith("Invalid isoformat string"):
+        return "tarih_bicimi_gecersiz", {"ayrinti": mesaj}
+    if mesaj.startswith("invalid literal for int()"):
+        return "sayi_bicimi_gecersiz", {"ayrinti": mesaj}
+    return None, None
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -91,9 +147,33 @@ class _Handler(BaseHTTPRequestHandler):
             status,
         )
 
-    def _hata(self, mesaj: str, status: int = 400) -> None:
-        """Hata gövdesi."""
-        self._json({"error": mesaj}, status)
+    def _hata(self, mesaj: str, status: int = 400, kod: str | None = None,
+              param: dict | None = None) -> None:
+        """Hata gövdesi: `{"error": mesaj}` + varsa `error_code`/`error_param`.
+
+        `error` her zaman Türkçe (eski sözleşme); İngilizce istemci `error_code`
+        varsa `i18n.js`teki `hata_<kod>` şablonunu kullanıyor, yoksa ham metne
+        düşüyor. `kod=None` iken gövde eskisiyle BİREBİR aynı (`error_code`
+        anahtarı hiç yazılmıyor).
+        """
+        govde: dict = {"error": mesaj}
+        if kod is not None:
+            govde["error_code"] = kod
+            if param is not None:
+                govde["error_param"] = param
+        self._json(govde, status)
+
+    def _yakala(self, exc: BaseException, status: int = 400) -> None:
+        """`except` bloğundan hata gövdesi yazar, kodu da ekleyerek.
+
+        `_KodluHata` kendi kodunu taşır; `core/`/`store/` istisnaları
+        `_hata_esle` ile eşlenir; geri kalan kodsuz (ham metin) döner.
+        """
+        kod = getattr(exc, "kod", None)
+        param = getattr(exc, "param", None)
+        if kod is None:
+            kod, param = _hata_esle(str(exc))
+        self._hata(str(exc), status, kod, param)
 
     def _icerik_uzunlugu(self) -> int:
         """`Content-Length` başlığını doğrulayıp okunacak byte sayısını verir.
@@ -109,9 +189,9 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             uzunluk = int(ham) if ham is not None else 0
         except ValueError:
-            raise ValueError("Content-Length sayı olmalı") from None
+            raise _KodluHata("content_length_sayi", "Content-Length sayı olmalı") from None
         if not 0 <= uzunluk <= _MAKS_GOVDE:
-            raise ValueError("gövde boyutu geçersiz")
+            raise _KodluHata("govde_boyutu_gecersiz", "gövde boyutu geçersiz")
         return uzunluk
 
     def _govde(self) -> dict:
@@ -127,7 +207,9 @@ class _Handler(BaseHTTPRequestHandler):
             return {}
         veri = json.loads(self.rfile.read(uzunluk))
         if not isinstance(veri, dict):
-            raise ValueError("gövde bir JSON nesnesi (obje) olmalı")
+            raise _KodluHata(
+                "govde_nesne_olmali", "gövde bir JSON nesnesi (obje) olmalı"
+            )
         return veri
 
     def _metin_govde(self) -> str:
@@ -167,27 +249,42 @@ class _Handler(BaseHTTPRequestHandler):
         """Veritabanı dosyasının yolu; test sunucularında None olabilir."""
         return getattr(self.server, "db_yolu", None)
 
+    def _dil(self) -> str:
+        """Arayüz dili (`ayarlar.json` → `dil`, yoksa/bozuksa `"tr"`).
+
+        Gün/ay adları ve etiketler her istekte buna göre kuruluyor; istemci
+        yalnızca basıyor. Bellek DB'sinde dosya yok, varsayılan dönüyor.
+        """
+        db_yolu = self._db_yolu
+        if db_yolu is None or str(db_yolu) == ":memory:":
+            return "tr"
+        try:
+            dil = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent)).get("dil", "tr")
+        except OSError:
+            return "tr"
+        return dil if dil in DILLER else "tr"
+
     def _seri_bilgisi(self, sorgu: dict) -> None:
         """GET /api/series_info?event_id= — silme onayı sayıyı buradan alıyor."""
         try:
             event_id = int((sorgu.get("event_id") or [""])[0])
         except ValueError:
-            self._hata("geçersiz event_id")
+            self._hata("geçersiz event_id", 400, "gecersiz_event_id")
             return
         try:
             self._json(self.repo.series_info(event_id))
         except LookupError as exc:
-            self._hata(str(exc), 404)
+            self._yakala(exc, 404)
 
     def _seri_geri_al(self) -> None:
         """POST /api/events/restore_last — son silinen seriyi diriltir."""
         try:
             diriltilen = self.repo.restore_last_deleted()
         except LookupError as exc:
-            self._hata(str(exc), 409)
+            self._yakala(exc, 409)
             return
         if diriltilen is None:
-            self._hata("geri alınacak silme yok", 404)
+            self._hata("geri alınacak silme yok", 404, "geri_alinacak_yok")
             return
         self._json({"restored_id": diriltilen.id, "title": diriltilen.title})
 
@@ -203,21 +300,29 @@ class _Handler(BaseHTTPRequestHandler):
         govde = self._govde()
         tepsi = govde.get("tepsiye_kucult")
         oto = govde.get("otomatik_baslat")
+        dil = govde.get("dil")
         for ad, deger in (("tepsiye_kucult", tepsi), ("otomatik_baslat", oto)):
             if deger is not None and not isinstance(deger, bool):
-                self._hata(f"{ad} true/false olmalı")
+                self._hata(f"{ad} true/false olmalı", 400, "ayar_tipi_gecersiz", {"ad": ad})
                 return
+        if dil is not None and dil not in DILLER:
+            self._hata(f"geçersiz dil: {dil}", 400, "dil_gecersiz", {"deger": str(dil)})
+            return
         db_yolu = self._db_yolu
         if oto is not None:
             if db_yolu is None or str(db_yolu) == ":memory:":
-                self._hata("otomatik başlatma dosya veritabanı istiyor")
+                self._hata(
+                    "otomatik başlatma dosya veritabanı istiyor",
+                    400, "otomatik_dosya_ister",
+                )
                 return
             yapildi = (
                 otomatik.kur(db_yolu=db_yolu) if oto else otomatik.kaldir()
             )
             if not yapildi:
                 self._hata(
-                    "otomatik başlatma kaydı kurulamadı/kaldırılamadı", 500
+                    "otomatik başlatma kaydı kurulamadı/kaldırılamadı", 500,
+                    "otomatik_kayit_hatasi",
                 )
                 return
         dizin = Path(str(db_yolu)).resolve().parent if db_yolu else None
@@ -227,6 +332,8 @@ class _Handler(BaseHTTPRequestHandler):
                 mevcut["tepsiye_kucult"] = tepsi
             if oto is not None:
                 mevcut["otomatik_baslat"] = oto
+            if dil is not None:
+                mevcut["dil"] = dil
             ayar_yaz(ayar_dosyasi(dizin), mevcut)
         self._json(_ayar_durumu(db_yolu))
 
@@ -251,7 +358,11 @@ class _Handler(BaseHTTPRequestHandler):
                 bit_dk = sorgu.get("end", [None])[0]
                 bit_dk = int(bit_dk) if bit_dk is not None else bas_dk + 60
                 if not 0 <= bas_dk < 24 * 60:
-                    raise ValueError(f"start gün içinde olmalı: {bas_dk}")
+                    raise _KodluHata(
+                        "aralik_start_gecersiz",
+                        f"start gün içinde olmalı: {bas_dk}",
+                        {"dakika": bas_dk},
+                    )
                 bas = from_wall_clock(
                     datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
                     + timedelta(minutes=bas_dk),
@@ -266,11 +377,17 @@ class _Handler(BaseHTTPRequestHandler):
                 bas = parse_iso((sorgu.get("startUtc") or [""])[0])
                 bit = parse_iso((sorgu.get("endUtc") or [""])[0])
             if bit <= bas:
-                raise ValueError("bitiş başlangıçtan sonra olmalı")
+                raise _KodluHata("bitis_sira_hatasi", "bitiş başlangıçtan sonra olmalı")
             ignore = sorgu.get("ignoreId", [None])[0]
             ignore_id = int(ignore) if ignore is not None else None
         except (ValueError, KeyError, IndexError) as exc:
-            self._hata(f"geçersiz aralık: {exc}")
+            if isinstance(exc, _KodluHata):
+                self._yakala(exc)
+            else:
+                self._hata(
+                    f"geçersiz aralık: {exc}", 400, "gecersiz_aralik",
+                    {"ayrinti": str(exc)},
+                )
             return
         bulunan = []
         for occ in self.repo.occurrences(bas, bit):
@@ -296,7 +413,10 @@ class _Handler(BaseHTTPRequestHandler):
         """
         db_yolu = self._db_yolu
         if db_yolu is None or str(db_yolu) == ":memory:":
-            raise ValueError("yedek işlemleri dosya tabanlı bir veritabanı gerektirir")
+            raise _KodluHata(
+                "yedek_dosya_gerekir",
+                "yedek işlemleri dosya tabanlı bir veritabanı gerektirir",
+            )
         return Path(str(db_yolu)).resolve().parent
 
     def _yedek_al_simdi(self) -> None:
@@ -310,7 +430,9 @@ class _Handler(BaseHTTPRequestHandler):
         dizin = self._yedek_veri_dizini()
         alinan = yedek_al(self.repo.conn, dizin, bugun=date.today())
         if alinan is None:
-            self._hata("yedek alınamadı (disk/izin sorunu olabilir)", 500)
+            self._hata(
+                "yedek alınamadı (disk/izin sorunu olabilir)", 500, "yedek_alinamadi"
+            )
             return
         self._json({"backups": _yedek_listesi(self._db_yolu)}, 201)
 
@@ -325,7 +447,10 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             os.startfile(dizin)  # type: ignore[attr-defined]
         except OSError as exc:
-            self._hata(f"klasör açılamadı: {exc}", 500)
+            self._hata(
+                f"klasör açılamadı: {exc}", 500, "klasor_acilamadi",
+                {"ayrinti": str(exc)},
+            )
             return
         self._json({"opened": str(dizin)})
 
@@ -338,17 +463,17 @@ class _Handler(BaseHTTPRequestHandler):
         govde = self._govde()
         ad = (govde.get("ad") or "").strip()
         if not ad:
-            self._hata("ad boş")
+            self._hata("ad boş", 400, "yedek_ad_bos")
             return
         try:
             yeni = yedekten_don(
                 self.repo, self._db_yolu, ad, check_same_thread=False
             )
         except ValueError as exc:
-            self._hata(str(exc))
+            self._yakala(exc)
             return
         except RuntimeError as exc:
-            self._hata(str(exc), 500)
+            self._yakala(exc, 500)
             return
         self.server.repo = yeni
         self._json({"restored": ad})
@@ -365,7 +490,7 @@ class _Handler(BaseHTTPRequestHandler):
         kok = STATIC.resolve()
         hedef = (STATIC / ad).resolve()
         if not hedef.is_relative_to(kok) or not hedef.is_file():
-            self._hata("bulunamadı", 404)
+            self._hata("bulunamadı", 404, "bulunamadi")
             return
         tur, _ = mimetypes.guess_type(str(hedef))
         self._gonder(hedef.read_bytes(), f"{tur or 'application/octet-stream'}; charset=utf-8")
@@ -387,7 +512,7 @@ class _Handler(BaseHTTPRequestHandler):
                     "/api/day": day_payload,
                     "/api/month": month_payload,
                 }[yol]
-                self._json(uretici(self.repo, self._tarih(sorgu), self.tzid))
+                self._json(uretici(self.repo, self._tarih(sorgu), self.tzid, dil=self._dil()))
                 return
 
             if yol == "/api/calendars":
@@ -426,19 +551,19 @@ class _Handler(BaseHTTPRequestHandler):
                 return
 
             if yol.startswith("/api/"):
-                self._hata("bulunamadı", 404)
+                self._hata("bulunamadı", 404, "bulunamadi")
                 return
 
             self._statik(yol)
         except ValueError as exc:
-            self._hata(str(exc))
+            self._yakala(exc)
 
     # -- POST ---------------------------------------------------------------
 
     def do_POST(self) -> None:
         """Oluşturma, örnek düzeyi işlemler, görünürlük ve içe aktarma."""
         if not self._kaynak_guvenli():
-            self._hata("bu istek Takvim penceresinden gelmiyor", 403)
+            self._hata("bu istek Takvim penceresinden gelmiyor", 403, "kaynak_guvensiz")
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
@@ -516,16 +641,16 @@ class _Handler(BaseHTTPRequestHandler):
                 self._gorunurluk(int(parcalar[2]))
                 return
 
-            self._hata("bulunamadı", 404)
+            self._hata("bulunamadı", 404, "bulunamadi")
         except (ValueError, KeyError) as exc:
-            self._hata(str(exc))
+            self._yakala(exc)
         except LookupError as exc:
-            self._hata(str(exc), 404)
+            self._yakala(exc, 404)
 
     def do_PATCH(self) -> None:
         """PATCH /api/events/<id> — başlık/konum/açıklama günceller."""
         if not self._kaynak_guvenli():
-            self._hata("bu istek Takvim penceresinden gelmiyor", 403)
+            self._hata("bu istek Takvim penceresinden gelmiyor", 403, "kaynak_guvensiz")
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
@@ -536,16 +661,16 @@ class _Handler(BaseHTTPRequestHandler):
             if len(parcalar) == 3 and parcalar[:2] == ["api", "calendars"]:
                 self._takvim_guncelle(int(parcalar[2]))
                 return
-            self._hata("bulunamadı", 404)
+            self._hata("bulunamadı", 404, "bulunamadi")
         except (ValueError, KeyError) as exc:
-            self._hata(str(exc))
+            self._yakala(exc)
         except LookupError as exc:
-            self._hata(str(exc), 404)
+            self._yakala(exc, 404)
 
     def do_DELETE(self) -> None:
         """DELETE /api/events/<id> — SERİNİN TAMAMINI siler."""
         if not self._kaynak_guvenli():
-            self._hata("bu istek Takvim penceresinden gelmiyor", 403)
+            self._hata("bu istek Takvim penceresinden gelmiyor", 403, "kaynak_guvensiz")
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
@@ -554,7 +679,10 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 self.repo.delete_reminder(int(parcalar[2]))
             except ValueError:
-                self._hata("geçersiz id")
+                self._hata("geçersiz id", 400, "gecersiz_id")
+                return
+            except LookupError as exc:
+                self._yakala(exc, 404)
                 return
             self._json({"deleted": parcalar[2]})
             return
@@ -563,19 +691,19 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 self._takvim_sil(int(parcalar[2]))
             except ValueError as exc:
-                self._hata(str(exc))
+                self._yakala(exc)
             except LookupError as exc:
-                self._hata(str(exc), 404)
+                self._yakala(exc, 404)
             return
 
         if len(parcalar) == 3 and parcalar[:2] == ["api", "events"]:
             try:
                 event_id = int(parcalar[2])
             except ValueError:
-                self._hata("geçersiz id")
+                self._hata("geçersiz id", 400, "gecersiz_id")
                 return
             if self.repo.get_event(event_id) is None:
-                self._hata("etkinlik bulunamadı", 404)
+                self._hata("etkinlik bulunamadı", 404, "etkinlik_bulunamadi")
                 return
             # Sert silme değil, anlık görüntülü silme: yanıt "Geri al" düğmesini
             # besliyor, diriltme `POST /api/events/restore_last` ile.
@@ -600,7 +728,7 @@ class _Handler(BaseHTTPRequestHandler):
         govde = self._govde()
         metin = (govde.get("text") or "").strip()
         if not metin:
-            self._hata("metin boş")
+            self._hata("metin boş", 400, "metin_bos")
             return
         cozum = parse_quick_add(metin, now=datetime.now(UTC), tzid=self.tzid)
         self._json(
@@ -633,7 +761,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         takvimler = self.repo.list_calendars()
         if not takvimler:
-            raise ValueError("önce bir takvim oluşturulmalı")
+            raise _KodluHata("takvim_gerekli", "önce bir takvim oluşturulmalı")
         # Varsayılan takvim GÖRÜNÜR olanlardan seçiliyor. `list_calendars()`
         # gizlileri de veriyor ve ada göre sıralı: gizli bir takvim alfabede
         # başa düşerse etkinlik oraya yazılıyor, "Eklendi" bildirimi çıkıyor ve
@@ -648,7 +776,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         metin = (govde.get("text") or "").strip()
         if not metin:
-            raise ValueError("metin boş")
+            raise _KodluHata("metin_bos", "metin boş")
 
         cozum = parse_quick_add(metin, now=datetime.now(UTC), tzid=self.tzid)
         kaydedilen = self.repo.add_event(
@@ -692,20 +820,25 @@ class _Handler(BaseHTTPRequestHandler):
         """
         baslik = (govde.get("title") or "").strip()
         if not baslik:
-            raise ValueError("başlık boş")
+            raise _KodluHata("baslik_bos", "başlık boş")
 
         hedef_gun = date.fromisoformat(govde["date"])
         dakika = int(govde["minutes"])
         if not 0 <= dakika < 24 * 60:
-            raise ValueError(f"minutes gün içinde olmalı: {dakika}")
+            raise _KodluHata(
+                "minutes_aralik", f"minutes gün içinde olmalı: {dakika}",
+                {"dakika": dakika},
+            )
 
         # Varsayılan süre bir saat. Gece yarısını aşabilir (23:30'a tıklanırsa),
         # bu yüzden üst sınır 24 saat değil.
         bitis = int(govde.get("endMinutes") or dakika + 60)
         if bitis <= dakika:
-            raise ValueError("endMinutes, minutes'tan büyük olmalı")
+            raise _KodluHata(
+                "endminutes_sira", "endMinutes, minutes'tan büyük olmalı"
+            )
         if bitis > 48 * 60:
-            raise ValueError("endMinutes iki günü aşamaz")
+            raise _KodluHata("endminutes_asim", "endMinutes iki günü aşamaz")
 
         # Tekrar KAPALI bir kümeden geliyor, serbest RRULE metni değil: arayüz
         # bir açılır liste gösteriyor ve kullanıcının RFC 5545 öğrenmesi
@@ -714,7 +847,10 @@ class _Handler(BaseHTTPRequestHandler):
         # oluşturulmamış olandan kötü.
         tekrar = govde.get("tekrar") or "yok"
         if tekrar not in TEKRAR_SECENEKLERI:
-            raise ValueError(f"bilinmeyen tekrar: {tekrar}")
+            raise _KodluHata(
+                "bilinmeyen_tekrar", f"bilinmeyen tekrar: {tekrar}",
+                {"tekrar": str(tekrar)},
+            )
 
         gun_basi = datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
         kaydedilen = self.repo.add_event(
@@ -809,7 +945,10 @@ class _Handler(BaseHTTPRequestHandler):
             hedef_gun = date.fromisoformat(govde["newDate"])
             dakika = int(govde["newMinutes"])
             if not 0 <= dakika < 24 * 60:
-                raise ValueError(f"newMinutes gün içinde olmalı: {dakika}")
+                raise _KodluHata(
+                    "newminutes_aralik", f"newMinutes gün içinde olmalı: {dakika}",
+                    {"dakika": dakika},
+                )
             gun_basi = datetime(hedef_gun.year, hedef_gun.month, hedef_gun.day)
             yeni_bas = from_wall_clock(gun_basi + timedelta(minutes=dakika), self.tzid)
 
@@ -820,9 +959,14 @@ class _Handler(BaseHTTPRequestHandler):
             if bitis_dakika is not None:
                 bitis_dakika = int(bitis_dakika)
                 if bitis_dakika <= dakika:
-                    raise ValueError("newEndMinutes, newMinutes'tan büyük olmalı")
+                    raise _KodluHata(
+                        "newendminutes_sira",
+                        "newEndMinutes, newMinutes'tan büyük olmalı",
+                    )
                 if bitis_dakika > 48 * 60:
-                    raise ValueError("newEndMinutes iki günü aşamaz")
+                    raise _KodluHata(
+                        "newendminutes_asim", "newEndMinutes iki günü aşamaz"
+                    )
                 yeni_bit = from_wall_clock(
                     gun_basi + timedelta(minutes=bitis_dakika), self.tzid
                 )
@@ -845,7 +989,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         takvimler = self.repo.list_calendars()
         if not takvimler:
-            raise ValueError("önce bir takvim oluşturulmalı")
+            raise _KodluHata("takvim_gerekli", "önce bir takvim oluşturulmalı")
         onizleme = (sorgu or {}).get("dry_run") == ["1"]
         # Hedef GÖRÜNÜR takvimlerden: ada göre ilk takvim gizliyse içe aktarılan
         # her şey görünmez bir yere yazılır (oluşturmadaki AGENTS 52 tuzağı).
@@ -876,7 +1020,7 @@ class _Handler(BaseHTTPRequestHandler):
         govde = self._govde()
         dakika = govde.get("minutesBefore")
         if dakika is None:
-            raise ValueError("minutesBefore gerekli")
+            raise _KodluHata("minutesbefore_gerekli", "minutesBefore gerekli")
         kayit = self.repo.add_reminder(event_id, int(dakika))
         self._json(
             {"reminder": {"id": kayit.id, "minutesBefore": kayit.minutes_before}}, 201
@@ -890,11 +1034,11 @@ class _Handler(BaseHTTPRequestHandler):
         """
         govde = self._govde()
         if not govde.get("originalStartUtc"):
-            raise ValueError("originalStartUtc gerekli")
+            raise _KodluHata("originalstart_gerekli", "originalStartUtc gerekli")
         split = parse_iso(govde["originalStartUtc"])
         title = govde.get("title")
         if title is not None and not str(title).strip():
-            raise ValueError("başlık boş")
+            raise _KodluHata("baslik_bos", "başlık boş")
         self._json(
             self.repo.split_series(
                 event_id,
@@ -916,7 +1060,7 @@ class _Handler(BaseHTTPRequestHandler):
         govde = self._govde()
         ad = (govde.get("name") or "").strip()
         if not ad:
-            raise ValueError("takvim adı boş")
+            raise _KodluHata("takvim_ad_bos", "takvim adı boş")
         renk = _renk_dogrula(govde.get("color"))
         self._json({"calendar": _takvim(self.repo.add_calendar(ad, renk))}, 201)
 
@@ -928,7 +1072,7 @@ class _Handler(BaseHTTPRequestHandler):
         govde = self._govde()
         ad = takvim.name if govde.get("name") is None else (govde["name"] or "").strip()
         if not ad:
-            raise ValueError("takvim adı boş")
+            raise _KodluHata("takvim_ad_bos", "takvim adı boş")
         renk = takvim.color if govde.get("color") is None else _renk_dogrula(govde["color"])
         yeni = replace(takvim, name=ad, color=renk)
         self.repo.update_calendar(yeni)
@@ -945,7 +1089,7 @@ class _Handler(BaseHTTPRequestHandler):
         if takvim is None:
             raise LookupError("takvim bulunamadı")
         if len(self.repo.list_calendars()) <= 1:
-            raise ValueError("son takvim silinemez")
+            raise _KodluHata("son_takvim_silinemez", "son takvim silinemez")
         self.repo.delete_calendar(takvim_id)
         self._json({"deleted": takvim_id})
 
@@ -981,7 +1125,10 @@ def _renk_dogrula(deger) -> str:
         return _VARSAYILAN_RENK
     renk = str(deger).strip()
     if not _RENK_RE.match(renk):
-        raise ValueError(f"renk #rrggbb biçiminde olmalı: {renk}")
+        raise _KodluHata(
+            "renk_bicimi", f"renk #rrggbb biçiminde olmalı: {renk}",
+            {"renk": renk},
+        )
     return renk.lower()
 
 
@@ -1058,17 +1205,20 @@ def _ayar_durumu(db_yolu) -> dict:
     elle silmişse arayüz "açık" yalanı söylemesin.
     """
     tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
+    dil = str(VARSAYILANLAR["dil"])
     if db_yolu is not None and str(db_yolu) != ":memory:":
         try:
             sakli = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent))
             tepsi = bool(sakli.get("tepsiye_kucult", tepsi))
+            if sakli.get("dil", dil) in DILLER:
+                dil = sakli["dil"]
         except OSError:
             pass
     try:
         oto_gercek = bool(otomatik.kurulu_mu())
     except OSError:
         oto_gercek = False
-    return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek}
+    return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil}
 
 
 def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,

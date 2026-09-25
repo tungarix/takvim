@@ -25,6 +25,7 @@ Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, ç
 - Birden çok takvim (Ders, Kişisel, Aktenak…) — renk ve görünürlük kontrolü
 - `.ics` içe aktarma
 - Yerel SQLite, tek kullanıcı, çevrimdışı
+- Türkçe / İngilizce arayüz dili (⚙ Ayarlar → Dil; varsayılan Türkçe)
 
 **Bilinçli olarak kapsam dışı (v1)**
 
@@ -223,7 +224,8 @@ olduğunu taşımaz.
 | Yedekler | Üstteki "Yedekler": otomatik yedekleri listeler, seçileni geri yükler |
 | İçe aktar | Üstteki "İçe aktar": `.ics` seç, önizlemeyi onayla (kaç yeni/güncelleme/atlanacak) |
 | Çakışma uyarısı | Oluştururken üst üste gelen saat varsa arayüz söylüyor, engellemiyor |
-| Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat |
+| Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat + arayüz dili (Türkçe/English, kaydedince sayfa yeniden yüklenir) |
+| Dil | Arayüz ya tamamen Türkçe ya tamamen İngilizce. İSTİSNA: hızlı ekleme kutusu İngilizce modda da **Türkçe cümle** bekliyor ("yarın 14:00 diş hekimi") — ayrıştırıcı dilbilgisi Türkçe gömülü, İngilizce cümle tanınmazsa zaman bulunamayıp tüm gün kaydedilir. Boş durum örnekleri bu yüzden çevrilmiyor: doğru kullanımı gösteriyorlar |
 
 Tekrarlı etkinliklerde panelde **üç ayrı işlem** var: "Bu örneği sil" yalnız o
 günü kaldırır, "Seriyi tamamen sil" hepsini (sayı göstererek sorar, tek adımlı
@@ -303,7 +305,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**436 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**456 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -379,6 +381,10 @@ kırmızıya dönüyor.
   kısaltması, override/hatırlatıcı/fired dağılımı)
 - `test_ayarlar_otomatik.py` (18): ayar dosyası, Başlangıç kaydı, tepsi simgesi
 - `test_ui_views.py` (+9): çakışma sorgusu (6), içe aktarma önizlemesi, seri bölme (2)
+- `test_dil.py` (18): dil ayarı, hata kodları, İngilizce payload/etiketler,
+  varsayılan takvim adı, İngilizce bildirim metni
+- `test_frontend_smoke.py` (+2 EN): İngilizce statik metinler + hızlı ekleme/
+  panel/ayarlar akışı (toplam 17 duman testi)
 - Lint + tip: `ruff` (F/I/UP/RUF100) ve `mypy` (`core/` + `store/`) temiz;
   kural dışı bırakılanlar `pyproject.toml`'da gerekçesiyle listeli
 

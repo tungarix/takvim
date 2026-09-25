@@ -26,25 +26,45 @@ __all__ = ["run_once", "run_forever", "bildirim_metni"]
 _PAY = timedelta(days=1)
 
 
-def bildirim_metni(due, tzid: str) -> tuple[str, str]:
-    """Bir hatırlatıcıyı (başlık, gövde) metnine çevirir."""
+def bildirim_metni(due, tzid: str, *, dil: str = "tr") -> tuple[str, str]:
+    """Bir hatırlatıcıyı (başlık, gövde) metnine çevirir.
+
+    `dil` arayüz ayarından geliyor (`ayarlar.json` → `remind/__main__.py`);
+    bildirim toast'ı da arayüzün diliyle konuşmalı. Tarih/saat biçimi dile
+    göre: TR `GG.AA.YYYY`, EN (GB sırası) `GG/AA/YYYY`; saatler iki dilde de
+    24 saat (`%H:%M`).
+    """
+    ingilizce = dil == "en"
     occ = due.occurrence
     if occ.all_day:
-        ne_zaman = to_local(occ.start_utc, occ.tzid).strftime("%d.%m.%Y")
-        ne_zaman = f"Tüm gün · {ne_zaman}"
+        tarih = to_local(occ.start_utc, occ.tzid).strftime(
+            "%d/%m/%Y" if ingilizce else "%d.%m.%Y"
+        )
+        ne_zaman = f"{'All day' if ingilizce else 'Tüm gün'} · {tarih}"
     else:
         bas = to_local(occ.start_utc, occ.tzid).strftime("%H:%M")
         bit = to_local(occ.end_utc, occ.tzid).strftime("%H:%M")
         ne_zaman = f"{bas} – {bit}"
 
-    if due.minutes_before == 0:
+    dk = due.minutes_before
+    if ingilizce:
+        if dk == 0:
+            ne_kadar = "starting now"
+        elif dk < 60:
+            ne_kadar = f"in {dk} minute" if dk == 1 else f"in {dk} minutes"
+        elif dk % 60 == 0:
+            saat = dk // 60
+            ne_kadar = f"in {saat} hour" if saat == 1 else f"in {saat} hours"
+        else:
+            ne_kadar = f"in {dk // 60} h {dk % 60} min"
+    elif dk == 0:
         ne_kadar = "şimdi başlıyor"
-    elif due.minutes_before < 60:
-        ne_kadar = f"{due.minutes_before} dakika içinde"
-    elif due.minutes_before % 60 == 0:
-        ne_kadar = f"{due.minutes_before // 60} saat içinde"
+    elif dk < 60:
+        ne_kadar = f"{dk} dakika içinde"
+    elif dk % 60 == 0:
+        ne_kadar = f"{dk // 60} saat içinde"
     else:
-        ne_kadar = f"{due.minutes_before // 60} sa {due.minutes_before % 60} dk içinde"
+        ne_kadar = f"{dk // 60} sa {dk % 60} dk içinde"
 
     govde = f"{ne_zaman} · {ne_kadar}"
     if occ.location:
@@ -59,6 +79,7 @@ def run_once(
     *,
     now: datetime | None = None,
     include_hidden: bool = False,
+    dil: str = "tr",
 ) -> list:
     """Bir tur: vadesi geleni bul, işaretle, bildir. Gönderilenleri döndürür.
 
@@ -94,7 +115,7 @@ def run_once(
     for due in vadesi_gelen:
         if not repo.mark_fired(due.reminder_id, due.occurrence.start_utc):
             continue  # başka bir süreç önce davrandı
-        baslik, govde = bildirim_metni(due, tzid)
+        baslik, govde = bildirim_metni(due, tzid, dil=dil)
         notifier.notify(baslik, govde)
         gonderilen.append(due)
 
@@ -108,6 +129,7 @@ def run_forever(
     *,
     poll_seconds: int = 60,
     verbose: bool = False,
+    dil: str = "tr",
 ) -> None:
     """Ctrl+C'ye kadar döner.
 
@@ -121,7 +143,7 @@ def run_forever(
         while True:
             simdi = datetime.now(UTC)
             try:
-                gonderilen = run_once(repo, tzid, notifier, now=simdi)
+                gonderilen = run_once(repo, tzid, notifier, now=simdi, dil=dil)
                 if verbose and gonderilen:
                     for due in gonderilen:
                         print(f"  bildirildi: {due.occurrence.title}")

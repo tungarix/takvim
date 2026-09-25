@@ -107,16 +107,20 @@ def _hatirlatici_baslat(db: str, tzid: str) -> threading.Thread:
     return thread
 
 
-def varsayilan_takvim_saglat(repo) -> bool:
+def varsayilan_takvim_saglat(repo, dil: str = "tr") -> bool:
     """Hiç takvim yoksa varsayılan birini açar; açtıysa True döndürür.
 
     İlk açılışta takvim olmazsa hızlı ekleme "önce bir takvim oluşturulmalı"
     diye reddeder ve kullanıcı hiçbir şey yapamaz. Boş bir ekranla karşılamak
     yerine kullanılabilir bir uygulama veriyoruz.
+
+    Ad dile göre: İngilizce kurulumda "Personal". Kullanıcı verisi sayılır,
+    sonradan yeniden adlandırılabilir; boş durum ekranı iki adı da tanıyor.
     """
     if repo.list_calendars():
         return False
-    repo.add_calendar("Kişisel", "#3b82f6")
+    ad = "Personal" if dil == "en" else "Kişisel"
+    repo.add_calendar(ad, "#3b82f6")
     return True
 
 
@@ -285,8 +289,21 @@ def _calistir(args) -> int:
             else:
                 seed(repo, date.today())
                 print("--demo: örnek veri yazıldı", flush=True)
-        elif varsayilan_takvim_saglat(repo):
-            print("İlk açılış: 'Kişisel' takvimi oluşturuldu.", flush=True)
+        else:
+            # Dil, varsayılan takvim ADINI seçiyor ("Kişisel"/"Personal").
+            # Okuma patlarsa Türkçe varsayılıyor: ayarsız açılış Türkçe
+            # kurulum demek.
+            dil = "tr"
+            if args.db != ":memory:":
+                try:
+                    okunan = ayar_oku(ayar_dosyasi(veri_dizini(args.db))).get("dil", "tr")
+                    if okunan in ("tr", "en"):
+                        dil = okunan
+                except OSError:
+                    pass
+            if varsayilan_takvim_saglat(repo, dil=dil):
+                ad = "Personal" if dil == "en" else "Kişisel"
+                print(f"İlk açılış: '{ad}' takvimi oluşturuldu.", flush=True)
 
         if args.reminder:
             if args.db == ":memory:":

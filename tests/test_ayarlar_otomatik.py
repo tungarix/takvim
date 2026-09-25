@@ -27,10 +27,11 @@ from ui.tepsi import Tepsi, simge_bul
 # ---------------------------------------------------------------------------
 
 def test_varsayilanlar_kapali(tmp_path):
-    """Dosya yoksa ikisi de kapalı (mevcut davranış korunuyor)."""
+    """Dosya yoksa hepsi varsayılan (dil TR, mevcut davranış korunuyor)."""
     assert ayar_oku(ayar_dosyasi(tmp_path)) == {
         "tepsiye_kucult": False,
         "otomatik_baslat": False,
+        "dil": "tr",
     }
 
 
@@ -65,6 +66,7 @@ def test_bilinmeyen_anahtar_yazilmaz(tmp_path):
     assert json.loads(yol.read_text(encoding="utf-8")) == {
         "tepsiye_kucult": True,
         "otomatik_baslat": False,
+        "dil": "tr",
     }
 
 
@@ -287,10 +289,10 @@ def _jpost(temel, yol, govde):
 
 
 def test_ayarlar_varsayilanla_gelir(sunucu_dosya):
-    """İlk açılışta ikisi de kapalı."""
+    """İlk açılışta ikisi de kapalı, dil TR."""
     temel, _, _ = sunucu_dosya
     assert _jget(temel, "/api/ayarlar") == {
-        "tepsiye_kucult": False, "otomatik_baslat": False}
+        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr"}
 
 
 def test_ayarlar_tepsi_kaydedilir(sunucu_dosya):

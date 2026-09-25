@@ -33,6 +33,29 @@ _AY_ADLARI = [
     "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık",
 ]
 
+# İngilizce karşılıklar: sunucu gün/ay ADINI seçiyor, istemci aynen basıyor.
+# Biçim (`label` yapısı) iki dilde de aynı, yalnızca adlar değişiyor -- ön yüz
+# tek bir şablonla çalışıyor, dil başına ayrı çizim kodu yok.
+_GUN_ADLARI_EN = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+_TAM_GUN_ADLARI_EN = [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+]
+_AY_ADLARI_EN = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
+
+
+def _adlar(dil: str) -> tuple[list[str], list[str], list[str]]:
+    """Dile göre (kısa gün, tam gün, ay) ad listeleri.
+
+    Tanınmayan değer sessizce Türkçe'ye düşüyor: bozuk `ayarlar.json`
+    yüzünden ızgaranın boş/anahtarsız kalması kabul edilemez.
+    """
+    if dil == "en":
+        return _GUN_ADLARI_EN, _TAM_GUN_ADLARI_EN, _AY_ADLARI_EN
+    return _GUN_ADLARI, _TAM_GUN_ADLARI, _AY_ADLARI
+
 
 def week_start(anchor: date) -> date:
     """Verilen tarihin içinde bulunduğu haftanın pazartesisi."""
@@ -115,6 +138,7 @@ def day_payload(
     *,
     calendar_ids: list[int] | None = None,
     include_hidden: bool = False,
+    dil: str = "tr",
 ) -> dict:
     """Tek günlük ızgara. Hafta ile aynı yapı, tek gün.
 
@@ -123,7 +147,7 @@ def day_payload(
     return _izgara_payload(
         repo, anchor, 1, tzid,
         calendar_ids=calendar_ids, include_hidden=include_hidden,
-        etiket=_gun_etiketi(anchor), gorunum="day",
+        etiket=_gun_etiketi(anchor, dil), gorunum="day", dil=dil,
     )
 
 
@@ -134,6 +158,7 @@ def month_payload(
     *,
     calendar_ids: list[int] | None = None,
     include_hidden: bool = False,
+    dil: str = "tr",
 ) -> dict:
     """Ay görünümü: saat ızgarası yok, gün hücrelerinde etkinlik listesi.
 
@@ -190,8 +215,8 @@ def month_payload(
         "anchor": ilk.isoformat(),
         "gridStart": izgara_baslangic.isoformat(),
         "gridEnd": izgara_bitis.isoformat(),
-        "label": f"{_AY_ADLARI[ilk.month - 1]} {ilk.year}",
-        "dayNames": _GUN_ADLARI,
+        "label": _ay_etiketi(ilk, dil),
+        "dayNames": _adlar(dil)[0],
         "calendars": [
             {"id": c.id, "name": c.name, "color": c.color, "visible": c.visible}
             for c in takvimler
@@ -207,6 +232,7 @@ def week_payload(
     *,
     calendar_ids: list[int] | None = None,
     include_hidden: bool = False,
+    dil: str = "tr",
 ) -> dict:
     """Bir haftanın tüm görüntüleme verisini hazırlar.
 
@@ -226,7 +252,7 @@ def week_payload(
     return _izgara_payload(
         repo, pazartesi, 7, tzid,
         calendar_ids=calendar_ids, include_hidden=include_hidden,
-        etiket=_hafta_etiketi(pazartesi), gorunum="week",
+        etiket=_hafta_etiketi(pazartesi, dil), gorunum="week", dil=dil,
     )
 
 
@@ -240,6 +266,7 @@ def _izgara_payload(
     include_hidden: bool,
     etiket: str,
     gorunum: str,
+    dil: str = "tr",
 ) -> dict:
     """Gün ve hafta görünümlerinin ortak gövdesi.
 
@@ -256,6 +283,7 @@ def _izgara_payload(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
 
+    gun_adlari, _, ay_adlari = _adlar(dil)
     gunler = []
     for offset in range(gun_sayisi):
         gun = ilk_gun + timedelta(days=offset)
@@ -305,9 +333,9 @@ def _izgara_payload(
         gunler.append(
             {
                 "date": gun.isoformat(),
-                "dayName": _GUN_ADLARI[gun.weekday()],
+                "dayName": gun_adlari[gun.weekday()],
                 "dayNumber": gun.day,
-                "monthName": _AY_ADLARI[gun.month - 1],
+                "monthName": ay_adlari[gun.month - 1],
                 "dayMinutes": gun_dakika,
                 "allDay": tum_gun,
                 "timed": saatli,
@@ -329,22 +357,31 @@ def _izgara_payload(
     }
 
 
-def _gun_etiketi(gun: date) -> str:
-    """'13 Eylül 2026 Pazar' biçiminde başlık."""
-    return f"{gun.day} {_AY_ADLARI[gun.month - 1]} {gun.year} {_TAM_GUN_ADLARI[gun.weekday()]}"
+def _gun_etiketi(gun: date, dil: str = "tr") -> str:
+    """'13 Eylül 2026 Pazar' / 'Sunday 13 September 2026' biçiminde başlık."""
+    _, tam_gunler, aylar = _adlar(dil)
+    if dil == "en":
+        return f"{tam_gunler[gun.weekday()]} {gun.day} {aylar[gun.month - 1]} {gun.year}"
+    return f"{gun.day} {aylar[gun.month - 1]} {gun.year} {tam_gunler[gun.weekday()]}"
 
 
-def _hafta_etiketi(pazartesi: date) -> str:
+def _ay_etiketi(ilk: date, dil: str = "tr") -> str:
+    """'Eylül 2026' / 'September 2026' biçiminde ay başlığı."""
+    return f"{_adlar(dil)[2][ilk.month - 1]} {ilk.year}"
+
+
+def _hafta_etiketi(pazartesi: date, dil: str = "tr") -> str:
     """'6 - 12 Mayıs 2024' / '29 Nisan - 5 Mayıs 2024' biçiminde başlık."""
+    _, _, aylar = _adlar(dil)
     pazar = pazartesi + timedelta(days=6)
     if pazartesi.month == pazar.month:
-        return f"{pazartesi.day} - {pazar.day} {_AY_ADLARI[pazar.month - 1]} {pazar.year}"
+        return f"{pazartesi.day} - {pazar.day} {aylar[pazar.month - 1]} {pazar.year}"
     if pazartesi.year == pazar.year:
         return (
-            f"{pazartesi.day} {_AY_ADLARI[pazartesi.month - 1]} - "
-            f"{pazar.day} {_AY_ADLARI[pazar.month - 1]} {pazar.year}"
+            f"{pazartesi.day} {aylar[pazartesi.month - 1]} - "
+            f"{pazar.day} {aylar[pazar.month - 1]} {pazar.year}"
         )
     return (
-        f"{pazartesi.day} {_AY_ADLARI[pazartesi.month - 1]} {pazartesi.year} - "
-        f"{pazar.day} {_AY_ADLARI[pazar.month - 1]} {pazar.year}"
+        f"{pazartesi.day} {aylar[pazartesi.month - 1]} {pazartesi.year} - "
+        f"{pazar.day} {aylar[pazar.month - 1]} {pazar.year}"
     )

@@ -22,6 +22,9 @@ const durum = {
   gorunum: "week",
   anchor: bugunISO(),
   veri: null,
+  // Arayüz dili: "tr" (varsayılan) | "en". Açılışta `/api/ayarlar`dan okunuyor
+  // (`ayarlar.json` → `dil`); `t()` buraya bakıyor, `yerel()` Intl yerini seçiyor.
+  dil: "tr",
   secili: null,          // seçili occurrence (panel için)
   takvimGorunur: new Map(),
   kaydirildi: false,
@@ -44,6 +47,33 @@ const durum = {
 
 const el = (id) => document.getElementById(id);
 
+/* ---------- dil ---------- */
+
+// `i18n.js` (`TR`/`EN`) `index.html`de BUNDAN ÖNCE yükleniyor. `t()` her
+// çağrıda aktif dile bakıyor -- dil değişince sayfa zaten yeniden yükleniyor,
+// o yüzden önbellek yok.
+function t(anahtar, params) {
+  const sozluk = durum.dil === "en" ? EN : TR;
+  let s = sozluk[anahtar];
+  if (s === undefined) s = TR[anahtar];
+  if (s === undefined) return anahtar;
+  if (Array.isArray(s)) return s;
+  if (params && typeof params === "object") {
+    for (const [k, v] of Object.entries(params)) {
+      s = s.split(`{${k}}`).join(String(v));
+    }
+  }
+  return s;
+}
+
+// Tarih/saat BİÇİMİ için yer: en-GB (24 saat, gün-önce sırası) TR'ye en yakın
+// İngilizce yer; en-US 12 saat + ay-önce yapıyor. ISO ÜRETEN `en-CA`/`en-GB`
+// çağrıları (`yerelTarihISO`/`yerelSaatISO`) dile DEĞİL, makine biçimine bağlı,
+// onlara dokunulmuyor.
+function yerel() {
+  return durum.dil === "en" ? "en-GB" : "tr-TR";
+}
+
 /* ---------- tarih yardımcıları ---------- */
 
 function bugunISO() {
@@ -65,13 +95,13 @@ function ayKaydir(iso, ay) {
 }
 
 function saatBicim(iso, tzid) {
-  return new Intl.DateTimeFormat("tr-TR", {
+  return new Intl.DateTimeFormat(yerel(), {
     hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tzid,
   }).format(new Date(iso));
 }
 
 function tarihBicim(iso, tzid) {
-  return new Intl.DateTimeFormat("tr-TR", {
+  return new Intl.DateTimeFormat(yerel(), {
     weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: tzid,
   }).format(new Date(iso));
 }
@@ -98,9 +128,31 @@ async function istek(yol, secenekler = {}) {
   const tur = yanit.headers.get("Content-Type") || "";
   const govde = tur.includes("json") ? await yanit.json() : await yanit.text();
   if (!yanit.ok) {
-    throw new Error((govde && govde.error) || `sunucu ${yanit.status}`);
+    throw hataUret(govde, yanit.status);
   }
   return govde;
+}
+
+/* Sunucu hatasını DİLDE mesaja çevirir.
+
+ * Sunucu `{"error": <Türkçe>, "error_code": <kod>, "error_param": {...}}`
+ * dönüyor (`error` eski sözleşme, aynen duruyor). Kodu BİLİYORSAK `t()` ile
+ * çeviriyoruz; bilmiyorsak (kodsuz eski yol, ağ hatası) ham metni gösteriyoruz
+ * -- çevrilemeyen bir hata, hiç gösterilmeyen bir hatadan iyidir. Burası TEK
+ * yer olduğu için her `bildir(hata.message, true)` çağrısı otomatik çeviriyor,
+ * çağrı yerlerine dokunmaya gerek yok. */
+function hataUret(govde, status) {
+  const kod = govde && govde.error_code;
+  if (kod && TR[`hata_${kod}`] !== undefined) {
+    const param = (govde && govde.error_param) || {};
+    const hata = new Error(t(`hata_${kod}`, typeof param === "object" ? param : { deger: param }));
+    hata.code = kod;
+    return hata;
+  }
+  const ham = (govde && govde.error) || t("hata_sunucu", { kod: status });
+  const hata = new Error(ham);
+  if (kod) hata.code = kod;
+  return hata;
 }
 
 /* ---------- uygulama içi soru/onay penceresi ---------- */
@@ -128,7 +180,7 @@ function modalAcik() {
  * değiştir / Vazgeç"). Tıklanınca formdaki DEĞERLER kaybolmadan (`oku()` yine
  * çağrılıyor) sonuca `{[anahtar]: true}` ekleniyor -- çağıran taraf hangi
  * düğmeye basıldığını böyle ayırt ediyor. */
-function modalAc({ baslik, metin = "", onay = "Tamam", tehlike = false, kur, oku, iptalDegeri, ucuncu = null, genislik = null }) {
+function modalAc({ baslik, metin = "", onay = t("tamam"), tehlike = false, kur, oku, iptalDegeri, ucuncu = null, genislik = null }) {
   const perde = el("perde");
   const govde = el("modal-alanlar");
   const tamam = el("modal-tamam");
@@ -233,7 +285,7 @@ function sor(baslik, metin, varsayilan = "") {
 }
 
 /** Evet/hayır sorar; confirm() ile aynı sözleşme. */
-function onayla(baslik, metin, onay = "Tamam", tehlike = false) {
+function onayla(baslik, metin, onay = t("tamam"), tehlike = false) {
   return modalAc({ baslik, metin, onay, tehlike, iptalDegeri: false, oku: () => true });
 }
 
@@ -247,7 +299,7 @@ function onayla(baslik, metin, onay = "Tamam", tehlike = false) {
  * işletim sistemi hallediyor; kendi tarih seçicimizi yazmak bu uygulamanın
  * kazanacağı bir savaş değil.
  */
-function modalForm(baslik, metin, alanlar, onay = "Kaydet", ucuncu = null, genislik = null) {
+function modalForm(baslik, metin, alanlar, onay = t("kaydet"), ucuncu = null, genislik = null) {
   const girdiler = {};
   return modalAc({
     baslik,
@@ -332,7 +384,7 @@ function bildir(mesaj, hata = false, geriAl = null) {
     const dugme = document.createElement("button");
     dugme.type = "button";
     dugme.className = "bildirim-dugme";
-    dugme.textContent = "Geri al";
+    dugme.textContent = t("geri_al");
     dugme.onclick = () => { kutu.hidden = true; geriAl(); };
     kutu.appendChild(dugme);
   }
@@ -355,7 +407,7 @@ async function yukle() {
     });
     ciz();
   } catch (hata) {
-    bildir(`Veri alınamadı: ${hata.message}`, true);
+    bildir(t("veri_alinamadi", { ayrinti: hata.message }), true);
   }
 }
 
@@ -411,11 +463,11 @@ function takvimleriCiz() {
     li.className = "takvim-satir" + (gorunur ? "" : " gizli");
     li.innerHTML =
       `<span class="renk-kutu"></span><span class="takvim-ad"></span>` +
-      `<button type="button" class="takvim-dugme" data-is="duzenle" title="Düzenle">✎</button>` +
-      `<button type="button" class="takvim-dugme" data-is="sil" title="Sil">×</button>`;
+      `<button type="button" class="takvim-dugme" data-is="duzenle" title="${kacir(t("duzenle"))}">✎</button>` +
+      `<button type="button" class="takvim-dugme" data-is="sil" title="${kacir(t("sil"))}">×</button>`;
     li.querySelector(".renk-kutu").style.background = c.color;
     li.querySelector(".takvim-ad").textContent = c.name;
-    li.title = gorunur ? "Gizle" : "Göster";
+    li.title = gorunur ? t("gizle") : t("goster");
     li.onclick = () => gorunurlukDegistir(c.id, !gorunur);
     // Satırın kendisi görünürlüğü değiştiriyor; düğmeler onu TETİKLEMEMELİ.
     li.querySelector('[data-is="duzenle"]').onclick = (e) => {
@@ -454,8 +506,10 @@ function bosDurumKontrol(veri) {
   // "Gerçek ilk açılış" ikili sinyal: tek, varsayılan adlı takvim VE
   // görünen pencerede hiç etkinlik yok. Yalnızca ikinciye bakmak, aktif
   // bir kullanıcının sakin bir haftaya denk gelmesini "kurulum" sanardı.
+  // Ad dile göre ("Kişisel"/"Personal"), ikisi de varsayılan adı.
   const ilkKurulumGibi =
-    veri.calendars.length === 1 && veri.calendars[0].name === "Kişisel";
+    veri.calendars.length === 1 &&
+    (veri.calendars[0].name === "Kişisel" || veri.calendars[0].name === "Personal");
   el("bos-durum").hidden = !(ilkKurulumGibi && veriBosMu(veri));
 }
 
@@ -467,17 +521,21 @@ function bosDurumKontrol(veri) {
 function miniAyCiz() {
   const [yil, ay] = durum.miniAy.split("-").map(Number);
   el("mt-ay-adi").textContent = new Date(Date.UTC(yil, ay - 1, 1))
-    .toLocaleDateString("tr-TR", { month: "long", year: "numeric", timeZone: "UTC" });
+    .toLocaleDateString(yerel(), { month: "long", year: "numeric", timeZone: "UTC" });
 
   const kap = el("mt-gunler");
   kap.innerHTML = "";
-  ["P", "S", "Ç", "P", "C", "C", "P"].forEach((h, i) => {
+  // Gün harfleri ve tam adlar dile göre (`i18n.js`); tek harf çakışması her
+  // iki dilde de var (Salı/Perşembe, Tue/Thu), title her zaman tam adı taşıyor.
+  const harfler = t("gun_harfleri");
+  const gunAdlari = t("gun_adlari");
+  harfler.forEach((h, i) => {
     const e = document.createElement("div");
     e.className = "mt-gun-adi";
     e.textContent = h;
     // Salı/Cuma ile Perşembe/Cumartesi tek harfte ayırt edilemiyor;
     // ekran okuyucu tam adı duysun diye.
-    e.title = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"][i];
+    e.title = gunAdlari[i];
     kap.appendChild(e);
   });
 
@@ -517,13 +575,13 @@ el("mt-sonraki").onclick = () => { durum.miniAy = ayKaydir(durum.miniAy, 1); min
 
 async function takvimEkle() {
   const s = await modalForm(
-    "Yeni takvim",
+    t("yeni_takvim"),
     "",
     [
-      { ad: "ad", etiket: "Ad", tur: "metin", deger: "" },
-      { ad: "renk", etiket: "Renk", tur: "renk", deger: "#3b82f6" },
+      { ad: "ad", etiket: t("ad"), tur: "metin", deger: "" },
+      { ad: "renk", etiket: t("renk"), tur: "renk", deger: "#3b82f6" },
     ],
-    "Oluştur",
+    t("olustur"),
   );
   if (s === null || !s.ad.trim()) return;
   await eylem(
@@ -532,17 +590,17 @@ async function takvimEkle() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: s.ad.trim(), color: s.renk }),
     }),
-    `Takvim eklendi: ${s.ad.trim()}`,
+    t("takvim_eklendi", { ad: s.ad.trim() }),
   );
 }
 
 async function takvimDuzenle(c) {
   const s = await modalForm(
-    "Takvimi düzenle",
+    t("takvim_duzenle"),
     "",
     [
-      { ad: "ad", etiket: "Ad", tur: "metin", deger: c.name },
-      { ad: "renk", etiket: "Renk", tur: "renk", deger: c.color },
+      { ad: "ad", etiket: t("ad"), tur: "metin", deger: c.name },
+      { ad: "renk", etiket: t("renk"), tur: "renk", deger: c.color },
     ],
   );
   if (s === null || !s.ad.trim()) return;
@@ -553,21 +611,21 @@ async function takvimDuzenle(c) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: s.ad.trim(), color: s.renk }),
     }),
-    "Takvim güncellendi",
+    t("takvim_guncellendi"),
   );
 }
 
 async function takvimSil(c) {
   const tamam = await onayla(
-    "Takvimi sil",
-    `"${c.name}" ve İÇİNDEKİ TÜM ETKİNLİKLER silinecek. Bu geri alınamaz.`,
-    "Takvimi sil",
+    t("takvim_sil_baslik"),
+    t("takvim_sil_metin", { ad: c.name }),
+    t("takvim_sil_baslik"),
     true,
   );
   if (!tamam) return;
   await eylem(
     () => istek(`/api/calendars/${c.id}`, { method: "DELETE" }),
-    `Takvim silindi: ${c.name}`,
+    t("takvim_silindi", { ad: c.name }),
   );
 }
 
@@ -605,7 +663,7 @@ function zamanCiz(veri) {
     baslikKap.appendChild(d);
   });
 
-  seritKap.innerHTML = `<div class="tumgun-etiket">tüm gün</div>`;
+  seritKap.innerHTML = `<div class="tumgun-etiket">${kacir(t("rozet_tumgun"))}</div>`;
   veri.days.forEach((g) => {
     const hucre = document.createElement("div");
     hucre.className = "tumgun-hucre";
@@ -710,7 +768,7 @@ function blokYap(occ, gun) {
     `<div class="b-saat">${saatBicim(occ.startUtc, occ.tzid)}–${saatBicim(occ.endUtc, occ.tzid)}` +
     `${occ.clipped ? " ⇥" : ""}</div>` +
     (occ.location ? `<div class="b-konum">${kacir(occ.location)}</div>` : "") +
-    (occ.isOverride ? `<div class="b-rozet">· taşındı</div>` : "");
+    (occ.isOverride ? `<div class="b-rozet">${kacir(t("rozet_tasindi_kisa"))}</div>` : "");
 
   // Sıkışık yakınlaştırmada ya da kısa etkinlikte başlık CSS ile kırpılabiliyor
   // (.kisa, [data-yogunluk]); imleci üzerine getirince tam başlık ve saat yine
@@ -782,19 +840,21 @@ async function izgaraTik(e, sutun, gun) {
   try {
     const c = await istek(`/api/conflicts?date=${gun.date}&start=${dakika}&end=${bitis}`);
     if (c.conflicts.length) {
-      uyari = "⚠ Çakışma: " + c.conflicts.map((x) =>
-        `${x.title} (${saatBicim(x.startUtc, x.tzid)}–${saatBicim(x.endUtc, x.tzid)})`
-      ).join(", ") + "\n";
+      uyari = t("cakisma_onek", {
+        liste: c.conflicts.map((x) =>
+          `${x.title} (${saatBicim(x.startUtc, x.tzid)}–${saatBicim(x.endUtc, x.tzid)})`
+        ).join(", "),
+      });
     }
   } catch {
     // Uyarı alınamazsa oluşturma engellenmez; sessiz devam.
   }
 
   const s = await modalForm(
-    "Yeni etkinlik",
+    t("yeni_etkinlik"),
     uyari + `${gun.dayNumber} ${gun.monthName} ${gun.dayName} · ${dakikaSaat(dakika)}–${dakikaSaat(bitis)}`,
     [
-      { ad: "baslik", etiket: "Başlık", tur: "metin", deger: "" },
+      { ad: "baslik", etiket: t("baslik_etiket"), tur: "metin", deger: "" },
       /* Tekrar KAPALI bir liste: tekrar motoru baştan beri vardı ama
        * kullanıcının onu söyleyebileceği hiçbir yer yoktu; RFC 5545 kuralı
        * yazdırmak da bu uygulamanın işi değil. */
@@ -802,7 +862,7 @@ async function izgaraTik(e, sutun, gun) {
        * sunucunun seçtiği varsayılan her zaman kullanıcının istediği olmuyor. */
       {
         ad: "takvim",
-        etiket: "Takvim",
+        etiket: t("p_takvim"),
         tur: "secim",
         deger: String((durum.veri.calendars.find((c) => durum.takvimGorunur.get(c.id) !== false)
           || durum.veri.calendars[0] || {}).id || ""),
@@ -810,19 +870,19 @@ async function izgaraTik(e, sutun, gun) {
       },
       {
         ad: "tekrar",
-        etiket: "Tekrar",
+        etiket: t("tekrar_etiket"),
         tur: "secim",
         deger: "yok",
         secenekler: [
-          { deger: "yok", etiket: "Tekrarlanmasın" },
-          { deger: "gunluk", etiket: "Her gün" },
-          { deger: "haftalik", etiket: `Her hafta (${gun.dayName})` },
-          { deger: "haftaici", etiket: "Hafta içi her gün" },
-          { deger: "aylik", etiket: "Her ay" },
+          { deger: "yok", etiket: t("tekrar_yok") },
+          { deger: "gunluk", etiket: t("tekrar_gunluk") },
+          { deger: "haftalik", etiket: t("tekrar_haftalik", { gun: gun.dayName }) },
+          { deger: "haftaici", etiket: t("tekrar_haftaici") },
+          { deger: "aylik", etiket: t("tekrar_aylik") },
         ],
       },
     ],
-    "Ekle",
+    t("ekle"),
   );
   if (s === null || !s.baslik.trim()) return;
 
@@ -841,7 +901,9 @@ async function izgaraTik(e, sutun, gun) {
         calendarId: s.takvim ? Number(s.takvim) : undefined,
       }),
     }),
-    `Eklendi: ${ad} (${gun.dayNumber} ${gun.monthName} ${dakikaSaat(dakika)})`,
+    t("eklendi_tarihli", {
+      baslik: ad, gun: gun.dayNumber, ay: gun.monthName, saat: dakikaSaat(dakika),
+    }),
   );
 }
 
@@ -1007,8 +1069,11 @@ async function surukleBitir() {
     });
     bildir(
       boyutlandirma
-        ? `Süre değişti: ${occ.title} → ${dakikaSaat(occ.startMin)}–${dakikaSaat(hedefBitisDakika)}`
-        : `Taşındı: ${occ.title} → ${dakikaSaat(hedefDakika)}`,
+        ? t("sure_degisti", {
+            baslik: occ.title,
+            aralik: `${dakikaSaat(occ.startMin)}–${dakikaSaat(hedefBitisDakika)}`,
+          })
+        : t("tasindi", { baslik: occ.title, hedef: dakikaSaat(hedefDakika) }),
     );
   } catch (hata) {
     bildir(hata.message, true);
@@ -1079,7 +1144,7 @@ async function tumgunBitir() {
         newMinutes: 0,
       }),
     });
-    bildir(`Taşındı: ${occ.title} → ${hedefTarih}`);
+    bildir(t("tasindi", { baslik: occ.title, hedef: hedefTarih }));
   } catch (hata) {
     bildir(hata.message, true);
   }
@@ -1146,7 +1211,7 @@ function ayCiz(veri) {
       const daha = document.createElement("button");
       daha.type = "button";
       daha.className = "ay-daha";
-      daha.textContent = `+${gorunurler.length - AY_MAKS_BLOK} daha`;
+      daha.textContent = t("daha", { n: gorunurler.length - AY_MAKS_BLOK });
       daha.onclick = (e) => { e.stopPropagation(); gunListesiAc(g, gorunurler, daha); };
       hucre.appendChild(daha);
     }
@@ -1182,7 +1247,7 @@ function gunListesiAc(gun, occurrences, ankraj) {
 
   const baslik = document.createElement("div");
   baslik.className = "gl-baslik";
-  baslik.textContent = new Intl.DateTimeFormat("tr-TR", {
+  baslik.textContent = new Intl.DateTimeFormat(yerel(), {
     weekday: "long", day: "numeric", month: "long",
   }).format(new Date(`${gun.date}T12:00:00`));
   kutu.appendChild(baslik);
@@ -1208,7 +1273,7 @@ function gunListesiAc(gun, occurrences, ankraj) {
   const gunDugme = document.createElement("button");
   gunDugme.type = "button";
   gunDugme.className = "gl-gun-dugme";
-  gunDugme.textContent = "Gün görünümünde aç";
+  gunDugme.textContent = t("gun_gorunumunde_ac");
   gunDugme.onclick = () => {
     gunListesiKapat();
     durum.gorunum = "day";
@@ -1246,31 +1311,31 @@ function panelAc(occ) {
 
   const satirlar = [];
   satirlar.push([
-    "Zaman",
+    t("p_zaman"),
     occ.allDay
       ? tarihBicim(occ.startUtc, occ.tzid)
       : `${tarihBicim(occ.startUtc, occ.tzid)}<br>${saatBicim(occ.startUtc, occ.tzid)} – ${saatBicim(occ.endUtc, occ.tzid)}`,
   ]);
   if (takvim) {
     satirlar.push([
-      "Takvim",
+      t("p_takvim"),
       `<span class="p-takvim"><span class="renk-kutu" style="background:${takvim.color}"></span>${kacir(takvim.name)}</span>`,
     ]);
   }
-  if (occ.location) satirlar.push(["Konum", kacir(occ.location)]);
-  satirlar.push(["Dilim", kacir(occ.tzid)]);
+  if (occ.location) satirlar.push([t("p_konum"), kacir(occ.location)]);
+  satirlar.push([t("p_dilim"), kacir(occ.tzid)]);
 
   const rozetler = [];
-  if (occ.allDay) rozetler.push(`<span class="rozet">tüm gün</span>`);
-  if (occ.isOverride) rozetler.push(`<span class="rozet override">seriden taşındı</span>`);
-  if (occ.clipped) rozetler.push(`<span class="rozet">gece yarısını aşıyor</span>`);
-  if (rozetler.length) satirlar.push(["Durum", rozetler.join(" ")]);
+  if (occ.allDay) rozetler.push(`<span class="rozet">${kacir(t("rozet_tumgun"))}</span>`);
+  if (occ.isOverride) rozetler.push(`<span class="rozet override">${kacir(t("rozet_tasindi"))}</span>`);
+  if (occ.clipped) rozetler.push(`<span class="rozet">${kacir(t("rozet_gece"))}</span>`);
+  if (rozetler.length) satirlar.push([t("p_durum"), rozetler.join(" ")]);
 
   if (occ.reminders && occ.reminders.length) {
     satirlar.push([
-      "Hatırlatıcı",
+      t("p_hatirlatici"),
       occ.reminders
-        .map((r) => `<span class="rozet">${hatirlaticiMetni(r.minutesBefore)}</span>`)
+        .map((r) => `<span class="rozet">${kacir(hatirlaticiMetni(r.minutesBefore))}</span>`)
         .join(" "),
     ]);
   }
@@ -1280,7 +1345,7 @@ function panelAc(occ) {
     .map(([e, d]) => `<div class="p-satir"><div class="p-etiket">${e}</div><div class="p-deger">${d}</div></div>`)
     .join("");
   if (occ.description) {
-    html += `<div class="p-satir"><div class="p-etiket">Açıklama</div><div class="p-deger p-aciklama">${kacir(occ.description)}</div></div>`;
+    html += `<div class="p-satir"><div class="p-etiket">${kacir(t("p_aciklama"))}</div><div class="p-deger p-aciklama">${kacir(occ.description)}</div></div>`;
   }
   el("panel-icerik").innerHTML = html;
 
@@ -1327,24 +1392,24 @@ async function etkinligiDuzenle(occ) {
   const eskiBit = yerelSaatISO(occ.endUtc, occ.tzid);
 
   const alanlar = [
-    { ad: "baslik", etiket: "Başlık", tur: "metin", deger: occ.title },
-    { ad: "tarih", etiket: "Tarih", tur: "tarih", deger: eskiTarih },
+    { ad: "baslik", etiket: t("baslik_etiket"), tur: "metin", deger: occ.title },
+    { ad: "tarih", etiket: t("tarih_etiket"), tur: "tarih", deger: eskiTarih },
   ];
   if (!occ.allDay) {
     alanlar.push(
-      { ad: "baslangic", etiket: "Başlangıç", tur: "saat", deger: eskiBas, dar: true },
-      { ad: "bitis", etiket: "Bitiş", tur: "saat", deger: eskiBit, dar: true },
+      { ad: "baslangic", etiket: t("baslangic"), tur: "saat", deger: eskiBas, dar: true },
+      { ad: "bitis", etiket: t("bitis"), tur: "saat", deger: eskiBit, dar: true },
     );
   }
   alanlar.push(
-    { ad: "konum", etiket: "Konum", tur: "metin", deger: occ.location || "" },
-    { ad: "aciklama", etiket: "Açıklama", tur: "uzunmetin", deger: occ.description || "" },
+    { ad: "konum", etiket: t("p_konum"), tur: "metin", deger: occ.location || "" },
+    { ad: "aciklama", etiket: t("p_aciklama"), tur: "uzunmetin", deger: occ.description || "" },
   );
 
   const s = await modalForm(
-    "Etkinliği düzenle",
+    t("etkinlik_duzenle"),
     occ.recurring
-      ? "Tekrarlı seri: başlık, konum ve açıklama TÜM seriyi, tarih ve saat yalnızca BU örneği etkiler."
+      ? t("etkinlik_duzenle_aciklama")
       : "",
     alanlar,
   );
@@ -1352,7 +1417,7 @@ async function etkinligiDuzenle(occ) {
 
   const yeniBaslik = (s.baslik || "").trim();
   if (!yeniBaslik) {
-    bildir("Başlık boş olamaz", true);
+    bildir(t("istemci_baslik_bos"), true);
     return;
   }
 
@@ -1395,17 +1460,17 @@ async function etkinligiDuzenle(occ) {
         body: JSON.stringify(govde),
       });
     }
-  }, "Etkinlik güncellendi");
+  }, t("etkinlik_guncellendi"));
 }
 
 /** Tekrarlıda bu örneği iptal eder, tekrarsızda etkinliği SİLER. */
 async function ornegiSil(occ) {
   const tamam = await onayla(
-    occ.recurring ? "Bu örneği sil" : "Etkinliği sil",
+    occ.recurring ? t("sil_ornek_baslik") : t("sil_etkinlik_baslik"),
     occ.recurring
-      ? `"${occ.title}" — yalnızca bu örnek silinecek, serinin geri kalanı kalır.`
-      : `"${occ.title}" silinecek.`,
-    "Sil",
+      ? t("sil_ornek_metin", { baslik: occ.title })
+      : t("sil_etkinlik_metin", { baslik: occ.title }),
+    t("sil"),
     true,
   );
   if (!tamam) return;
@@ -1415,7 +1480,7 @@ async function ornegiSil(occ) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
     }),
-    occ.recurring ? "Bu örnek silindi" : "Silindi",
+    occ.recurring ? t("ornek_silindi") : t("silindi"),
     // Tüm gün etkinliğinde geri alma YOK: yeniden oluşturma yolu saatli
     // etkinlik kuruyor ve sessizce yanlış bir şey geri getirmek, geri
     // getirmemekten kötü.
@@ -1438,7 +1503,7 @@ async function silmeyiGeriAl(occ) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ eventId: occ.eventId, originalStartUtc: occ.originalStartUtc }),
       }),
-      "Geri alındı",
+      t("geri_alindi"),
     );
     return;
   }
@@ -1475,7 +1540,7 @@ async function silmeyiGeriAl(occ) {
         body: JSON.stringify({ minutesBefore: r.minutesBefore }),
       });
     }
-  }, "Geri alındı");
+  }, t("geri_alindi"));
 }
 
 /* ---------- pano: kopyala / kes / yapıştır / çoğalt / geri al ---------- */
@@ -1492,7 +1557,7 @@ async function silmeyiGeriAl(occ) {
  * yapıştırmaktansa açıkça reddetmek daha güvenli. */
 function panoyaKopyala(occ) {
   if (occ.allDay) {
-    bildir("Tüm gün etkinlikler şu an kopyalanamıyor", true);
+    bildir(t("tumgun_kopyalanamaz"), true);
     return false;
   }
   durum.pano = {
@@ -1507,9 +1572,9 @@ function panoyaKopyala(occ) {
 }
 
 function kopyala() {
-  if (!durum.secili) { bildir("Kopyalamak için önce bir etkinlik seç", true); return; }
+  if (!durum.secili) { bildir(t("kopya_sec"), true); return; }
   if (panoyaKopyala(durum.secili)) {
-    bildir(`"${durum.secili.title}" kopyalandı — boş bir saate tıkla ya da Ctrl+V`);
+    bildir(t("kopyalandi", { baslik: durum.secili.title }));
   }
 }
 
@@ -1518,7 +1583,7 @@ function kopyala() {
  * Seri kesme yok (Shift+Ctrl+X gibi bir şey de) -- yapıştırma zaten hep tek
  * örnek ürettiği için "seriyi kes" kavramının karşılığı olmazdı. */
 function kes() {
-  if (!durum.secili) { bildir("Kesmek için önce bir etkinlik seç", true); return; }
+  if (!durum.secili) { bildir(t("kes_sec"), true); return; }
   if (!panoyaKopyala(durum.secili)) return;
   ornegiSil(durum.secili);
 }
@@ -1560,8 +1625,8 @@ async function panoyaYaz(tarih, baslangicDk) {
       // kalır -- kullanıcı kopyaladığını kaybetmesin.
       durum.pano = null;
     },
-    `"${p.title}" yapıştırıldı`,
-    () => eylem(() => istek(`/api/events/${yeniId}`, { method: "DELETE" }), "Yapıştırma geri alındı"),
+    t("yapistirildi", { baslik: p.title }),
+    () => eylem(() => istek(`/api/events/${yeniId}`, { method: "DELETE" }), t("yapistirma_geri_alindi")),
   );
 }
 
@@ -1570,9 +1635,9 @@ async function panoyaYaz(tarih, baslangicDk) {
  * tıklamaya gerek yok. Ay görünümünde saat ızgarası olmadığı için kapsam
  * dışı; kullanıcıyı gün/hafta görünümüne yönlendiriyoruz. */
 function yapistir() {
-  if (!durum.pano) { bildir("Yapıştırmak için önce bir etkinlik kopyala (Ctrl+C)", true); return; }
+  if (!durum.pano) { bildir(t("yapistir_once_kopyala"), true); return; }
   if (!durum.imlecSaat) {
-    bildir("Yapıştırmak için gün/hafta görünümünde boş bir saate tıkla ya da üzerine gelip Ctrl+V yap", true);
+    bildir(t("yapistir_hedef_yok"), true);
     return;
   }
   panoyaYaz(durum.imlecSaat.date, durum.imlecSaat.minutes);
@@ -1583,7 +1648,7 @@ function yapistir() {
  * panoyaYaz TEK SEFERLİK olduğu için yazımdan sonra pano yine boşalır;
  * başka bir yere de yapıştırmak istenirse yeniden kopyalamak gerekir. */
 function cogalt() {
-  if (!durum.secili) { bildir("Çoğaltmak için önce bir etkinlik seç", true); return; }
+  if (!durum.secili) { bildir(t("cogalt_sec"), true); return; }
   const occ = durum.secili;
   if (!panoyaKopyala(occ)) return;
   const tarih = tarihKaydir(yerelTarihISO(occ.startUtc, occ.tzid), 1);
@@ -1615,22 +1680,22 @@ async function seriyiSil(occ) {
   }
   const kapsam = bilgi.recurring
     ? (bilgi.sonsuz
-      ? `Sonsuz seri — önümüzdeki 2 yılda ${bilgi.ornek_sayisi} örnek`
-      : `${bilgi.ornek_sayisi} örnek`)
-    : "Tek seferlik etkinlik";
+      ? t("kapsam_sonsuz", { n: bilgi.ornek_sayisi })
+      : t("kapsam_sayili", { n: bilgi.ornek_sayisi }))
+    : t("kapsam_tek");
   const tamam = await onayla(
-    "Seriyi tamamen sil",
-    `"${bilgi.title}" — ${kapsam} silinecek.`,
-    "Seriyi sil",
+    t("seriyi_tamamen_sil"),
+    t("seri_sil_metin", { baslik: bilgi.title, kapsam }),
+    t("seri_sil_onay"),
     true,
   );
   if (!tamam) return;
   await eylem(
     () => istek(`/api/events/${occ.eventId}`, { method: "DELETE" }),
-    `"${bilgi.title}" silindi`,
+    t("seri_silindi", { baslik: bilgi.title }),
     () => eylem(
       () => istek("/api/events/restore_last", { method: "POST" }),
-      "Seri geri alındı",
+      t("seri_geri_alindi"),
     ),
   );
 }
@@ -1653,11 +1718,11 @@ async function yedekleriAc() {
     }
 
     const sonuc = await modalAc({
-      baslik: "Yedekler",
-      metin: veri.backups.length ? "" : "Henüz yedek yok — yedek her açılışta alınır.",
-      onay: "Şimdi yedekle",
+      baslik: t("yedekler_baslik"),
+      metin: veri.backups.length ? "" : t("yedek_yok"),
+      onay: t("simdi_yedekle"),
       iptalDegeri: { eylem: "kapat" },
-      ucuncu: { etiket: "Klasörü aç", anahtar: "_klasorAc" },
+      ucuncu: { etiket: t("klasor_ac"), anahtar: "_klasorAc" },
       genislik: 540,
       oku: () => ({ eylem: "yedekle_simdi" }),
       kur: (govde, kapat) => {
@@ -1666,7 +1731,7 @@ async function yedekleriAc() {
         yol.className = "yedek-yol";
         // Sabit metin: SAKLANAN (store/yedek.py) API'ye sızdırılmıyor, README
         // §5 de aynı sayıyı yazıyor -- ikisi birlikte güncellenir.
-        yol.textContent = "%LOCALAPPDATA%\\Takvim\\yedek · günlük, son 7 gün";
+        yol.textContent = t("yedek_yol");
         govde.appendChild(yol);
 
         const liste = document.createElement("div");
@@ -1679,12 +1744,14 @@ async function yedekleriAc() {
           bilgi.className = "yedek-bilgi";
           const tarih = b.ad.replace(/^takvim-/, "").replace(/\.db$/, "");
           const sayi = b.etkinlikSayisi == null ? "?" : b.etkinlikSayisi;
-          bilgi.textContent = `${tarih} · ${sayi} etkinlik · ${(b.boyut / 1024).toFixed(0)} KB`;
+          bilgi.textContent = t("yedek_satir", {
+            tarih, sayi, kb: (b.boyut / 1024).toFixed(0),
+          });
 
           const dugme = document.createElement("button");
           dugme.type = "button";
           dugme.className = "dugme";
-          dugme.textContent = "Geri yükle";
+          dugme.textContent = t("geri_yukle");
           dugme.onclick = () => kapat({ eylem: "geri_yukle", ad: b.ad });
 
           satir.append(bilgi, dugme);
@@ -1709,7 +1776,7 @@ async function yedekleriAc() {
     if (sonuc.eylem === "yedekle_simdi") {
       try {
         await istek("/api/backups", { method: "POST" });
-        bildir("Yedek alındı");
+        bildir(t("yedek_alindi"));
       } catch (hata) {
         bildir(hata.message, true);
       }
@@ -1718,10 +1785,9 @@ async function yedekleriAc() {
 
     // sonuc.eylem === "geri_yukle"
     const tamam = await onayla(
-      "Yedekten dön",
-      `"${sonuc.ad}" geri yüklenecek, sayfa yeniden yüklenir. Mevcut hâl önce ` +
-      "yedek klasörüne kenara alınır (onceki-takvim-….db).",
-      "Geri yükle",
+      t("yedekten_don_baslik"),
+      t("yedekten_don_metin", { ad: sonuc.ad }),
+      t("geri_yukle"),
       true,
     );
     if (!tamam) continue; // listeye dön
@@ -1749,32 +1815,32 @@ function islemleriCiz(occ) {
     b.textContent = metin;
     // Kısayolu düğmenin üstünde göster: klavye kısayolu ancak keşfedilebilirse
     // işe yarar.
-    if (kisayol) b.title = `Kısayol: ${kisayol}`;
+    if (kisayol) b.title = t("kisayol", { kisayol });
     b.onclick = islev;
     kap.appendChild(b);
   };
 
-  ekle("Düzenle", false, () => etkinligiDuzenle(occ), "F2 · Enter");
+  ekle(t("duzenle"), false, () => etkinligiDuzenle(occ), "F2 · Enter");
 
   (occ.reminders || []).forEach((r) => {
-    ekle(`⏰ ${hatirlaticiMetni(r.minutesBefore)} — kaldır`, false, async () => {
+    ekle(t("hatirlatici_kaldir", { metin: hatirlaticiMetni(r.minutesBefore) }), false, async () => {
       await eylem(
         () => istek(`/api/reminders/${r.id}`, { method: "DELETE" }),
-        "Hatırlatıcı kaldırıldı",
+        t("hatirlatici_kaldirildi"),
       );
     });
   });
 
-  ekle("Hatırlatıcı ekle", false, async () => {
+  ekle(t("hatirlatici_ekle"), false, async () => {
     const ham = await sor(
-      "Hatırlatıcı ekle",
-      "Kaç dakika önce hatırlatılsın?\n(0 = tam başlarken, 1440 = 1 gün önce)",
+      t("hatirlatici_ekle"),
+      t("hatirlatici_sor_metin"),
       "15",
     );
     if (ham === null) return;
     const dakika = parseInt(ham, 10);
     if (Number.isNaN(dakika) || dakika < 0) {
-      bildir("Geçerli bir dakika değeri gir", true);
+      bildir(t("dakika_gir"), true);
       return;
     }
     await eylem(
@@ -1783,7 +1849,7 @@ function islemleriCiz(occ) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ minutesBefore: dakika }),
       }),
-      `Hatırlatıcı eklendi: ${hatirlaticiMetni(dakika)}`,
+      t("hatirlatici_eklendi", { metin: hatirlaticiMetni(dakika) }),
     );
   });
 
@@ -1792,11 +1858,11 @@ function islemleriCiz(occ) {
   // Klavyede de aynı ayrım var: Del tek örnek, Shift+Del tüm seri.
   // TEKRARSIZ etkinlikte iki düğme göstermek anlamsız ve korkutucu: tek "Sil".
   if (occ.recurring) {
-    ekle("Bu örneği sil", true, () => ornegiSil(occ), "Del");
-    ekle("Seriyi tamamen sil", true, () => seriyiSil(occ), "Shift+Del");
-    ekle("Bundan sonrasını değiştir", false, () => seriyiBol(occ));
+    ekle(t("bu_ornegi_sil"), true, () => ornegiSil(occ), "Del");
+    ekle(t("seriyi_tamamen_sil"), true, () => seriyiSil(occ), "Shift+Del");
+    ekle(t("bundan_sonrasini_degistir"), false, () => seriyiBol(occ));
   } else {
-    ekle("Sil", true, () => ornegiSil(occ), "Del");
+    ekle(t("sil"), true, () => ornegiSil(occ), "Del");
   }
 }
 
@@ -1805,14 +1871,14 @@ function islemleriCiz(occ) {
  * Saat değişmiyor; değişen başlık/konum/açıklama YALNIZCA yeni seriye yazılıyor.
  * İlk örnekte bölme sunucuda reddediliyor (eski seri boş kalırdı). */
 async function seriyiBol(occ) {
-  const s = await modalForm("Bundan sonrasını değiştir",
-    `"${occ.title}" — bu örnek ve sonrakiler yeni seri olacak, öncekiler aynen kalır.`,
+  const s = await modalForm(t("bundan_sonrasini_degistir"),
+    t("bol_metin", { baslik: occ.title }),
     [
-      { ad: "baslik", etiket: "Başlık (yeni seri)", tur: "metin", deger: occ.title },
-      { ad: "konum", etiket: "Konum", tur: "metin", deger: occ.location || "" },
-      { ad: "aciklama", etiket: "Açıklama", tur: "uzunmetin", deger: occ.description || "" },
+      { ad: "baslik", etiket: t("bol_baslik_etiket"), tur: "metin", deger: occ.title },
+      { ad: "konum", etiket: t("p_konum"), tur: "metin", deger: occ.location || "" },
+      { ad: "aciklama", etiket: t("p_aciklama"), tur: "uzunmetin", deger: occ.description || "" },
     ],
-    "Böl");
+    t("bol_onay"));
   if (s === null || !s.baslik.trim()) return;
   await eylem(
     () => istek(`/api/events/${occ.eventId}/split`, {
@@ -1825,15 +1891,21 @@ async function seriyiBol(occ) {
         description: s.aciklama.trim(),
       }),
     }),
-    "Seri bölündü",
+    t("seri_bolundu"),
   );
 }
 
 function hatirlaticiMetni(dakika) {
-  if (dakika === 0) return "tam başlarken";
-  if (dakika % 1440 === 0) return `${dakika / 1440} gün önce`;
-  if (dakika % 60 === 0) return `${dakika / 60} saat önce`;
-  return `${dakika} dakika önce`;
+  if (dakika === 0) return t("tam_baslarken");
+  if (dakika % 1440 === 0) {
+    const n = dakika / 1440;
+    return n === 1 ? t("gun_once_tek") : t("gun_once", { n });
+  }
+  if (dakika % 60 === 0) {
+    const n = dakika / 60;
+    return n === 1 ? t("saat_once_tek") : t("saat_once", { n });
+  }
+  return dakika === 1 ? t("dakika_once_tek") : t("dakika_once", { n: dakika });
 }
 
 async function eylem(islev, basariMesaji, geriAl = null) {
@@ -1924,11 +1996,11 @@ async function hizliEkleBaslat(metin, girdi) {
     girdi.value = "";
     if (!onizleme.matched) {
       bildir(
-        `Eklendi: ${onizleme.title} — zaman ifadesi tanınmadı, tüm gün olarak kaydedildi`,
+        t("eklendi_zaman_taninmadi", { baslik: onizleme.title }),
         true,
       );
     } else {
-      bildir(`Eklendi: ${onizleme.title} (${onizleme.matched})`);
+      bildir(t("eklendi", { baslik: onizleme.title, eslesme: onizleme.matched }));
     }
     await yukle();
   } catch (hata) {
@@ -1960,20 +2032,20 @@ async function cakismaOnayiVeKaydet(onizleme, cakisma, girdi) {
 
   for (;;) {
     const s = await modalForm(
-      "Bu saatte başka bir etkinlik var",
-      `${adlar}\nKaydedersen iki blok yan yana gösterilir.`,
+      t("cakisma_baslik"),
+      t("cakisma_metin", { adlar }),
       [
-        { ad: "baslik", etiket: "Başlık", tur: "metin", deger: deger.baslik },
-        { ad: "tarih", etiket: "Tarih", tur: "tarih", deger: deger.tarih },
-        { ad: "baslangic", etiket: "Başlangıç", tur: "saat", deger: deger.baslangic, dar: true },
-        { ad: "bitis", etiket: "Bitiş", tur: "saat", deger: deger.bitis, dar: true },
+        { ad: "baslik", etiket: t("baslik_etiket"), tur: "metin", deger: deger.baslik },
+        { ad: "tarih", etiket: t("tarih_etiket"), tur: "tarih", deger: deger.tarih },
+        { ad: "baslangic", etiket: t("baslangic"), tur: "saat", deger: deger.baslangic, dar: true },
+        { ad: "bitis", etiket: t("bitis"), tur: "saat", deger: deger.bitis, dar: true },
         {
-          ad: "takvim", etiket: "Takvim", tur: "secim", deger: deger.takvim,
+          ad: "takvim", etiket: t("p_takvim"), tur: "secim", deger: deger.takvim,
           secenekler: durum.veri.calendars.map((c) => ({ deger: String(c.id), etiket: c.name })),
         },
       ],
-      "Yine de kaydet",
-      { etiket: "Saati değiştir", anahtar: "_saatDegistir" },
+      t("yine_de_kaydet"),
+      { etiket: t("saati_degistir"), anahtar: "_saatDegistir" },
       460,
     );
 
@@ -1983,10 +2055,10 @@ async function cakismaOnayiVeKaydet(onizleme, cakisma, girdi) {
     if (s._saatDegistir) continue; // aynı değerlerle yeniden aç, kullanıcı düzenlesin
 
     const ad = deger.baslik.trim();
-    if (!ad) { bildir("Başlık boş olamaz", true); continue; }
+    if (!ad) { bildir(t("istemci_baslik_bos"), true); continue; }
     const basDk = dakikayaCevir(deger.baslangic);
     const bitDk = dakikayaCevir(deger.bitis);
-    if (bitDk <= basDk) { bildir("Bitiş, başlangıçtan sonra olmalı", true); continue; }
+    if (bitDk <= basDk) { bildir(t("istemci_bitis_sira"), true); continue; }
 
     await eylem(
       () => istek("/api/events", {
@@ -2000,7 +2072,7 @@ async function cakismaOnayiVeKaydet(onizleme, cakisma, girdi) {
           calendarId: deger.takvim ? Number(deger.takvim) : undefined,
         }),
       }),
-      `Eklendi: ${ad}`,
+      t("eklendi_kisa", { baslik: ad }),
     );
     girdi.value = "";
     return;
@@ -2027,7 +2099,7 @@ async function aramaYap(anahtar) {
     const sonuc = await istek(`/api/search?q=${encodeURIComponent(anahtar)}`);
     liste.innerHTML = "";
     if (!sonuc.results.length) {
-      liste.innerHTML = `<li class="arama-bos">Sonuç yok</li>`;
+      liste.innerHTML = `<li class="arama-bos">${kacir(t("sonuc_yok"))}</li>`;
     }
     sonuc.results.forEach((ev) => {
       const takvim = durum.veri.calendars.find((c) => c.id === ev.calendarId);
@@ -2145,7 +2217,7 @@ el("arama").addEventListener("keydown", (e) => {
  * tek satırlık bir soru kutusuyla AYNI gönderim yolunu (#hizli-form'un
  * submit'i) tetikliyor -- mantık İKİ YERDE yaşamasın diye. */
 el("hizli-ac-dugme").onclick = async () => {
-  const metin = await sor("Yeni etkinlik", "", "");
+  const metin = await sor(t("yeni_etkinlik"), "", "");
   if (metin === null || !metin.trim()) return;
   el("hizli-girdi").value = metin.trim();
   const form = el("hizli-form");
@@ -2174,9 +2246,11 @@ el("ice-aktar-dosya").onchange = (e) => {
   if (dosya) iceAktar(dosya);
 };
 
-/* Ayarlar: tepsiye küçült + otomatik başlatma. İkisi de varsayılan kapalı;
+/* Ayarlar: tepsiye küçült + otomatik başlatma + dil. İkisi de varsayılan kapalı;
  * açmak bilinçli karar (kapatınca tepsiye inmek, Başlangıç klasörüne yazmak).
- * Yeniden başlatma gerekmiyor: tepsi kararı her kapanışta dosyadan okunuyor. */
+ * Yeniden başlatma gerekmiyor: tepsi kararı her kapanışta dosyadan okunuyor.
+ * Dil değişince sayfa YENİDEN YÜKLENİYOR: kısmi yeniden çizim değil, basit ve
+ * güvenilir -- tüm metinler açılışta tek yerden kuruluyor. */
 async function ayarlariAc() {
   let mevcut;
   try {
@@ -2185,33 +2259,43 @@ async function ayarlariAc() {
     bildir(hata.message, true);
     return;
   }
-  const s = await modalForm("Ayarlar",
-    "Tepsi: pencere kapatılınca uygulama tepsiye iner, hatırlatıcı sürer. " +
-    "Otomatik başlatma: bilgisayarla birlikte hatırlatıcıyı başlatır.",
+  const s = await modalForm(t("ayarlar_baslik"),
+    t("ayarlar_metin"),
     [
       {
         ad: "tepsi",
-        etiket: "Pencere kapatılınca",
+        etiket: t("kapatilinca"),
         tur: "secim",
         deger: mevcut.tepsiye_kucult ? "kucult" : "kapat",
         secenekler: [
-          { deger: "kapat", etiket: "Uygulamayı kapat" },
-          { deger: "kucult", etiket: "Tepsiye küçült" },
+          { deger: "kapat", etiket: t("uygulamayi_kapat") },
+          { deger: "kucult", etiket: t("tepsiye_kucult") },
         ],
       },
       {
         ad: "otomatik",
-        etiket: "Bilgisayar açılışında",
+        etiket: t("acilista"),
         tur: "secim",
         deger: mevcut.otomatik_baslat ? "acik" : "kapali",
         secenekler: [
-          { deger: "kapali", etiket: "Hatırlatıcıyı başlatma" },
-          { deger: "acik", etiket: "Hatırlatıcıyı başlat" },
+          { deger: "kapali", etiket: t("hatirlatici_baslatma") },
+          { deger: "acik", etiket: t("hatirlatici_baslat") },
+        ],
+      },
+      {
+        ad: "dil",
+        etiket: t("dil_etiket"),
+        tur: "secim",
+        deger: mevcut.dil === "en" ? "en" : "tr",
+        secenekler: [
+          { deger: "tr", etiket: "Türkçe" },
+          { deger: "en", etiket: "English" },
         ],
       },
     ],
-    "Kaydet");
+    t("kaydet"));
   if (!s) return;
+  const dilDegisti = (s.dil === "en" ? "en" : "tr") !== durum.dil;
   await eylem(
     () => istek("/api/ayarlar", {
       method: "POST",
@@ -2219,10 +2303,12 @@ async function ayarlariAc() {
       body: JSON.stringify({
         tepsiye_kucult: s.tepsi === "kucult",
         otomatik_baslat: s.otomatik === "acik",
+        dil: s.dil === "en" ? "en" : "tr",
       }),
     }),
-    "Ayarlar kaydedildi",
+    t("ayarlar_kaydedildi"),
   );
+  if (dilDegisti) window.location.reload();
 }
 
 /* `.ics` içe aktarma: önce ÖNİZLEME (`dry_run`), sonra gerçek yazma.
@@ -2233,7 +2319,7 @@ async function iceAktar(dosya) {
   try {
     metin = await dosya.text();
   } catch {
-    bildir("Dosya okunamadı", true);
+    bildir(t("dosya_okunamadi"), true);
     return;
   }
   const baslik = { "Content-Type": "text/calendar; charset=utf-8" };
@@ -2247,28 +2333,30 @@ async function iceAktar(dosya) {
     return;
   }
   const parcalar = [
-    `${onizleme.added} yeni`,
-    `${onizleme.updated} güncellenecek`,
-    `${onizleme.skipped} atlanacak`,
-    `${onizleme.overrides} örnek değişikliği`,
+    t("parca_yeni", { n: onizleme.added }),
+    t("parca_guncellenecek", { n: onizleme.updated }),
+    t("parca_atlanacak", { n: onizleme.skipped }),
+    t("parca_override", { n: onizleme.overrides }),
   ];
   if (onizleme.errors.length) {
-    parcalar.push(`${onizleme.errors.length} hatalı kayıt YOK SAYILACAK`);
+    parcalar.push(t("parca_hatali", { n: onizleme.errors.length }));
   }
   if (onizleme.warnings.length) {
-    parcalar.push(`Uyarılar: ${onizleme.warnings.slice(0, 3).join("; ")}`);
+    parcalar.push(t("parca_uyari", { liste: onizleme.warnings.slice(0, 3).join("; ") }));
   }
   const tamam = await onayla(
-    "İçe aktar",
-    `"${dosya.name}" → "${onizleme.calendar}" takvimi — ${parcalar.join(", ")}.`,
-    "İçe aktar",
+    t("ice_aktar_baslik"),
+    t("ice_aktar_metin", {
+      dosya: dosya.name, takvim: onizleme.calendar, parcalar: parcalar.join(", "),
+    }),
+    t("ice_aktar_baslik"),
   );
   if (!tamam) return;
   try {
     const rapor = await istek("/api/import", {
       method: "POST", headers: baslik, body: metin,
     });
-    bildir(`İçe aktarıldı: ${rapor.added} yeni, ${rapor.updated} güncellendi`);
+    bildir(t("ice_aktarildi", { yeni: rapor.added, guncellenen: rapor.updated }));
     await yukle();
   } catch (hata) {
     bildir(hata.message, true);
@@ -2388,5 +2476,46 @@ function canliBaslat() {
   }, TAZELE_ARALIK);
 }
 
-yukle();
-canliBaslat();
+/* ---------- açılış ---------- */
+
+/* Sabit HTML metinlerini dile çevirir (`data-i18n*` öznitelikleri).
+ *
+ * HTML'i dil başına ikiye bölmüyoruz (bakım kâbusu): tek HTML, açılışta tek
+ * doldurma. `data-i18n` → textContent, `data-i18n-html` → innerHTML (yalnızca
+ * KENDİ sözlüğümüz, kullanıcı verisi değil), `data-i18n-ph` → placeholder,
+ * `data-i18n-aria` → aria-label, `data-i18n-title` → title. */
+function statikMetinleriUygula() {
+  document.querySelectorAll("[data-i18n]").forEach((n) => {
+    n.textContent = t(n.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((n) => {
+    n.innerHTML = t(n.dataset.i18nHtml);
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach((n) => {
+    n.placeholder = t(n.dataset.i18nPh);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((n) => {
+    n.setAttribute("aria-label", t(n.dataset.i18nAria));
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((n) => {
+    n.title = t(n.dataset.i18nTitle);
+  });
+}
+
+/* Dil ÖNCE okunuyor: ilk `yukle()` çizmeden `durum.dil` belli olmalı, yoksa
+ * sayfa bir anlığına yanlış dilde çizilip sonra düzelir (göz kırpma). Ayar
+ * okunamazsa varsayılan `tr` ile devam -- ayarsız açılış Türkçe demek. */
+async function baslat() {
+  try {
+    const ayar = await istek("/api/ayarlar");
+    if (ayar.dil === "en" || ayar.dil === "tr") durum.dil = ayar.dil;
+  } catch {
+    // Ayar alınamazsa varsayılan dilde devam; yukle() hatayı zaten bildirir.
+  }
+  document.documentElement.lang = durum.dil;
+  statikMetinleriUygula();
+  await yukle();
+  canliBaslat();
+}
+
+baslat();

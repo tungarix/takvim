@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**436 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**456 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -529,6 +529,14 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0
 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+**v1.4.0 (yayınlanmamış): TR/EN dil seçeneği** (ayrıntı CHANGELOG.md'de).
+Bilinen bilinçli sınır: **hızlı ekleme kutusu İngilizce modda da Türkçe cümle
+bekliyor** (`core/quickadd.py` değişmedi, seçenek 1). Yeni görünen metin
+eklerken `i18n.js`teki İKİ dile de yaz; TR değerler eski metinle birebir aynı
+olmalı (varsayılan dil `tr`, mevcut testler buna kilitli). Sunucu hatalarında
+`error` alanını DEĞİŞTİRME (eski sözleşme), kodu `_KodluHata`/`_hata_esle` ile
+ekle.
 
 v1.3.0'da bitenler (ayrıntı CHANGELOG.md'de):
 

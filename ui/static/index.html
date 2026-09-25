@@ -10,9 +10,9 @@
 
 <header class="ust-cubuk">
   <nav class="gezinme">
-    <button id="onceki" class="ikon-dugme" title="Önceki (←)" aria-label="Önceki">‹</button>
-    <button id="bugun" class="dugme">Bugün</button>
-    <button id="sonraki" class="ikon-dugme" title="Sonraki (→)" aria-label="Sonraki">›</button>
+    <button id="onceki" class="ikon-dugme" title="Önceki (←)" aria-label="Önceki" data-i18n-title="onceki_title" data-i18n-aria="onceki">‹</button>
+    <button id="bugun" class="dugme" data-i18n="bugun">Bugün</button>
+    <button id="sonraki" class="ikon-dugme" title="Sonraki (→)" aria-label="Sonraki" data-i18n-title="sonraki_title" data-i18n-aria="sonraki">›</button>
   </nav>
 
   <h1 id="baslik" class="hafta-etiketi">—</h1>
@@ -23,29 +23,30 @@
        tetiklemesi garanti değil. Ayrıca fare kullanıcısına karşılık veriyor. -->
   <form id="hizli-form" class="hizli-form" autocomplete="off">
     <input id="hizli-girdi" class="hizli-girdi" type="text"
-           placeholder="Hızlı ekle: yarın 14:00 diş hekimi" aria-label="Hızlı ekleme">
-    <button type="submit" class="hizli-dugme" title="Ekle" aria-label="Ekle">+</button>
+           placeholder="Hızlı ekle: yarın 14:00 diş hekimi" aria-label="Hızlı ekleme"
+           data-i18n-ph="hizli_ph" data-i18n-aria="hizli_aria">
+    <button type="submit" class="hizli-dugme" title="Ekle" aria-label="Ekle" data-i18n-title="ekle_title" data-i18n-aria="ekle_title">+</button>
   </form>
   <!-- < 1040px: kutu sığmıyor, düğme bir soru kutusu açıyor (app.js). -->
   <!-- `hidden` YOK: [hidden]{display:none!important} (bkz. style.css) medya
        sorgusunun display:inline-flex'ini ezerdi. Varsayılan gizlilik CSS'te. -->
   <button type="button" id="hizli-ac-dugme" class="ikon-dugme" title="Yeni etkinlik ekle"
-          aria-label="Yeni etkinlik ekle">+</button>
+          aria-label="Yeni etkinlik ekle" data-i18n-title="yeni_etkinlik_ekle" data-i18n-aria="yeni_etkinlik_ekle">+</button>
 
   <button type="button" id="arama-ac-dugme" class="ikon-dugme" title="Ara (üstten şerit açılır)"
-          aria-label="Ara">⌕</button>
+          aria-label="Ara" data-i18n-title="ara_title" data-i18n-aria="ara_aria">⌕</button>
 
-  <div class="gorunum-anahtari" role="group" aria-label="Görünüm">
-    <button class="gorunum-dugme" data-gorunum="day">Gün</button>
-    <button class="gorunum-dugme secili" data-gorunum="week">Hafta</button>
-    <button class="gorunum-dugme" data-gorunum="month">Ay</button>
+  <div class="gorunum-anahtari" role="group" aria-label="Görünüm" data-i18n-aria="gorunum_aria">
+    <button class="gorunum-dugme" data-gorunum="day" data-i18n="gun">Gün</button>
+    <button class="gorunum-dugme secili" data-gorunum="week" data-i18n="hafta">Hafta</button>
+    <button class="gorunum-dugme" data-gorunum="month" data-i18n="ay">Ay</button>
   </div>
 </header>
 
 <!-- Arama şeridi: üst çubuğun hemen altına iniyor, tam genişlik. -->
 <div class="arama-serit" id="arama-serit" hidden>
-  <input id="arama" class="arama-girdi" type="search" placeholder="Etkinlik ara…" aria-label="Ara">
-  <button type="button" id="arama-kapat" class="ikon-dugme" aria-label="Aramayı kapat">×</button>
+  <input id="arama" class="arama-girdi" type="search" placeholder="Etkinlik ara…" aria-label="Ara" data-i18n-ph="arama_ph" data-i18n-aria="ara_aria">
+  <button type="button" id="arama-kapat" class="ikon-dugme" aria-label="Aramayı kapat" data-i18n-aria="arama_kapat">×</button>
 </div>
 
 <div class="govde">
@@ -59,25 +60,25 @@
       <div class="mt-baslik">
         <span id="mt-ay-adi" class="mt-ay-adi"></span>
         <div class="mt-nav">
-          <button type="button" id="mt-onceki" class="mt-ok" aria-label="Önceki ay">‹</button>
-          <button type="button" id="mt-sonraki" class="mt-ok" aria-label="Sonraki ay">›</button>
+          <button type="button" id="mt-onceki" class="mt-ok" aria-label="Önceki ay" data-i18n-aria="onceki_ay">‹</button>
+          <button type="button" id="mt-sonraki" class="mt-ok" aria-label="Sonraki ay" data-i18n-aria="sonraki_ay">›</button>
         </div>
       </div>
       <div class="mt-gunler" id="mt-gunler"></div>
     </div>
 
     <h2 class="kenar-baslik">
-      <span class="kb-metin">Takvimler</span>
-      <button type="button" id="takvim-ekle" class="kenar-ekle" title="Yeni takvim">+</button>
+      <span class="kb-metin" data-i18n="takvimler">Takvimler</span>
+      <button type="button" id="takvim-ekle" class="kenar-ekle" title="Yeni takvim" data-i18n-title="yeni_takvim_title">+</button>
     </h2>
     <ul id="takvim-listesi" class="takvim-listesi"></ul>
 
     <div id="arama-bolum" class="arama-bolum" hidden>
-      <h2 class="kenar-baslik"><span class="kb-metin">Arama sonuçları</span></h2>
+      <h2 class="kenar-baslik"><span class="kb-metin" data-i18n="arama_sonuclari">Arama sonuçları</span></h2>
       <ul id="arama-listesi" class="arama-listesi"></ul>
     </div>
 
-    <p class="ipucu">
+    <p class="ipucu" data-i18n-html="ipucu">
       Boş bir saate tıkla, yeni etkinlik oluştur.<br>
       Etkinliğe tıkla, ayrıntısı sağda açılır.<br>
       <kbd>←</kbd> <kbd>→</kbd> gezin · <kbd>T</kbd> bugün ·
@@ -89,22 +90,22 @@
     <div class="kenar-doldur"></div>
 
     <div class="kenar-eylemler">
-      <button type="button" id="ice-aktar" class="kenar-eylem" title=".ics dosyasından içe aktar (önizlemeli)">
-        <span class="ke-ikon">⇩</span><span class="ke-metin">İçe aktar</span>
+      <button type="button" id="ice-aktar" class="kenar-eylem" title=".ics dosyasından içe aktar (önizlemeli)" data-i18n-title="ice_aktar_title">
+        <span class="ke-ikon">⇩</span><span class="ke-metin" data-i18n="ice_aktar_btn">İçe aktar</span>
       </button>
       <input type="file" id="ice-aktar-dosya" accept=".ics,text/calendar" hidden>
-      <button type="button" id="disa-aktar" class="kenar-eylem" title="Tüm takvimi .ics olarak indir">
-        <span class="ke-ikon">⇧</span><span class="ke-metin">Dışa aktar</span>
+      <button type="button" id="disa-aktar" class="kenar-eylem" title="Tüm takvimi .ics olarak indir" data-i18n-title="disa_aktar_title">
+        <span class="ke-ikon">⇧</span><span class="ke-metin" data-i18n="disa_aktar_btn">Dışa aktar</span>
       </button>
-      <button type="button" id="yedekler" class="kenar-eylem" title="Otomatik yedekleri listele ve geri yükle">
-        <span class="ke-ikon">↺</span><span class="ke-metin">Yedekler</span>
+      <button type="button" id="yedekler" class="kenar-eylem" title="Otomatik yedekleri listele ve geri yükle" data-i18n-title="yedekler_title">
+        <span class="ke-ikon">↺</span><span class="ke-metin" data-i18n="yedekler_btn">Yedekler</span>
       </button>
-      <button type="button" id="ayarlar" class="kenar-eylem" title="Ayarlar">
-        <span class="ke-ikon">⚙</span><span class="ke-metin">Ayarlar</span>
+      <button type="button" id="ayarlar" class="kenar-eylem" title="Ayarlar" data-i18n-title="ayarlar_title">
+        <span class="ke-ikon">⚙</span><span class="ke-metin" data-i18n="ayarlar_btn">Ayarlar</span>
       </button>
     </div>
 
-    <div class="kenar-altbilgi" title="Saat dilimi">
+    <div class="kenar-altbilgi" title="Saat dilimi" data-i18n-title="saat_dilimi_title">
       <span id="tz-etiketi-tam" class="tz-tam"></span>
       <span id="tz-etiketi-kisa" class="tz-kisa"></span>
     </div>
@@ -135,28 +136,30 @@
          sonra düşüyor. -->
     <div id="bos-durum" class="bos-durum" hidden>
       <div class="bd-icerik">
-        <h2 class="bd-baslik">Takvim hazır</h2>
-        <p class="bd-alt">Henüz hiç etkinlik yok</p>
-        <p class="bd-aciklama">
+        <h2 class="bd-baslik" data-i18n="bos_baslik">Takvim hazır</h2>
+        <p class="bd-alt" data-i18n="bos_alt">Henüz hiç etkinlik yok</p>
+        <p class="bd-aciklama" data-i18n="bos_aciklama">
           Her şey bu bilgisayarda kalır; hesap açman gerekmez. Üstteki kutuya
           düz yazıyla yazarak başlayabilirsin.
         </p>
+        <!-- Örnekler BİLEREK çevrilmiyor: hızlı ekleme ayrıştırıcısı Türkçe
+             cümle bekliyor, bunlar doğru kullanımı gösteriyor (bkz. README §1). -->
         <ul class="bd-ornekler">
           <li>↵ yarın 14:00 diş hekimi</li>
           <li>↵ her salı 19:00 yüzme</li>
           <li>↵ 3 mart tüm gün Bodrum</li>
         </ul>
         <div class="bd-eylemler">
-          <button type="button" id="bd-etkinlik-ekle" class="dugme birincil">Etkinlik ekle</button>
-          <button type="button" id="bd-ice-aktar" class="dugme">.ics içe aktar</button>
-          <button type="button" id="bd-yedekler" class="dugme">Yedekten geri yükle</button>
+          <button type="button" id="bd-etkinlik-ekle" class="dugme birincil" data-i18n="bd_etkinlik_ekle">Etkinlik ekle</button>
+          <button type="button" id="bd-ice-aktar" class="dugme" data-i18n="bd_ice_aktar">.ics içe aktar</button>
+          <button type="button" id="bd-yedekler" class="dugme" data-i18n="bd_yedekler">Yedekten geri yükle</button>
         </div>
       </div>
     </div>
   </main>
 
   <aside class="panel" id="panel" hidden>
-    <button class="panel-kapat" id="panel-kapat" aria-label="Kapat">×</button>
+    <button class="panel-kapat" id="panel-kapat" aria-label="Kapat" data-i18n-aria="panel_kapat">×</button>
     <div class="panel-icerik" id="panel-icerik"></div>
     <div class="panel-islemler" id="panel-islemler"></div>
   </aside>
@@ -176,7 +179,7 @@
          düzenleme formu da aynı kutuyu kullanıyor. -->
     <div class="modal-alanlar" id="modal-alanlar" hidden></div>
     <div class="modal-islemler">
-      <button type="button" class="dugme" id="modal-iptal">İptal</button>
+      <button type="button" class="dugme" id="modal-iptal" data-i18n="iptal">İptal</button>
       <!-- Yalnızca çakışma onayı gibi 3 seçenekli kutularda gösteriliyor
            (bkz. app.js modalAc `ucuncu` parametresi); varsayılan hidden. -->
       <button type="button" class="dugme" id="modal-ucuncu" hidden></button>
@@ -185,6 +188,7 @@
   </div>
 </div>
 
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

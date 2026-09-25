@@ -12,7 +12,9 @@ büyük bir iş -- AGENTS.md §6 kapsam dışı liste ruhuna uygun, küçük tut
 
 from __future__ import annotations
 
+import json
 import threading
+import urllib.request
 
 import pytest
 
@@ -391,3 +393,80 @@ def test_arama_sonucu_klavyeyle_acilir(page, sunucu):
     # Sonuca gitmek haftayı değiştirir: bloğun ızgarada GERÇEKTEN göründüğü,
     # yalnızca tıklamanın "patlamadığı" değil, doğrulanıyor.
     page.wait_for_selector(".blok:has-text('klavye arama testi')")
+
+
+@pytest.fixture
+def sunucu_en(tmp_path):
+    """Dili `en` olan dosya DB'li sunucu.
+
+    `:memory:` DB'de `ayarlar.json` yok, dil dosyaya yazılamıyor -- o yüzden
+    İngilizce ön yüz testi dosya DB'si istiyor. Dil sayfa açılmadan ÖNCE
+    API'den yazılıyor; açılış `baslat()` içinde okuyup tek seferde çiziyor.
+    """
+    from ui.server import make_server as _kur
+
+    db = str(tmp_path / "takvim.db")
+    with Repo.open(db, check_same_thread=False) as repo:
+        repo.add_calendar("Kişisel", "#3f7cf0")
+        httpd = _kur(repo, IST, host="127.0.0.1", port=0, db_yolu=db)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            temel = f"http://127.0.0.1:{httpd.server_address[1]}"
+            req = urllib.request.Request(
+                temel + "/api/ayarlar", method="POST",
+                data=json.dumps({"dil": "en"}).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=utf-8"},
+            )
+            with urllib.request.urlopen(req):
+                pass
+            yield temel
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+def test_dil_en_statik_metinler(page, sunucu_en):
+    """Dil `en` iken sabit arayüz metinleri İngilizce çiziliyor."""
+    page.goto(sunucu_en)
+    page.wait_for_selector("#hizli-girdi")
+
+    assert page.inner_text("#bugun") == "Today"
+    assert page.get_attribute("#hizli-girdi", "placeholder") == \
+        "Quick add in Turkish: yarın 14:00 diş hekimi"
+    # `.kb-metin` CSS ile büyük harfe çevriliyor (`text-transform`), o yüzden
+    # küçük harfe indirip karşılaştırıyoruz -- test CSS'i değil DİLİ ölçüyor.
+    assert page.inner_text(".kb-metin").lower() == "calendars"
+    dugmeler = page.locator(".gorunum-dugme").all_inner_texts()
+    assert dugmeler == ["Day", "Week", "Month"]
+    assert page.inner_text(".bd-baslik") == "Calendar ready"
+
+
+def test_dil_en_dinamik_akis(page, sunucu_en):
+    """Dil `en` iken bildirim + panel + ayarlar kutusu İngilizce.
+
+    Hızlı ekleme cümlesi hâlâ TÜRKÇE (ayrıştırıcı değişmedi): İngilizce
+    arayüzde Türkçe cümleyle etkinlik kurulabildiği de burada kilitleniyor.
+    """
+    hatalar = []
+    page.on("console", lambda m: hatalar.append(m.text) if m.type == "error" else None)
+    page.on("pageerror", lambda e: hatalar.append(str(e)))
+
+    page.goto(sunucu_en)
+    page.wait_for_selector("#hizli-girdi")
+
+    page.fill("#hizli-girdi", "bugün 14:00 english test")
+    page.click("#hizli-form button[type=submit]")
+    page.wait_for_selector(".blok:has-text('english test')")
+    page.wait_for_selector("#bildirim:has-text('Added:')")
+
+    page.locator(".blok:has-text('english test')").first.click()
+    page.wait_for_selector("#panel-icerik:has-text('Time')")
+    assert "14:00" in page.inner_text("#panel-icerik")
+
+    page.click("#ayarlar")
+    page.wait_for_selector("#modal-baslik:has-text('Settings')")
+    page.wait_for_selector("#modal-alanlar:has-text('Language')")
+    page.click("#modal-iptal")
+
+    assert hatalar == []
