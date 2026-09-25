@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "takvim"
 version = "1.3.0"
-description = "Yerel-oncelikli, hesapsiz, cevrimdisi masaustu takvim uygulamasi"
+description = "Yerel-öncelikli, hesapsız, çevrimdışı masaüstü takvim uygulaması"
 requires-python = ">=3.12"
 dependencies = [
     "python-dateutil>=2.9",
-    # tzdata blueprint'teki listede yok, ama Windows'ta isletim sisteminin IANA
-    # veritabani olmadigi icin stdlib zoneinfo tek basina calismaz
-    # (ZoneInfoNotFoundError). Opsiyonel bir kolaylik degil, zorunluluk.
+    # tzdata blueprint'teki listede yok, ama Windows'ta işletim sisteminin IANA
+    # veritabanı olmadığı için stdlib zoneinfo tek başına çalışmaz
+    # (ZoneInfoNotFoundError). Opsiyonel bir kolaylık değil, zorunluluk.
     "tzdata>=2024.1; sys_platform == 'win32'",
     # Faz 2 (.ics içe aktarma) için önceden onaylı bağımlılık.
     "icalendar>=6",
