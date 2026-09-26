@@ -470,3 +470,33 @@ def test_dil_en_dinamik_akis(page, sunucu_en):
     page.click("#modal-iptal")
 
     assert hatalar == []
+
+
+def test_ayarlar_select_metin_kutuya_sigiyor(page, sunucu):
+    """Açılır kutulardaki metin satır kutusuna sığmalı.
+
+    `select.modal-girdi` sabit 32px yükseklikteydi: 8px padding + 1px kenarlık
+    düşünce 13px metne 14px içerik kalıyor, satır kutusu (~16px) taşıyordu --
+    çıkıntılı harfler (Q, g, p) kutu sınırına dayanıyordu. `scrollWidth`
+    `select`te kör olduğu için içerik/satır yükseklikleri karşılaştırılıyor.
+    """
+    page.goto(sunucu)
+    page.wait_for_selector("#hizli-girdi")
+
+    page.click("#ayarlar")
+    page.wait_for_selector("#perde:not([hidden])")
+
+    sigmayan = page.evaluate("""() => {
+      const kotu = [];
+      document.querySelectorAll("#modal-alanlar select").forEach((s) => {
+        const cs = getComputedStyle(s);
+        let satir = parseFloat(cs.lineHeight);
+        if (Number.isNaN(satir)) satir = parseFloat(cs.fontSize) * 1.2;
+        const icerik = s.clientHeight
+          - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+          - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth);
+        if (satir > icerik + 0.5) kotu.push([s.value, satir, icerik]);
+      });
+      return kotu;
+    }""")
+    assert sigmayan == []

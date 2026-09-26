@@ -1044,6 +1044,13 @@ kbd {
 .modal-etiket { font-size: 12px; color: var(--metin-soluk); }
 .modal-alanlar textarea { resize: vertical; min-height: 46px; }
 .modal-alanlar select { appearance: auto; }
+/* Select SABİT yükseklik almıyor: 32px + 8px padding, 13px metnin satır
+ * kutusuna (`line-height: normal` ≈16px) 14px içerik bırakıyordu ve çıkıntılı
+ * harfler (Q, g, p) kutu sınırına dayanıyordu. Metin girdileri tek satırı
+ * ortalayıp kırptığı için onlarda görünmüyordu. `height: auto` + formun satır
+ * yüksekliği (1.5) metne nefes aldırıyor; selectler hep tek başına satırda
+ * duruyor, komşu girdilerle boy yarışı yok. */
+select.modal-girdi { height: auto; line-height: 1.5; }
 
 .modal-girdi {
   width: 100%;
