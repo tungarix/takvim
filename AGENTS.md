@@ -526,17 +526,24 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0
+**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0
 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-**v1.4.0 (yayınlanmamış): TR/EN dil seçeneği** (ayrıntı CHANGELOG.md'de).
-Bilinen bilinçli sınır: **hızlı ekleme kutusu İngilizce modda da Türkçe cümle
-bekliyor** (`core/quickadd.py` değişmedi, seçenek 1). Yeni görünen metin
-eklerken `i18n.js`teki İKİ dile de yaz; TR değerler eski metinle birebir aynı
-olmalı (varsayılan dil `tr`, mevcut testler buna kilitli). Sunucu hatalarında
-`error` alanını DEĞİŞTİRME (eski sözleşme), kodu `_KodluHata`/`_hata_esle` ile
-ekle.
+v1.4.0'da bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Türkçe / İngilizce arayüz dili** (⚙ Ayarlar → Dil, varsayılan Türkçe).
+  Yeni `ui/static/i18n.js` (`TR`/`EN`, 225 anahtar), `app.js`te `t()`,
+  gün/ay adları + hatırlatıcı toast'ı dahil sunucu tarafı yerelleştirme.
+  Bilinen bilinçli sınır: **hızlı ekleme kutusu İngilizce modda da Türkçe
+  cümle bekliyor** (`core/quickadd.py` değişmedi, seçenek 1) — placeholder
+  metninde açıkça yazıyor. Yeni görünen metin eklerken `i18n.js`teki İKİ
+  dile de yaz; TR değerler eski metinle birebir aynı olmalı (varsayılan dil
+  `tr`, eski testler buna kilitli). Sunucu hatalarında `error` alanını
+  DEĞİŞTİRME (eski sözleşme), kodu `_KodluHata`/`_hata_esle` ile ekle.
+- Ayarlar kutusundaki select'lerin sabit 32px yüksekliği kaldırıldı
+  (metin taşıyordu).
+- Test sayısı 436 → 457.
 
 v1.3.0'da bitenler (ayrıntı CHANGELOG.md'de):
 

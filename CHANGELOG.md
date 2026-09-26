@@ -7,6 +7,8 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.4.0] - 2026-09-26
+
 ### Eklendi
 - **Türkçe / İngilizce arayüz dili** (⚙ Ayarlar → Dil, varsayılan Türkçe,
   `ayarlar.json` → `dil`): arayüz ya tamamen Türkçe ya tamamen İngilizce.
