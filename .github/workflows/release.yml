@@ -41,7 +41,7 @@ jobs:
           "$hash  Takvim.exe" | Set-Content -Path SHA256SUMS.txt -Encoding ascii
 
       - name: Build provenance attestation üret
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/Takvim.exe
 
