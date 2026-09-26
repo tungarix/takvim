@@ -53,6 +53,16 @@ Kodu değiştirdikten sonra `.exe` ESKİ KALIR; yeniden derlemeden
 "kullanıcıda çalışıyor" deme:
 `.venv\Scripts\python.exe -m PyInstaller takvim.spec --noconfirm --clean`
 
+**Resmi sürüm akışı artık `v*` etiketi + `.github/workflows/release.yml`
+üzerinden gidiyor:** etiket at (`git tag vX.Y.Z && git push origin vX.Y.Z`)
+→ workflow testleri çalıştırıp `.exe`'yi derler, SHA256 + build provenance
+attestation üretir → taslak (draft) bir release açar (exe + `SHA256SUMS.txt`
+ekli) → notları elle yaz → yayımla. `workflow_dispatch` ile de tetiklenebilir,
+o zaman release AÇMAZ, yalnızca artifact yükler (deneme/doğrulama içindir).
+Yukarıdaki yerel derleme komutu hâlâ geçerli ama artık YALNIZCA geliştirirken
+".exe güncel mi" diye sınamak için gerekli — resmi `.exe`'yi elle derleyip
+release'e elle yükleme, workflow yapıyor.
+
 ```powershell
 # testler
 cd "C:\Users\Arda\Desktop\Aktenak\Projeler\takvim"; .\.venv\Scripts\python.exe -m pytest
