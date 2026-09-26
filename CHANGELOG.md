@@ -24,6 +24,14 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
   duman testlerine 2 EN senaryo (`tests/test_frontend_smoke.py`, 17 duman
   testi → 456 test).
 
+### Düzeltildi
+- **Ayarlar kutusundaki açılır kutular (select) sabit 32px yükseklikteydi**
+  — 13px metne satır kutusu (~16px) sığmıyordu, çıkıntılı harfler ("English",
+  "Quit the app" gibi uzun İngilizce seçenekler dahil) kutu sınırına
+  dayanıyordu. `select.modal-girdi { height: auto; line-height: 1.5 }` ile
+  düzeltildi; geometri ölçen bir regresyon testi eklendi (`tests/
+  test_frontend_smoke.py`, 18 duman testi → 457 test).
+
 ## [1.3.0] - 2026-09-21
 
 ### Eklendi
