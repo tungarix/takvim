@@ -1,0 +1,99 @@
+name: "🐞 Hata bildirimi / Bug report"
+description: Bir şey beklendiği gibi çalışmıyor. / Something isn't working as expected.
+title: "[Hata/Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Türkçe ya da İngilizce yazabilirsin, hangisi rahatsa. /
+        Feel free to write in Turkish or English.
+
+        **`takvim.db` dosyasını EKLEME** — kişisel etkinlik verini içerir. /
+        **Do NOT attach `takvim.db`** — it contains your personal event data.
+
+  - type: dropdown
+    id: surum
+    attributes:
+      label: Takvim sürümü / Version
+      description: >-
+        Uygulama şu an sürümünü ekranda hiçbir yerde göstermiyor; hangi
+        `Takvim.exe`'yi indirdiğini
+        [Releases](https://github.com/tungarix/takvim/releases) sayfasından
+        kontrol et. / The app doesn't show its version anywhere on screen;
+        check which `Takvim.exe` you downloaded from the
+        [Releases](https://github.com/tungarix/takvim/releases) page.
+      options:
+        - v1.4.0
+        - v1.3.0
+        - v1.2.0
+        - v1.1.0
+        - v1.0.2
+        - v1.0.1
+        - v1.0.0
+        - Bilmiyorum / Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows sürümü / Windows version
+      placeholder: "ör. / e.g. Windows 11 23H2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: dil
+    attributes:
+      label: Arayüz dili / Interface language
+      options:
+        - Türkçe
+        - English
+    validations:
+      required: true
+
+  - type: textarea
+    id: adimlar
+    attributes:
+      label: Tekrar üretme adımları / Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: beklenen
+    attributes:
+      label: Beklenen davranış / Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: olan
+    attributes:
+      label: Gerçekleşen davranış / Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: gunluk
+    attributes:
+      label: Günlük dosyası (opsiyonel) / Log file (optional)
+      description: >-
+        İlgili satırları `%LOCALAPPDATA%\Takvim\takvim.log` dosyasından
+        yapıştır. / Paste the relevant lines from
+        `%LOCALAPPDATA%\Takvim\takvim.log`.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: ekran
+    attributes:
+      label: Ekran görüntüsü (opsiyonel) / Screenshot (optional)
+      description: Buraya sürükle bırak ya da yapıştır. / Drag and drop or paste here.
+    validations:
+      required: false

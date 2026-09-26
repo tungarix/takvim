@@ -1,0 +1,36 @@
+name: "💡 Öneri / Feature request"
+description: Yeni bir özellik ya da iyileştirme öner. / Suggest a new feature or improvement.
+title: "[Öneri/Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Türkçe ya da İngilizce yazabilirsin. / Feel free to write in Turkish or English.
+
+        Kapsam dışı liste README'de (§1) — sunucu/hesap/çoklu cihaz senkronu,
+        katılımcı/davet/RSVP akışı, mobil ve CalDAV bilinçli olarak dışarıda
+        tutuluyor. / See the out-of-scope list in the README (§1) —
+        server/accounts/multi-device sync, attendee/invite/RSVP flows, mobile
+        and CalDAV are intentionally excluded.
+
+  - type: textarea
+    id: sorun
+    attributes:
+      label: Hangi ihtiyacı ya da sorunu çözüyor? / What need or problem does this solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: cozum
+    attributes:
+      label: Önerdiğin çözüm / Your proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatif
+    attributes:
+      label: Düşündüğün alternatifler (opsiyonel) / Alternatives considered (optional)
+    validations:
+      required: false
