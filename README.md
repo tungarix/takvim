@@ -4,14 +4,51 @@
 [![Son sürüm](https://img.shields.io/github/v/release/tungarix/takvim)](https://github.com/tungarix/takvim/releases/latest)
 [![Lisans](https://img.shields.io/github/license/tungarix/takvim)](LICENSE)
 
-Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
+[English](#english) · [Türkçe](#türkçe)
 
 ![Takvim ekran görüntüsü](docs/screenshot.png)
 
-**Durum:** v1 tamamlandı. Masaüstündeki **Takvim** kısayolu tek dosyalık
-`Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
+---
 
-> Kodlama ajanıyla çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
+## English
+
+Takvim ("calendar" in Turkish) is a local-first, account-free, offline
+desktop calendar app for Windows. Everything — events, calendars, backups —
+stays on your own machine in a local SQLite database; there's no server,
+no sign-up, no sync.
+
+- **Download:** grab `Takvim.exe` from the [latest release](https://github.com/tungarix/takvim/releases/latest) and double-click it. No installer, no Python needed.
+- **"Windows protected your PC" warning:** the `.exe` isn't code-signed, so SmartScreen warns on first run. Click **More info**, then **Run anyway** — it only appears once.
+- **Interface language:** the UI is fully Turkish or fully English, switched from **⚙ Settings → Language** (saved, page reloads). Default is Turkish.
+- **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept.
+- **Known limitation:** the quick-add box always expects a Turkish sentence (e.g. "yarın 14:00 diş hekimi"), even in English mode — its parser only understands Turkish grammar; the placeholder text shows the expected format.
+- **License:** [MIT](LICENSE).
+- **Found a bug or have a suggestion?** Please open an [issue](https://github.com/tungarix/takvim/issues).
+
+### Verify your download
+
+The `.exe` isn't code-signed, but releases built by
+[`release.yml`](.github/workflows/release.yml) (v1.5.0 onward) ship with a
+SHA256 checksum and a GitHub [build provenance attestation](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds),
+so you can confirm the file actually came from this repository's CI:
+
+```powershell
+Get-FileHash .\Takvim.exe -Algorithm SHA256
+gh attestation verify .\Takvim.exe -R tungarix/takvim
+```
+
+(`gh attestation verify` needs the [GitHub CLI](https://cli.github.com/).)
+Earlier releases (v1.4.0 and before) only ship a checksum, no attestation —
+they were built locally, before this workflow existed.
+
+---
+
+## Türkçe
+
+Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
+
+**Durum:** v1.4.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
+`Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 ---
 
@@ -171,6 +208,22 @@ gözünün önünde. Devam etmek için:
 Uyarıyı tamamen ortadan kaldırmak için ücretli bir kod imzalama sertifikası
 gerekir; şu an için bilinçli olarak atlanmış bir adım.
 
+### İndirilen dosyayı doğrula
+
+`.exe` imzasız, ama [`release.yml`](.github/workflows/release.yml) ile
+derlenen sürümlerden itibaren (v1.5.0+) yanında bir SHA256 özeti ve GitHub'ın
+[build provenance attestation](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)'ı
+geliyor; dosyanın gerçekten bu depodaki CI'dan geldiğini şöyle doğrulayabilirsin:
+
+```powershell
+Get-FileHash .\Takvim.exe -Algorithm SHA256
+gh attestation verify .\Takvim.exe -R tungarix/takvim
+```
+
+(`gh attestation verify` için [GitHub CLI](https://cli.github.com/) gerekir.)
+Daha eski sürümler (v1.4.0 ve öncesi) yalnızca özet içerir, attestation
+içermez — bu workflow var olmadan önce yerelde derlenmişlerdi.
+
 Masaüstündeki **Takvim** kısayoluna çift tıkla. Uygulama **kendi
 penceresinde** açılır: tarayıcı yok, adres çubuğu yok, sekme yok; görev
 çubuğunda kendi ikonu var. Kapatmak için pencereyi kapat, hepsi bu.
@@ -266,6 +319,8 @@ Uygulama artık sessizce kapanmıyor: başlatma hatası olursa bir uyarı pencer
   açıkça yazıyor.
 
 ### Geliştirme
+
+> Kodlama ajanıyla (AI ajanıyla) bu projede çalışıyorsan önce [AGENTS.md](AGENTS.md) oku.
 
 PowerShell (bu makinenin kabuğu; `&&` desteklenmiyor, `;` kullan):
 
