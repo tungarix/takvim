@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # release.yml'deki actions/* sabitlemeleri güncel kalsın diye. pip
+  # ekosistemi BİLİNÇLİ OLARAK yok -- gürültü yapar (bkz. AGENTS.md).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
