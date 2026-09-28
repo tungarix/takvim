@@ -7,6 +7,18 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Değişti
+- **Gün/hafta/ay görünümü tekrarlı serilerde daha hızlı**: her çizimde her
+  seri başlangıç tarihinden baştan yürünüyordu, süre serinin yaşıyla
+  doğrusal büyüyordu. Kural kümesi artık bellekte saklanıyor
+  (`core/recurrence.py`, AGENTS.md kural 66). Ağır bir test verisinde
+  (3000 etkinlik + 2 yıllık 150 seri) hafta görünümü 122 → 36 ms, ay
+  görünümü 189 → 97 ms; sonuçlar birebir aynı. Testler:
+  `tests/test_kural_onbellegi.py` (10) → 467 test.
+- CI/release action'ları güncellendi (`checkout`/`setup-python`/
+  `upload-artifact` v7, `attest-build-provenance` v4): Node 20
+  kullanımdan kaldırma uyarısı kapandı.
+
 ## [1.4.0] - 2026-09-26
 
 ### Eklendi

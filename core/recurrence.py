@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import itertools
 import re
+import threading
+from collections import OrderedDict
 from collections.abc import Iterable, Iterator
 from dataclasses import replace
 from datetime import datetime, timedelta, tzinfo
@@ -33,6 +35,21 @@ __all__ = ["expand", "instance_starts", "next_rule_start", "series_end"]
 # expand() ile 17 sn sürdü). 10.000, gerçek bir kişisel takvimin ASLA
 # yaklaşmayacağı ama saldırı yüzeyini saniyelerin altında tutan bir sınır.
 _MAKS_ORNEK = 10_000
+
+# Kural kümesini her render'da baştan kurmak, sonsuz bir seriyi her seferinde
+# DTSTART'tan yürütüyordu: 2 yıllık 150 seride hafta görünümü ~120 ms ve süre
+# serinin yaşıyla doğrusal büyüyor (ölçüldü). `cache=True` kümeleri bu yüzden
+# saklanıyor, iki sınırla:
+_ONBELLEK_KURAL = 256         # thread başına en fazla küme (en eski düşer)
+_ONBELLEK_MAKS_ORNEK = 5_000  # iç önbelleği bunu aşan küme saklanmaz
+
+# Thread başına AYRI önbellek ŞART: dateutil'in `_iter_cached`'i yineleme
+# tükenince kilidini bırakmıyor ve kilit yeniden girişli değil. Aynı küme
+# sunucu ile hatırlatıcı thread'i arasında paylaşılsaydı biri sonsuza dek
+# kilitlenebilirdi. Aynı sebeple bir kümede iki yineleyici iç içe kullanılmaz.
+_yerel = threading.local()
+
+_Anahtar = tuple[str | None, datetime, str, tuple[datetime, ...], tuple[datetime, ...]]
 
 _UNTIL_RE = re.compile(r"UNTIL=([^;\s]+)", re.IGNORECASE)
 
@@ -104,6 +121,45 @@ def _ruleset(event: Event) -> rruleset:
     for excluded in event.exdate:
         rs.exdate(excluded.astimezone(tz))
     return rs
+
+
+def _kural_anahtari(event: Event) -> _Anahtar:
+    """`_ruleset`'in okuduğu alanların TAMAMI; biri eksik kalırsa eski küme döner."""
+    return (event.rrule, event.start_utc, event.tzid, event.rdate, event.exdate)
+
+
+def _onbellekli_ruleset(event: Event) -> rruleset:
+    """`_ruleset(event)` ile aynı küme; bu thread'de daha önce kurulduysa o."""
+    onbellek: OrderedDict[_Anahtar, rruleset] | None = getattr(_yerel, "kumeler", None)
+    if onbellek is None:
+        onbellek = _yerel.kumeler = OrderedDict()
+    anahtar = _kural_anahtari(event)
+    rs = onbellek.get(anahtar)
+    if rs is None:
+        rs = _ruleset(event)
+        onbellek[anahtar] = rs
+        if len(onbellek) > _ONBELLEK_KURAL:
+            onbellek.popitem(last=False)
+    else:
+        onbellek.move_to_end(anahtar)
+    return rs
+
+
+def _buyuduyse_birak(event: Event, rs: rruleset) -> None:
+    """İç önbelleği sınırı aşan kümeyi önbellekten çıkarır.
+
+    Yoğun bir seri (ör. FREQ=HOURLY, DTSTART yıllar önce) pencereye varana dek
+    on binlerce örneği kümenin önbelleğine yazar; onu saklamak TKV-API-001'in
+    kapattığı kaynak tüketimini kalıcı yapardı. `_cache` dateutil'in özel
+    alanı: bulunamazsa ölçemediğimiz kümeyi de saklamıyoruz.
+    """
+    ic = getattr(rs, "_cache", None)
+    if ic is not None and len(ic) <= _ONBELLEK_MAKS_ORNEK:
+        return
+    onbellek = getattr(_yerel, "kumeler", None)
+    anahtar = _kural_anahtari(event)
+    if onbellek is not None and onbellek.get(anahtar) is rs:
+        del onbellek[anahtar]
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +285,7 @@ def expand(
 
     rs: rruleset | None = None
     if event.rrule or event.rdate or event.exdate:
-        rs = _ruleset(event)
+        rs = _onbellekli_ruleset(event)
         # Pencereden ÖNCE başlayıp içine sarkan örnekleri kaçırmamak için sorgu
         # başlangıcını bir süre kadar geriye alıyoruz (gece yarısını aşan
         # etkinlikler, çok günlü tüm gün etkinlikler).
@@ -277,6 +333,8 @@ def expand(
             continue  # seriye ait olmayan hayalet override
         out.append(occ)
 
+    if rs is not None:
+        _buyuduyse_birak(event, rs)
     out.sort(key=lambda o: (o.start_utc, o.end_utc, o.uid))
     return out
 

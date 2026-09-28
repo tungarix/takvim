@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**457 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**467 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -469,6 +469,36 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
       `Origin`/`Sec-Fetch-Site` kontrolü CSRF'e karşı, ağdaki başka bir
       cihaza karşı DEĞİL -- bu bayrak olmadan `--host 0.0.0.0` ile açılan
       bir örneğe ağdaki HERKES erişip yazabilirdi.
+
+### core/recurrence.py (kural kümesi önbelleği)
+
+66. **Kural kümesi render'lar arasında SAKLANIYOR** (`_onbellekli_ruleset`,
+    yalnızca `expand()` kullanıyor). Önceden her çizimde her seri DTSTART'tan
+    baştan yürünüyordu ve süre serinin yaşıyla doğrusal büyüyordu (3000
+    etkinlik + 2 yıllık 150 seride hafta 122 → 36 ms, ay 189 → 97 ms,
+    ölçüldü). Dört kural, hepsinin mutasyonla doğrulanmış testi var
+    (`tests/test_kural_onbellegi.py`):
+    - **Anahtar, `_ruleset`'in okuduğu alanların TAMAMI** (`_kural_anahtari`:
+      rrule, start_utc, tzid, rdate, exdate). `_ruleset`'e yeni bir alan
+      okutursan anahtara da ekle; yoksa düzenlenen seri ESKİ hâliyle,
+      sessizce çizilir.
+    - **Thread başına ayrı önbellek** (`threading.local`). dateutil'in
+      `_iter_cached`'i yineleme tükenince kilidini bırakmıyor ve kilit
+      yeniden girişli değil (2.9.0.post0 kaynağından doğrulandı): sunucu ile
+      hatırlatıcı thread'i aynı kümeyi paylaşsaydı biri sonsuza dek
+      kilitlenebilirdi. Aynı sebeple bir kümede iki yineleyiciyi iç içe
+      kullanma.
+    - **İç önbelleği 5.000 örneği aşan küme saklanmaz** (`_buyuduyse_birak`).
+      Yoğun bir seri (TKV-API-001) pencereye varana dek on binlerce örneği
+      önbelleğe yazar; saklamak o kaynak tüketimini kalıcı yapardı. `_cache`
+      dateutil'in özel alanı: bulunamazsa küme saklanmaz (hız kaybolur, sonuç
+      bozulmaz) ve `test_ayni_seri_ikinci_renderda_yeniden_kurulmaz`
+      kırmızıya döner.
+    - **Thread başına en fazla 256 küme**, en uzun süre kullanılmayan düşer.
+
+    Sonucun önbelleksiz hâlle birebir aynı olduğunu diferansiyel bir test
+    ölçüyor (ileri/geri/uzağa gezinme, DST haftası, geçen yıldan taşınmış
+    override, COUNT'u tükenen seri).
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -481,6 +511,8 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
   değil: DST'li bir dilimde bir tam gün 23 veya 25 saat sürer.
 - **Materialize edilmiş occurrence cache tablosu YOK.** Performans ölçülene
   kadar da olmayacak. Erken optimizasyon burada tutarlılık kâbusuna dönüşür.
+  (Bellekteki kural kümesi önbelleği ayrı bir şey: ölçüldükten sonra eklendi,
+  DB'ye yazmıyor, sonucu değiştirmiyor — kural 66.)
 - **`core/` içindeki `rdate`/`exdate` tuple**, list değil. Frozen dataclass'ta
   mutable default sorun çıkarıyor; çağıran taraf yine list geçebilir.
 
