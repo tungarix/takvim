@@ -7,6 +7,13 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Uygulama sürümü ⚙ Ayarlar kutusunda görünüyor** ("Takvim v1.4.0"):
+  önceden hiçbir yerde yazmıyordu, hata bildiren kullanıcı hangi
+  `.exe`'yi çalıştırdığını bilemiyordu. Sürümün tek kaynağı artık
+  `ui/surum.py`; `pyproject.toml` onu okuyor. Testler: `tests/test_surum.py`
+  + 1 duman testi → 469 test.
+
 ### Değişti
 - **Gün/hafta/ay görünümü tekrarlı serilerde daha hızlı**: her çizimde her
   seri başlangıç tarihinden baştan yürünüyordu, süre serinin yaşıyla

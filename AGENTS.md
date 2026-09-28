@@ -23,7 +23,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**467 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**469 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -54,7 +54,9 @@ Kodu değiştirdikten sonra `.exe` ESKİ KALIR; yeniden derlemeden
 `.venv\Scripts\python.exe -m PyInstaller takvim.spec --noconfirm --clean`
 
 **Resmi sürüm akışı artık `v*` etiketi + `.github/workflows/release.yml`
-üzerinden gidiyor:** etiket at (`git tag vX.Y.Z && git push origin vX.Y.Z`)
+üzerinden gidiyor:** sürümü `ui/surum.py`'de yükselt (TEK kaynak:
+`pyproject.toml` onu okuyor, Ayarlar kutusu onu gösteriyor; `test_surum.py`
+kurulu paketle karşılaştırıyor) → etiket at (`git tag vX.Y.Z && git push origin vX.Y.Z`)
 → workflow testleri çalıştırıp `.exe`'yi derler, SHA256 + build provenance
 attestation üretir → taslak (draft) bir release açar (exe + `SHA256SUMS.txt`
 ekli) → notları elle yaz → yayımla. `workflow_dispatch` ile de tetiklenebilir,

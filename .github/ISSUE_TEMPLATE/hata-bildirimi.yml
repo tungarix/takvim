@@ -17,11 +17,12 @@ body:
     attributes:
       label: Takvim sürümü / Version
       description: >-
-        Uygulama şu an sürümünü ekranda hiçbir yerde göstermiyor; hangi
-        `Takvim.exe`'yi indirdiğini
-        [Releases](https://github.com/tungarix/takvim/releases) sayfasından
-        kontrol et. / The app doesn't show its version anywhere on screen;
-        check which `Takvim.exe` you downloaded from the
+        v1.5.0'dan itibaren ⚙ Ayarlar kutusunda "Takvim vX.Y.Z" olarak
+        yazıyor. Daha eski sürümler sürümü göstermiyor; hangi `Takvim.exe`'yi
+        indirdiğini [Releases](https://github.com/tungarix/takvim/releases)
+        sayfasından kontrol et. / From v1.5.0 on, ⚙ Settings shows
+        "Takvim vX.Y.Z". Older versions don't show it; check which
+        `Takvim.exe` you downloaded on the
         [Releases](https://github.com/tungarix/takvim/releases) page.
       options:
         - v1.4.0

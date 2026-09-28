@@ -30,6 +30,7 @@ from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedek
 from . import otomatik
 from .ayarlar import DILLER, VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
 from .presenter import day_payload, month_payload, week_payload
+from .surum import SURUM
 
 __all__ = ["serve", "make_server"]
 
@@ -1202,7 +1203,9 @@ def _ayar_durumu(db_yolu) -> dict:
     """Ayarların o anki hâli: dosyadaki tepsi bayrağı + gerçek kayıt durumu.
 
     Otomatik başlatma DOSYADAN DEĞİL diskten okunuyor: kullanıcı kısayolu
-    elle silmişse arayüz "açık" yalanı söylemesin.
+    elle silmişse arayüz "açık" yalanı söylemesin. `surum` bir ayar değil;
+    hata bildiren kullanıcı hangi `.exe`'yi çalıştırdığını Ayarlar kutusunda
+    görebilsin diye burada.
     """
     tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
     dil = str(VARSAYILANLAR["dil"])
@@ -1218,7 +1221,8 @@ def _ayar_durumu(db_yolu) -> dict:
         oto_gercek = bool(otomatik.kurulu_mu())
     except OSError:
         oto_gercek = False
-    return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil}
+    return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil,
+            "surum": SURUM}
 
 
 def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,

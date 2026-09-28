@@ -20,6 +20,7 @@ from tests.helpers import IST
 from ui import otomatik
 from ui.ayarlar import VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
 from ui.server import make_server
+from ui.surum import SURUM
 from ui.tepsi import Tepsi, simge_bul
 
 # ---------------------------------------------------------------------------
@@ -289,10 +290,10 @@ def _jpost(temel, yol, govde):
 
 
 def test_ayarlar_varsayilanla_gelir(sunucu_dosya):
-    """İlk açılışta ikisi de kapalı, dil TR."""
+    """İlk açılışta ikisi de kapalı, dil TR; sürüm Ayarlar kutusunda gösterilmek için yanıtta."""
     temel, _, _ = sunucu_dosya
     assert _jget(temel, "/api/ayarlar") == {
-        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr"}
+        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr", "surum": SURUM}
 
 
 def test_ayarlar_tepsi_kaydedilir(sunucu_dosya):

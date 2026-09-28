@@ -360,7 +360,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**467 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**469 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -444,6 +444,8 @@ kırmızıya dönüyor.
 - `test_kural_onbellegi.py` (10): kural kümesi önbelleğinin anahtar
   bütünlüğü, thread ayrımı, boyut sınırları ve önbelleksiz hâlle birebir
   aynı sonuç (diferansiyel)
+- `test_surum.py` (1) + `test_frontend_smoke.py` (+1): sürümün tek kaynağı
+  (`ui/surum.py` → paket metadata'sı) ve Ayarlar kutusunda görünmesi
 - Lint + tip: `ruff` (F/I/UP/RUF100) ve `mypy` (`core/` + `store/`) temiz;
   kural dışı bırakılanlar `pyproject.toml`'da gerekçesiyle listeli
 

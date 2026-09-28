@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "takvim"
-version = "1.4.0"
+dynamic = ["version"]  # ui/surum.py'den; bkz. [tool.setuptools.dynamic]
 description = "Yerel-öncelikli, hesapsız, çevrimdışı masaüstü takvim uygulaması"
 requires-python = ">=3.12"
 dependencies = [
@@ -36,6 +36,10 @@ test-ui = ["pytest-playwright>=0.5"]
 [tool.setuptools]
 package-data = { store = ["schema.sql", "migrations/*.sql"], ui = ["static/*"] }
 packages = ["core", "store", "ics", "ui", "remind"]
+
+[tool.setuptools.dynamic]
+# Uygulama sürümü ekranda da gösteriliyor; iki yerde tutulursa biri unutulur.
+version = { attr = "ui.surum.SURUM" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

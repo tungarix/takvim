@@ -27,6 +27,7 @@ pytest.importorskip("pytest_playwright")
 from store import Repo
 from tests.helpers import IST
 from ui.server import make_server
+from ui.surum import SURUM
 
 
 @pytest.fixture
@@ -470,6 +471,21 @@ def test_dil_en_dinamik_akis(page, sunucu_en):
     page.click("#modal-iptal")
 
     assert hatalar == []
+
+
+def test_ayarlar_kutusu_surumu_gosterir(page, sunucu):
+    """Hata bildiren kullanıcı hangi `.exe`'yi çalıştırdığını görebilmeli.
+
+    Sürüm eskiden hiçbir yerde görünmüyordu; issue şablonu kullanıcıyı
+    Releases sayfasında tahmine yolluyordu.
+    """
+    page.goto(sunucu)
+    page.wait_for_selector("#hizli-girdi")
+
+    page.click("#ayarlar")
+    page.wait_for_selector("#perde:not([hidden])")
+
+    assert f"Takvim v{SURUM}" in page.inner_text("#modal-metin")
 
 
 def test_ayarlar_select_metin_kutuya_sigiyor(page, sunucu):

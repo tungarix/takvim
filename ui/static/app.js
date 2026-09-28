@@ -2259,8 +2259,10 @@ async function ayarlariAc() {
     bildir(hata.message, true);
     return;
   }
+  // Ürün adı + sürüm dile göre değişmiyor (i18n.js: ürün adı kapsam dışı).
+  const surum = mevcut.surum ? `\n\nTakvim v${mevcut.surum}` : "";
   const s = await modalForm(t("ayarlar_baslik"),
-    t("ayarlar_metin"),
+    t("ayarlar_metin") + surum,
     [
       {
         ad: "tepsi",
