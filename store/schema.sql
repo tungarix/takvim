@@ -91,3 +91,21 @@ CREATE TABLE silinen_seriler (
     snapshot_json   TEXT NOT NULL,
     deleted_at      TEXT NOT NULL
 );
+
+-- 005 ile eklendi. Görev takvim etkinliği değil; ne zaman yapılacağı üç
+-- hâlden biri (plansız / gün / saat) ve ikisi birden olamaz. Saat planlıysa
+-- saati bağlı etkinlik (zaman bloğu) taşır; blok silinirse görev plansıza döner.
+CREATE TABLE tasks (
+    id          INTEGER PRIMARY KEY,
+    uid         TEXT NOT NULL UNIQUE,
+    title       TEXT NOT NULL,
+    notes       TEXT,
+    plan_day    TEXT,
+    event_id    INTEGER UNIQUE REFERENCES events(id) ON DELETE SET NULL,
+    done_at     TEXT,
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    CHECK (plan_day IS NULL OR event_id IS NULL)
+);
+
+CREATE INDEX idx_tasks_plan_day ON tasks(plan_day);

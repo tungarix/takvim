@@ -9,11 +9,11 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from .timeutil import UTC, ensure_aware, get_tz
 
-__all__ = ["Calendar", "Event", "Override", "Occurrence"]
+__all__ = ["Calendar", "Event", "Override", "Occurrence", "Task"]
 
 _ONE_DAY = timedelta(days=1)
 
@@ -216,3 +216,66 @@ class Occurrence:
     def local_end(self) -> datetime:
         """Bitişin etkinliğin kendi saat dilimindeki karşılığı."""
         return self.end_utc.astimezone(get_tz(self.tzid))
+
+
+@dataclass(frozen=True, slots=True)
+class Task:
+    """Yapılacaklar listesindeki görev. Takvim etkinliği DEĞİL: saati olmayabilir.
+
+    "Ne zaman yapacağım" üç hâlden biri ve aynı anda İKİSİ olamaz:
+
+    - plansız: `plan_day` da `event_id` de yok;
+    - gün planlı ("bugün yapacağım"): `plan_day` dolu, saat yok. Izgarada hiçbir
+      yerde görünmez (tüm gün şeridinde de) -- yalnızca görev listesinde;
+    - saat planlı ("14:00-15:30 arası"): `event_id` göreve bağlı zaman bloğunu
+      gösterir. Saat blokta durur, görevde ayrıca tutulmaz: ikinci bir kopya
+      blok taşınınca sessizce bayatlardı.
+
+    `plan_day` bir DUVAR GÜNÜ (tarih), an değil: "bugün" hangi saat diliminde
+    olursa olsun aynı takvim günüdür, bu yüzden datetime değil `date`.
+    """
+
+    id: int | None
+    uid: str
+    title: str
+    notes: str | None = None
+    plan_day: date | None = None
+    event_id: int | None = None
+    done_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        set_ = object.__setattr__
+
+        baslik = self.title.strip()
+        if not baslik:
+            raise ValueError(f"görev başlığı boş olamaz (uid={self.uid!r})")
+        set_(self, "title", baslik)
+
+        set_(self, "notes", (self.notes or "").strip() or None)
+
+        # datetime, date'in alt sınıfı: gün bekleyen yere an verilirse saat
+        # sessizce düşerdi.
+        if isinstance(self.plan_day, datetime):
+            raise ValueError("plan_day tarih olmalı (date), datetime değil")
+        if self.plan_day is not None and self.event_id is not None:
+            raise ValueError(
+                "görev hem gün hem saat planlı olamaz: plan_day ile event_id "
+                "aynı anda dolu"
+            )
+
+        if self.done_at is not None:
+            set_(self, "done_at", ensure_aware(self.done_at, "done_at").astimezone(UTC))
+
+    @property
+    def done(self) -> bool:
+        """Tamamlandı mı."""
+        return self.done_at is not None
+
+    @property
+    def plan(self) -> str:
+        """`"saat"`, `"gun"` ya da `"yok"` -- arayüz ve API bununla dallanıyor."""
+        if self.event_id is not None:
+            return "saat"
+        if self.plan_day is not None:
+            return "gun"
+        return "yok"

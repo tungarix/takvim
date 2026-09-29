@@ -8,7 +8,7 @@ Bu paket disk, veritabanı ve ekran hakkında hiçbir şey bilmez; girdisi veri,
 """
 
 from .layout import layout
-from .models import Calendar, Event, Occurrence, Override
+from .models import Calendar, Event, Occurrence, Override, Task
 from .query import conflicts, free_slots, overlaps
 from .quickadd import QuickAdd, parse_quick_add
 from .recurrence import expand, instance_starts, next_rule_start, series_end
@@ -31,6 +31,7 @@ __all__ = [
     "Event",
     "Occurrence",
     "Override",
+    "Task",
     # tekrar
     "expand",
     "instance_starts",

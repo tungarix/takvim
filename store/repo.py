@@ -16,7 +16,7 @@ import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -27,6 +27,7 @@ from core import (
     Occurrence,
     Override,
     Reminder,
+    Task,
     ensure_aware,
     expand,
     instance_starts,
@@ -172,6 +173,19 @@ def _row_to_reminder(row: sqlite3.Row) -> Reminder:
         id=row["id"],
         event_id=row["event_id"],
         minutes_before=row["minutes_before"],
+    )
+
+
+def _row_to_task(row: sqlite3.Row) -> Task:
+    """tasks satırı -> Task (created_at/updated_at modele girmez)."""
+    return Task(
+        id=row["id"],
+        uid=row["uid"],
+        title=row["title"],
+        notes=row["notes"],
+        plan_day=date.fromisoformat(row["plan_day"]) if row["plan_day"] else None,
+        event_id=row["event_id"],
+        done_at=_from_db(row["done_at"]),
     )
 
 
@@ -598,7 +612,28 @@ class Repo:
         if event.id is None:
             raise ValueError("update_event id'si olan bir Event bekler")
         with _tx(self.conn):
+            bagli = self.conn.execute(
+                "SELECT 1 FROM tasks WHERE event_id = ?", (event.id,)
+            ).fetchone()
+            if bagli is not None and (event.is_recurring or event.all_day):
+                raise ValueError(
+                    "görev bloğu tekrarlı ya da tüm gün olamaz: görev listesinde "
+                    "değil ızgarada saatli bir blok olarak görünmesi gerekiyor"
+                )
             _event_guncelle(self.conn, event)
+            if bagli is not None:
+                # Blokta başlık/açıklama değişti: görevin kendisi de aynı olmalı,
+                # yoksa listedeki ad ile ızgaradaki ad ayrışır.
+                self.conn.execute(
+                    "UPDATE tasks SET title = ?, notes = ?, updated_at = ? "
+                    "WHERE event_id = ?",
+                    (
+                        event.title,
+                        (event.description or "").strip() or None,
+                        _now_db(),
+                        event.id,
+                    ),
+                )
 
     def delete_event(self, event_id: int) -> None:
         """Etkinliği ve (CASCADE ile) override'larını siler."""
@@ -1013,6 +1048,207 @@ class Repo:
                 new_end_utc=new_end_utc,
             )
         )
+
+    # ------------------------------------------------------------------ görev
+
+    def _gorev_bul(self, task_id: int) -> Task:
+        """Görevi getirir; yoksa LookupError."""
+        task = self.get_task(task_id)
+        if task is None:
+            raise LookupError(f"Görev bulunamadı: id={task_id}")
+        return task
+
+    def add_task(self, task: Task) -> Task:
+        """Görevi kaydeder, id'si atanmış hâlini döndürür.
+
+        Saat planlı bir görev vermek için `event_id` VAR OLAN bir etkinliği
+        göstermeli; sıfırdan saat planlamak için önce görevi ekleyip
+        `plan_task_slot` çağır. Bağlanan etkinlik saatli ve tekrarsız olmalı.
+        """
+        if task.event_id is not None:
+            event = self.get_event(task.event_id)
+            if event is None:
+                raise LookupError(f"Etkinlik bulunamadı: id={task.event_id}")
+            if event.is_recurring or event.all_day:
+                raise ValueError("görev bloğu tekrarlı ya da tüm gün olamaz")
+        now = _now_db()
+        with _tx(self.conn):
+            cur = self.conn.execute(
+                "INSERT INTO tasks (uid, title, notes, plan_day, event_id, done_at,"
+                " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    task.uid,
+                    task.title,
+                    task.notes,
+                    task.plan_day.isoformat() if task.plan_day else None,
+                    task.event_id,
+                    _to_db(task.done_at),
+                    now,
+                    now,
+                ),
+            )
+        return replace(task, id=cur.lastrowid)
+
+    def get_task(self, task_id: int) -> Task | None:
+        """Tek görevi getirir; yoksa None."""
+        row = self.conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return _row_to_task(row) if row else None
+
+    def get_task_by_uid(self, uid: str) -> Task | None:
+        """UID'e göre görev (`.ics` içe aktarmada aynı görevi tanımak için)."""
+        row = self.conn.execute("SELECT * FROM tasks WHERE uid = ?", (uid,)).fetchone()
+        return _row_to_task(row) if row else None
+
+    def list_tasks(self) -> list[Task]:
+        """Tüm görevler, eklenme sırasıyla. Sıralama/gruplama arayüzün işi."""
+        rows = self.conn.execute("SELECT * FROM tasks ORDER BY id")
+        return [_row_to_task(r) for r in rows]
+
+    def tasks_by_event(self, event_ids: list[int]) -> dict[int, Task]:
+        """Verilen etkinliklere bağlı görevler, event_id'ye göre.
+
+        Izgara her çizimde pencerenin etkinliklerinden hangisinin bir görev
+        bloğu olduğunu bilmeli; etkinlik başına ayrı sorgu N+1 olurdu.
+        """
+        if not event_ids:
+            return {}
+        marks = ",".join("?" for _ in event_ids)
+        rows = self.conn.execute(
+            f"SELECT * FROM tasks WHERE event_id IN ({marks})", list(event_ids)
+        )
+        return {r["event_id"]: _row_to_task(r) for r in rows}
+
+    def get_events(self, event_ids: list[int]) -> dict[int, Event]:
+        """Birden çok etkinliği tek sorguda, id'ye göre (görev listesi blok saatlerini bununla alıyor)."""
+        if not event_ids:
+            return {}
+        marks = ",".join("?" for _ in event_ids)
+        rows = self.conn.execute(
+            f"SELECT * FROM events WHERE id IN ({marks})", list(event_ids)
+        )
+        return {r["id"]: _row_to_event(r) for r in rows}
+
+    def update_task(self, task: Task) -> None:
+        """Başlık ve notu günceller; bağlı blok varsa onunki de aynı olur.
+
+        Plan (gün/saat) ve tamamlanma AYRI yöntemlerle değişir (`plan_task_day`,
+        `plan_task_slot`, `clear_task_plan`, `set_task_done`): tüm `Task`'ı
+        yazan bir güncelleme, bayat bir nesneyle planı sessizce geri alırdı.
+        """
+        if task.id is None:
+            raise ValueError("update_task id'si olan bir Task bekler")
+        now = _now_db()
+        with _tx(self.conn):
+            cur = self.conn.execute(
+                "UPDATE tasks SET title = ?, notes = ?, updated_at = ? WHERE id = ?",
+                (task.title, task.notes, now, task.id),
+            )
+            if cur.rowcount == 0:
+                raise LookupError(f"Görev bulunamadı: id={task.id}")
+            self.conn.execute(
+                "UPDATE events SET title = ?, description = ?, sequence = sequence + 1,"
+                " updated_at = ? WHERE id = (SELECT event_id FROM tasks WHERE id = ?)",
+                (task.title, task.notes, now, task.id),
+            )
+
+    def set_task_done(
+        self, task_id: int, done: bool, *, at: datetime | None = None
+    ) -> Task:
+        """Görevi tamamlandı/açık yapar; bağlı blok yerinde kalır."""
+        self._gorev_bul(task_id)
+        bitis = _to_db(at or datetime.now(UTC)) if done else None
+        self.conn.execute(
+            "UPDATE tasks SET done_at = ?, updated_at = ? WHERE id = ?",
+            (bitis, _now_db(), task_id),
+        )
+        return self._gorev_bul(task_id)
+
+    def plan_task_day(self, task_id: int, day: date) -> Task:
+        """Görevi bir GÜNE planlar (saatsiz). Varsa bağlı blok silinir.
+
+        Blok görevin planıydı; gün planına geçince ızgarada ikinci bir kopya
+        kalmamalı.
+        """
+        if isinstance(day, datetime):
+            raise ValueError("day tarih olmalı (date), datetime değil")
+        task = self._gorev_bul(task_id)
+        with _tx(self.conn):
+            if task.event_id is not None:
+                self.conn.execute("DELETE FROM events WHERE id = ?", (task.event_id,))
+            self.conn.execute(
+                "UPDATE tasks SET plan_day = ?, event_id = NULL, updated_at = ? WHERE id = ?",
+                (day.isoformat(), _now_db(), task_id),
+            )
+        return self._gorev_bul(task_id)
+
+    def clear_task_plan(self, task_id: int) -> Task:
+        """Görevi plansıza döndürür; varsa bağlı blok silinir."""
+        task = self._gorev_bul(task_id)
+        with _tx(self.conn):
+            if task.event_id is not None:
+                self.conn.execute("DELETE FROM events WHERE id = ?", (task.event_id,))
+            self.conn.execute(
+                "UPDATE tasks SET plan_day = NULL, event_id = NULL, updated_at = ? WHERE id = ?",
+                (_now_db(), task_id),
+            )
+        return self._gorev_bul(task_id)
+
+    def plan_task_slot(
+        self,
+        task_id: int,
+        start_utc: datetime,
+        end_utc: datetime,
+        calendar_id: int,
+        tzid: str,
+    ) -> Task:
+        """Görevi belirli SAATLERE planlar: ızgarada göreve bağlı bir blok olur.
+
+        Görevin zaten bloğu varsa yenisi açılmaz, mevcut blok yeni saate/takvime
+        taşınır (görevi listeden ızgaraya ikinci kez sürüklemek yeniden planlar).
+        Blok başlığını ve açıklamasını görevden alır; saat dilimi `tzid`.
+        """
+        task = self._gorev_bul(task_id)
+        now = _now_db()
+        with _tx(self.conn):
+            if task.event_id is not None:
+                mevcut = self.get_event(task.event_id)
+                if mevcut is None:  # FK SET NULL varken olmamalı; yine de sessiz kalma
+                    raise LookupError(f"Görevin bloğu bulunamadı: id={task.event_id}")
+                _event_guncelle(
+                    self.conn,
+                    replace(
+                        mevcut,
+                        calendar_id=calendar_id,
+                        start_utc=start_utc,
+                        end_utc=end_utc,
+                        tzid=tzid,
+                    ),
+                )
+            else:
+                blok = Event(
+                    id=None,
+                    uid=new_uid(),
+                    calendar_id=calendar_id,
+                    title=task.title,
+                    start_utc=start_utc,
+                    end_utc=end_utc,
+                    tzid=tzid,
+                    description=task.notes,
+                )
+                blok_id = _event_ekle(self.conn, blok, now)
+                self.conn.execute(
+                    "UPDATE tasks SET event_id = ?, plan_day = NULL, updated_at = ? WHERE id = ?",
+                    (blok_id, now, task_id),
+                )
+        return self._gorev_bul(task_id)
+
+    def delete_task(self, task_id: int) -> None:
+        """Görevi siler; bağlı blok da gider (bloksuz görev planı olmaz, blok da görevsiz)."""
+        task = self._gorev_bul(task_id)
+        with _tx(self.conn):
+            self.conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+            if task.event_id is not None:
+                self.conn.execute("DELETE FROM events WHERE id = ?", (task.event_id,))
 
     # ------------------------------------------------------------ hatırlatıcı
 
