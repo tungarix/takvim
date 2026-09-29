@@ -28,7 +28,7 @@ no sign-up, no sync.
 ### Verify your download
 
 The `.exe` isn't code-signed, but releases built by
-[`release.yml`](.github/workflows/release.yml) (v1.5.0 onward) ship with a
+[`release.yml`](.github/workflows/release.yml) (v1.4.1 onward) ship with a
 SHA256 checksum and a GitHub [build provenance attestation](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds),
 so you can confirm the file actually came from this repository's CI:
 
@@ -47,7 +47,7 @@ they were built locally, before this workflow existed.
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1.4.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
+**Durum:** v1.4.1. Masaüstündeki **Takvim** kısayolu tek dosyalık
 `Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 ---
@@ -211,7 +211,7 @@ gerekir; şu an için bilinçli olarak atlanmış bir adım.
 ### İndirilen dosyayı doğrula
 
 `.exe` imzasız, ama [`release.yml`](.github/workflows/release.yml) ile
-derlenen sürümlerden itibaren (v1.5.0+) yanında bir SHA256 özeti ve GitHub'ın
+derlenen sürümlerden itibaren (v1.4.1+) yanında bir SHA256 özeti ve GitHub'ın
 [build provenance attestation](https://docs.github.com/en/actions/security-guides/using-artifact-attestations-to-establish-provenance-for-builds)'ı
 geliyor; dosyanın gerçekten bu depodaki CI'dan geldiğini şöyle doğrulayabilirsin:
 

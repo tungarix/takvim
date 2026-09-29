@@ -570,9 +570,17 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 
 ## 7. Sıradaki görev
 
-**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0
+**v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.4.1'de bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Tekrarlı seri kural kümesi önbelleği** (kural 66): hafta görünümü
+  122 → 36 ms (ağır test verisi), sonuç birebir aynı.
+- **Sürüm ⚙ Ayarlar'da görünüyor**; tek kaynağı `ui/surum.py` (bkz. §1
+  sürüm akışı).
+- CI/release action'ları Node 24 sürümlerine alındı. Test sayısı 457 → 469.
 
 v1.4.0'da bitenler (ayrıntı CHANGELOG.md'de):
 

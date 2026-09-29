@@ -17,14 +17,15 @@ body:
     attributes:
       label: Takvim sürümü / Version
       description: >-
-        v1.5.0'dan itibaren ⚙ Ayarlar kutusunda "Takvim vX.Y.Z" olarak
+        v1.4.1'den itibaren ⚙ Ayarlar kutusunda "Takvim vX.Y.Z" olarak
         yazıyor. Daha eski sürümler sürümü göstermiyor; hangi `Takvim.exe`'yi
         indirdiğini [Releases](https://github.com/tungarix/takvim/releases)
-        sayfasından kontrol et. / From v1.5.0 on, ⚙ Settings shows
+        sayfasından kontrol et. / From v1.4.1 on, ⚙ Settings shows
         "Takvim vX.Y.Z". Older versions don't show it; check which
         `Takvim.exe` you downloaded on the
         [Releases](https://github.com/tungarix/takvim/releases) page.
       options:
+        - v1.4.1
         - v1.4.0
         - v1.3.0
         - v1.2.0

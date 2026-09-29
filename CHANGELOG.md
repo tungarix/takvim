@@ -7,8 +7,10 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.4.1] - 2026-09-29
+
 ### Eklendi
-- **Uygulama sürümü ⚙ Ayarlar kutusunda görünüyor** ("Takvim v1.4.0"):
+- **Uygulama sürümü ⚙ Ayarlar kutusunda görünüyor** ("Takvim v1.4.1"):
   önceden hiçbir yerde yazmıyordu, hata bildiren kullanıcı hangi
   `.exe`'yi çalıştırdığını bilemiyordu. Sürümün tek kaynağı artık
   `ui/surum.py`; `pyproject.toml` onu okuyor. Testler: `tests/test_surum.py`
