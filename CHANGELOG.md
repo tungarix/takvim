@@ -7,6 +7,40 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.5.0] - 2026-09-30
+
+### Eklendi
+- **Görevler**: kenar çubuğunda yapılacaklar listesi. Bir görev üç hâlden biri:
+  **plansız**, **gün planlı** ("bugün bir ara yaparım", saatsiz) ya da **belirli
+  saatlerde**. Saat planlı görev takvimde onay kutulu bir blok olur (sıradan bir
+  etkinlik: taşınır, boyutlanır, çakışma uyarır, hatırlatıcı taşır). Saatsiz görev
+  ızgarada, tüm gün şeridinde de, görünmez.
+  - Yazıp Enter = plansız görev; **+** ile form ("Ne zaman?" seçimine göre tarih/
+    saat/takvim/hatırlatıcı alanları); gruplar: Gecikmiş / Bugün / Yaklaşan /
+    Plansız / Tamamlanan.
+  - Görevi listeden ızgaraya **sürükleyince** bırakılan saate yerleşir; ay
+    görünümünde bir güne bırakmak günü değiştirir.
+  - Hızlı ekleme kutusuna `görev: rapor yaz yarın 14:00-15:30`.
+  - Tamamlanan görevin bloğu soluk çizilir ve hatırlatıcısı susar.
+  - Görevler `.ics` dosyasına `VTODO` olarak yazılıyor ve içe aktarılıyor (yabancı
+    uygulamalardan gelen VTODO dahil); önizleme görev sayısını ayrı söylüyor.
+  - Silme ve blok silme "Geri al" ile geri alınabiliyor. Bloğu silmek görevi
+    silmez, plansıza döner.
+  - Yeni tablo `tasks` (`005_gorevler.sql`, ilk açılışta otomatik yedekle
+    uygulanır). Testler: `test_gorevler.py`, `test_ui_gorevler.py`,
+    `test_gorev_metni.py`, `test_ics_gorev.py` + 16 duman testi → 623 test.
+
+### Değişti
+- "Takvim hazır" karşılama perdesi ilk görev eklenince de kapanıyor (ızgarayı
+  örtüyordu, görev sürüklenemezdi).
+- Etkinlik oluşturmadaki takvim seçimi ve dakika aralığı doğrulaması iç yardımcıya
+  alındı (görev bloğu aynı kuralları paylaşıyor); davranış aynı.
+
+### Bilinen sınırlar
+- Görevler tekrarlanamaz; alt görev/öncelik/etiket yok.
+- Dar pencerede (<1040 px) görev listesi gizli (bloklar ızgarada duruyor).
+- `.ics` içe aktarmada var olan UID'li görev güncellenmez (görevlerde SEQUENCE yok).
+
 ## [1.4.1] - 2026-09-29
 
 ### Eklendi

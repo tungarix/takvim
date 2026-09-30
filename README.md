@@ -20,6 +20,7 @@ no sign-up, no sync.
 - **Download:** grab `Takvim.exe` from the [latest release](https://github.com/tungarix/takvim/releases/latest) and double-click it. No installer, no Python needed.
 - **"Windows protected your PC" warning:** the `.exe` isn't code-signed, so SmartScreen warns on first run. Click **More info**, then **Run anyway** — it only appears once.
 - **Interface language:** the UI is fully Turkish or fully English, switched from **⚙ Settings → Language** (saved, page reloads). Default is Turkish.
+- **Tasks:** a to-do list in the sidebar. Plan a task for a day (no time) or for specific hours; a timed task becomes a block on the calendar grid. Drag a task from the list onto the grid, check it off in the list or on its block. The quick-add box also takes a `görev:` prefix (Turkish, like the rest of quick add). Tasks are exported and imported as `.ics` VTODO.
 - **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept.
 - **Known limitation:** the quick-add box always expects a Turkish sentence (e.g. "yarın 14:00 diş hekimi"), even in English mode — its parser only understands Turkish grammar; the placeholder text shows the expected format.
 - **License:** [MIT](LICENSE).
@@ -47,7 +48,7 @@ they were built locally, before this workflow existed.
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1.4.1. Masaüstündeki **Takvim** kısayolu tek dosyalık
+**Durum:** v1.5.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
 `Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 ---
@@ -63,6 +64,8 @@ Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, ç
 - `.ics` içe aktarma
 - Yerel SQLite, tek kullanıcı, çevrimdışı
 - Türkçe / İngilizce arayüz dili (⚙ Ayarlar → Dil; varsayılan Türkçe)
+- Görevler: yapılacaklar listesi; bir güne ya da belirli saatlere planlanır,
+  saat planlı görev takvimde blok olur (bkz. §10, `.ics` VTODO, hatırlatıcı)
 
 **Bilinçli olarak kapsam dışı (v1)**
 
@@ -279,6 +282,9 @@ olduğunu taşımaz.
 | Çakışma uyarısı | Oluştururken üst üste gelen saat varsa arayüz söylüyor, engellemiyor |
 | Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat + arayüz dili (Türkçe/English, kaydedince sayfa yeniden yüklenir) |
 | Dil | Arayüz ya tamamen Türkçe ya tamamen İngilizce. İSTİSNA: hızlı ekleme kutusu İngilizce modda da **Türkçe cümle** bekliyor ("yarın 14:00 diş hekimi") — ayrıştırıcı dilbilgisi Türkçe gömülü, İngilizce cümle tanınmazsa zaman bulunamayıp tüm gün kaydedilir. Boş durum örnekleri bu yüzden çevrilmiyor: doğru kullanımı gösteriyorlar |
+| Görev ekleme | Kenar çubuğundaki **Görevler** kutusuna yaz + Enter (plansız görev), **+** ile form ("Ne zaman?": plansız / gün içinde bir ara / belirli saatlerde), ya da hızlı ekleme kutusuna `görev: rapor yaz yarın 14:00-15:30` (önek iki nokta ile bitmeli; zaman yoksa plansız, yalnız tarih varsa gün planlı, saat varsa saat planlı) |
+| Görev planlama | Görevi listeden ızgaraya **sürükle**: bırakılan saate yerleşir ve ızgarada onay kutulu bir blok olur. Ay görünümünde bir güne bırakmak günü değiştirir. Saatsiz (gün planlı) görev ızgarada HİÇ görünmez, yalnızca listede durur |
+| Görev tamamlama | Kutuyu işaretle (listede ya da ızgaradaki blokta). Tamamlanan blok soluk çizilir, hatırlatıcısı susar; kutuyu kaldırınca her şey geri gelir |
 
 Tekrarlı etkinliklerde panelde **üç ayrı işlem** var: "Bu örneği sil" yalnız o
 günü kaldırır, "Seriyi tamamen sil" hepsini (sayı göstererek sorar, tek adımlı
@@ -360,7 +366,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**469 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**623 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
@@ -446,6 +452,12 @@ kırmızıya dönüyor.
   aynı sonuç (diferansiyel)
 - `test_surum.py` (1) + `test_frontend_smoke.py` (+1): sürümün tek kaynağı
   (`ui/surum.py` → paket metadata'sı) ve Ayarlar kutusunda görünmesi
+- `test_gorevler.py` (44): görev modeli, depo, görev ↔ blok eşitliği, sürüklemede geçerli saat,
+  tamamlanan görevin hatırlatıcı süzgeci
+- `test_ui_gorevler.py` (36): `/api/tasks`, ızgarada `taskId`, `.ics` yanıtında görev sayısı
+- `test_gorev_metni.py` (26): `görev:` ayrıştırıcı + HTTP
+- `test_ics_gorev.py` (32): VTODO dışa/içe aktarma, gidiş-dönüş, yabancı VTODO uç durumları
+- `test_frontend_smoke.py` (+16): görev akışları (form, sürükle-bırak, blok silme/geri alma, `.ics`)
 - Lint + tip: `ruff` (F/I/UP/RUF100) ve `mypy` (`core/` + `store/`) temiz;
   kural dışı bırakılanlar `pyproject.toml`'da gerekçesiyle listeli
 
@@ -697,6 +709,29 @@ v1 sonrası eklenenler (kapsamı büyütmeden, konfor + güvenlik):
 Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menüsü, bildirimde kendi
 uygulama adı (PowerShell AUMID'i ödünç alınıyor; kaydı sistem değişikliği).
 
+### v1.5.0: Görevler
+
+Görev (yapılacak) takvim etkinliği DEĞİL: saati olmayabilir. "Ne zaman?"
+üç hâlden biri ve ikisi birden olamaz: **plansız**, **gün planlı** ("bugün
+yaparım", saatsiz) ya da **saat planlı** ("14:00-15:30 arası").
+
+- **Saat planlı görevin saati görevde değil, bağlı etkinlikte (blokta) durur.**
+  Bloğu ızgarada gösteren, taşıyan, boyutlandıran, çakışma uyaran ve
+  hatırlatıcı taşıyan hazır etkinlik altyapısı görevlere böylece bedavaya
+  geliyor; saat iki yerde tutulsaydı blok sürüklenince sessizce bayatlardı.
+- **Saatsiz görev ızgarada görünmez**, tüm gün şeridinde de. Bilinçli: "bugün
+  bir ara yaparım" bir randevu değil.
+- Başlık ve not görev ile blok arasında iki yönlü eşit. Bloğu silmek görevi
+  SİLMEZ (plansıza döner); görevi silmek bloğu da siler. "Geri al" ikisinde de var.
+- Yeni tablo `tasks` (`005_gorevler.sql`): `CHECK (gün VEYA saat)`, `event_id
+  UNIQUE`, `ON DELETE SET NULL`.
+- `.ics`: görevler `VTODO`; saat planlıda bloğun VEVENT'ine `X-TAKVIM-BLOK-UID` ile
+  bağlanıyor (gidiş-dönüşte ikinci blok açılmıyor). Yabancı VTODO'lar da alınıyor.
+- Bilinçli sınırlar: görevler **tekrarlanamaz**, alt görev/öncelik/etiket yok, dar
+  pencerede (<1040 px, ikon rayı) görev listesi gizli (bloklar ızgarada durur).
+  Yabancı bir uygulamadan gelen VTODO'nun sonraki sürümü mevcut görevi güncellemez
+  (görevlerde SEQUENCE saklanmıyor, elle düzenleme ezilmesin diye).
+
 ---
 
 ## 11. Açık sorular
@@ -707,8 +742,8 @@ Bunlar Faz 1'e geçmeden cevaplanmalı değil ama Faz 3'ten önce cevaplanmalı:
    (§12). Qt'ye geçilmedi; HTML/CSS korunup pencereye alındı.
 2. **Hatırlatıcı gerekiyor mu?** Gerekiyorsa uygulama kapalıyken de çalışmalı mı?
    (→ arka plan servisi, ayrı bir proje kadar iş.)
-3. **Etkinlik–görev ilişkisi.** Takvimde "yapılacak" kavramı olacak mı, yoksa
-   sadece zaman blokları mı?
+3. **Etkinlik–görev ilişkisi.** ✅ Cevaplandı (v1.5.0): görev kavramı var, takvim
+   etkinliği DEĞİL; saat planlıysa bağlı bir zaman bloğu olur (§10).
 
 
 ---

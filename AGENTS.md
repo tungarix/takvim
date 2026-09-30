@@ -20,10 +20,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Hatırlatıcı (`remind/`) + sürükle-bırak | ✅ bitti |
 | Boyutlandırma, tüm gün taşıma, ay açılır listesi | ✅ bitti |
 | Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
+| Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**469 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**623 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -501,6 +502,50 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     Sonucun önbelleksiz hâlle birebir aynı olduğunu diferansiyel bir test
     ölçüyor (ileri/geri/uzağa gezinme, DST haftası, geçen yıldan taşınmış
     override, COUNT'u tükenen seri).
+
+### Görevler (v1.5.0)
+
+67. **Görev takvim etkinliği DEĞİL; saat blokta durur.** Plan üç hâl (plansız /
+    gün / saat), ikisi birden olamaz (model + `CHECK`). Saat planlı görevin
+    saati `tasks`'ta değil bağlı etkinlikte: bloğu sürüklemek tekrarsız
+    etkinlikte de override yazıyor, etkinlik satırı DEĞİŞMİYOR. Bu yüzden
+    görevin geçerli saatini `Repo.task_slots` okur (override'ı hesaba katar);
+    `events.start_utc`'e bakmak sürüklenmiş bloğun eski saatini verir. Listeden
+    yeniden planlama eski override'ı siler (hayalet kalmasın).
+68. **Saatsiz görev ızgarada HİÇ görünmez**, tüm gün şeridi dahil. Kullanıcının
+    kararı ("bugün yapabilirim" bir randevu değil). Görev bloğu tekrarlı ya da
+    tüm gün OLAMAZ (`update_event`/`add_task` reddeder): tüm gün bloğu şeride
+    düşüp bu kuralı çiğnerdi, tekrarlıda "tamamlandı" hangi örnek için olurdu.
+69. **Başlık/not görev ↔ blok İKİ YÖNLÜ eşit** (`update_task` bloğu, `update_event`
+    görevi günceller): panelde bloğun adı değişince liste ayrışmasın. Bloğu
+    silmek görevi silmez (`ON DELETE SET NULL` → plansız), görevi silmek
+    (`delete_task`) bloğu siler. Takvim silinirse blok gider, görev kalır.
+70. **`update_task` yalnızca başlık/not yazar**; plan ve tamamlanma AYRI
+    yöntemler (`plan_task_day/slot`, `clear_task_plan`, `set_task_done`): tüm
+    `Task`'ı yazan bir güncelleme bayat nesneyle planı sessizce geri alırdı.
+    `PATCH /api/tasks` gövdedeki HER ŞEYİ yazmadan önce doğrular; `POST` plan
+    yazımı patlarsa görevi geri siler (yarım görev kalmaz).
+71. **Hatırlatıcı süzgeci yalnızca daemon'da**: `all_reminders(exclude_done_tasks=
+    True)`. Arayüz ÇAĞIRMAZ (tamamlanmış bloğun panelinde hatırlatıcılar
+    görünmeli); görev yeniden açılırsa bildirim geri gelir.
+72. **`.ics`**: `parse_ics` VTODO'yu ATLAR (eski sözleşme ve testi duruyor);
+    görevleri `parse_ics_tasks` okur ve `import_ics` etkinliklerden SONRA
+    yazar (blok önce kayıtlı olmalı). Saat planlı görevin VTODO'su bloğun
+    VEVENT'ine `X-TAKVIM-BLOK-UID` ile bağlanır; bulunamaz/tekrarlı/dolu ise
+    DUE'daki gün planına düşer (veri kaybı yok). `DUE:...Z` yerel güne
+    çevrilir. Var olan UID'ye DOKUNULMAZ (görevlerde SEQUENCE yok). Test
+    dosyası yazarken `write_text` Windows'ta `\r\n`'yi bozar: `write_bytes`.
+73. **Hızlı ekleme `görev:` öneki iki nokta İSTER** ("görev toplantısı yarın
+    10:00" bir etkinlik başlığı olabilir). Zaman ayrıştırması etkinlikteki
+    AYNISI ama anlam farklı: zaman yok = plansız (etkinlikte tüm gün),
+    yalnız tarih = gün planlı, saat = saat planlı. Tekrarlı ve başlıksız
+    metin reddedilir. `POST /api/tasks`'ta `title` verilmişse `text` yok sayılır
+    (AGENTS 44'ün görevdeki karşılığı).
+74. **Arayüz**: listeden ızgaraya sürükleme HTML5 sürükle-bırak, ızgaradaki blok
+    sürüklemesi işaretçi olayları: karışmasın diye ayrı. Karşılama perdesi
+    görevi "bir şey eklendi" sayar (perde ızgarayı örtüyor, ilk görev
+    sürüklenemezdi). Görev bloğu Ctrl+C/X/D'de reddedilir (`panoyaKopyala` tek
+    kapı; kopya görevsiz etkinlik olurdu). Görev listesi <1040 px'te gizli.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -571,8 +616,16 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 ## 7. Sıradaki görev
 
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
-tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
++ v1.5.0 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.5.0'da bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Görevler** (kural 67-74, README §10): `core.Task`, `005_gorevler.sql`, Repo
+  yöntemleri, `/api/tasks`, kenar çubuğu listesi + form + ızgarada blok +
+  sürükle-bırak, hızlı ekleme `görev:`, `.ics` VTODO, hatırlatıcı süzgeci.
+  Kullanıcı kararı: saatsiz görev ızgarada görünmez; "bu saatlerde" ya da "bugün
+  yapabilirim" seçenekleri. Test sayısı 469 → 623.
 
 v1.4.1'de bitenler (ayrıntı CHANGELOG.md'de):
 

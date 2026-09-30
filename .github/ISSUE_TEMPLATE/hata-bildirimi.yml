@@ -25,6 +25,7 @@ body:
         `Takvim.exe` you downloaded on the
         [Releases](https://github.com/tungarix/takvim/releases) page.
       options:
+        - v1.5.0
         - v1.4.1
         - v1.4.0
         - v1.3.0

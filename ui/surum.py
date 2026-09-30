@@ -6,4 +6,4 @@ taşınmadığı için `importlib.metadata` paketlenmiş uygulamada çalışmazd
 Yeni sürümde YALNIZCA burayı değiştir.
 """
 
-SURUM = "1.4.1"
+SURUM = "1.5.0"
