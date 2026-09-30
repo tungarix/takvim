@@ -604,6 +604,10 @@ dosya bırakırsın (bu projede bir kez oldu).
 - Testler geçmeden "bitti" deme, `pytest` çıktısını göster.
 - Büyük dosyaları kabuk heredoc'u ile yazma: bu ortamda ~8KB'da kesiliyor ve
   "unexpected EOF" veriyor. Dosya yazma aracını kullan.
+- Bir betik/dosya içine ters eğik çizgi (`\r\n` gibi) yazacaksan araç katmanı çift
+  ters eğik çizgiyi TEKE indirebiliyor (Python kaynağında gerçek CR/LF olarak
+  çıkıyor, string kırılıyor). Betiği Write ile dosyaya yaz ve gerekirse
+  `chr(92)` kullan; sonucu `repr` ile bayt düzeyinde doğrula.
 
 ### Sürüm kontrolü
 
