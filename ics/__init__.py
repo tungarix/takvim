@@ -1,14 +1,23 @@
 """Takvim uygulamasının `.ics` içe/dışa aktarma paketi."""
 
 from .exporter import PRODID, export_repo, export_text, write_file
-from .importer import ImportReport, ParsedEvent, import_ics, parse_ics
+from .importer import (
+    ImportReport,
+    ParsedEvent,
+    ParsedTask,
+    import_ics,
+    parse_ics,
+    parse_ics_tasks,
+)
 from .windows_tz import WINDOWS_TO_IANA, resolve_windows_tz
 
 __all__ = [
     # içe aktarma
     "ParsedEvent",
+    "ParsedTask",
     "ImportReport",
     "parse_ics",
+    "parse_ics_tasks",
     "import_ics",
     # dışa aktarma
     "export_text",

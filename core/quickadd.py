@@ -14,9 +14,13 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from .timeutil import from_wall_clock, get_tz
+from .timeutil import from_wall_clock, get_tz, to_local
 
-__all__ = ["QuickAdd", "parse_quick_add"]
+__all__ = ["QuickAdd", "TaskAdd", "gorev_metni_mi", "parse_quick_add", "parse_task_add"]
+
+# Başlık bulunamayınca `parse_quick_add`'in koyduğu yer tutucu. Etkinlik için kabul
+# edilebilir ("(Başlıksız)" bir randevu yine de bir randevu); görev için DEĞİL.
+BASLIKSIZ = "(Başlıksız)"
 
 VARSAYILAN_SURE = timedelta(hours=1)
 
@@ -334,7 +338,7 @@ def parse_quick_add(
                 araliklar.append(m.span())
                 yakalanan.append(ham[m.start():m.end()].strip())
 
-    baslik = _kes(ham, [a for a in araliklar if a]) or "(Başlıksız)"
+    baslik = _kes(ham, [a for a in araliklar if a]) or BASLIKSIZ
     hedef_gun = gun or bugun
 
     if baslangic_sd is None:
@@ -361,3 +365,71 @@ def parse_quick_add(
         end = start + (sure or varsayilan_sure)
 
     return QuickAdd(baslik, start, end, False, tzid, " ".join(yakalanan).strip(), rrule)
+
+
+# ---------------------------------------------------------------------------
+# Görev: "görev: rapor yaz yarın 14:00-15:30"
+# ---------------------------------------------------------------------------
+
+# Önek İKİ NOKTA ile bitmek ZORUNDA: "görev toplantısı yarın 10:00" bir etkinlik
+# başlığı olabilir, kutunun ilk kelimesine göre görev sanmamalıyız.
+_GOREV_ONEK_RE = re.compile(r"^\s*(?:görev|gorev)\s*:\s*", re.I)
+
+
+@dataclass(frozen=True)
+class TaskAdd:
+    """"görev: ..." ayrıştırmasının sonucu.
+
+    `plan`: `"yok"` (zaman ifadesi yok), `"gun"` (yalnızca tarih: "yarın",
+    "3 ekim" -- saatsiz) ya da `"saat"` (saat/aralık de var). `day` yerel
+    takvim günü (yok değilse); `start_utc`/`end_utc` yalnızca `"saat"`ta.
+    """
+
+    title: str
+    plan: str
+    tzid: str
+    day: date | None = None
+    start_utc: datetime | None = None
+    end_utc: datetime | None = None
+    matched: str = ""
+
+
+def gorev_metni_mi(metin: str) -> bool:
+    """Metin "görev:" önekiyle mi başlıyor."""
+    return bool(_GOREV_ONEK_RE.match(metin or ""))
+
+
+def parse_task_add(metin: str, *, now: datetime, tzid: str) -> TaskAdd:
+    """"görev: rapor yaz yarın 14:00" -> görev alanları.
+
+    Zaman ayrıştırması `parse_quick_add`'in AYNISI (tarih -> süre -> aralık ->
+    saat, aynı tuzaklar): burada yalnızca sonucun ne anlama geldiği farklı.
+    Etkinlikte zamansız metin "bugünün tüm günü" olurdu; görevde bu "plansız"
+    demek, çünkü zamansız görev çok yaygın ve bugüne uydurmak yanlış olur.
+    Tarih VAR ama saat yoksa gün planlı: saatsiz görev tüm gün şeridine düşmüyor.
+
+    Görevler tekrarlanamaz ("her salı ..." reddedilir): tekrarlı görevde
+    "tamamlandı" hangi örnek için olurdu -- sessizce tek seferliğe çevirmek yerine
+    söylüyoruz. Yalnızca zamandan ibaret metin ("görev: yarın 14:00") başlıksızdır
+    ve reddedilir.
+    """
+    onek = _GOREV_ONEK_RE.match(metin or "")
+    kalan = (metin or "")[onek.end():] if onek else (metin or "")
+    if not kalan.strip():
+        raise ValueError("Boş metin ayrıştırılamaz")
+
+    cozum = parse_quick_add(kalan, now=now, tzid=tzid)
+    if cozum.rrule is not None:
+        raise ValueError("görevler tekrarlanamaz")
+    if cozum.title == BASLIKSIZ:
+        raise ValueError("görev başlığı boş olamaz")
+
+    if not cozum.matched:
+        return TaskAdd(cozum.title, "yok", tzid)
+    gun = to_local(cozum.start_utc, tzid).date()
+    if cozum.all_day:
+        return TaskAdd(cozum.title, "gun", tzid, day=gun, matched=cozum.matched)
+    return TaskAdd(
+        cozum.title, "saat", tzid, day=gun,
+        start_utc=cozum.start_utc, end_utc=cozum.end_utc, matched=cozum.matched,
+    )

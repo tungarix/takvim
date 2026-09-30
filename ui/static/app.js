@@ -2031,6 +2031,12 @@ el("hizli-form").onsubmit = async (e) => {
  *   düzenlenebilir alanlarla 3 düğmeli bir onay kutusu açılır (`/api/events/
  *   parse` ile DB'ye dokunmadan önizleme alınıyor). */
 async function hizliEkleBaslat(metin, girdi) {
+  // "görev: ..." öneki görev kurar (sunucu AYNI kuralı uyguluyor ve asıl karar
+  // orada; burada yalnızca hangi uca gideceğimizi seçiyoruz).
+  if (/^\s*(görev|gorev)\s*:/i.test(metin)) {
+    await hizliGorevEkle(metin, girdi);
+    return;
+  }
   let onizleme;
   try {
     onizleme = await istek("/api/events/parse", {
@@ -2414,6 +2420,8 @@ async function iceAktar(dosya) {
     t("parca_atlanacak", { n: onizleme.skipped }),
     t("parca_override", { n: onizleme.overrides }),
   ];
+  // Yalnızca dosyada görev (VTODO) varsa: çoğu dosyada yok, sıfır görevi söylemek gürültü.
+  if (onizleme.tasks) parcalar.push(t("parca_gorev", { n: onizleme.tasks }));
   if (onizleme.errors.length) {
     parcalar.push(t("parca_hatali", { n: onizleme.errors.length }));
   }
@@ -2432,7 +2440,9 @@ async function iceAktar(dosya) {
     const rapor = await istek("/api/import", {
       method: "POST", headers: baslik, body: metin,
     });
-    bildir(t("ice_aktarildi", { yeni: rapor.added, guncellenen: rapor.updated }));
+    bildir(rapor.tasks
+      ? t("ice_aktarildi_gorevli", { yeni: rapor.added, guncellenen: rapor.updated, gorev: rapor.tasks })
+      : t("ice_aktarildi", { yeni: rapor.added, guncellenen: rapor.updated }));
     await yukle();
   } catch (hata) {
     bildir(hata.message, true);
@@ -2654,6 +2664,21 @@ function gorevSatiriYap(g, bugun) {
     gorevHedefleriTemizle();
   });
   return satir;
+}
+
+/** Hızlı ekleme kutusundan "görev: ..." : metin sunucuda ayrıştırılıyor. */
+async function hizliGorevEkle(metin, girdi) {
+  try {
+    const yanit = await jsonIstek("/api/tasks", "POST", { text: metin });
+    girdi.value = "";
+    const p = yanit.parsed;
+    bildir(p.matched
+      ? t("gorev_eklendi_zaman", { baslik: p.title, eslesme: p.matched })
+      : t("gorev_eklendi", { baslik: p.title }));
+    await yukle();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
 }
 
 /** Kutuyu işaretler/kaldırır. Panel açıkken kapanıyor: içeriği bayat kalırdı. */

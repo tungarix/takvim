@@ -15,12 +15,12 @@ from pathlib import Path
 
 from icalendar import Calendar
 
-from core.models import Event, Override
-from core.timeutil import UTC, from_wall_clock, get_tz
+from core.models import Event, Override, Task
+from core.timeutil import UTC, from_wall_clock, get_tz, to_local
 
 from .windows_tz import resolve_windows_tz
 
-__all__ = ["ParsedEvent", "ImportReport", "parse_ics", "import_ics"]
+__all__ = ["ParsedEvent", "ParsedTask", "ImportReport", "parse_ics", "parse_ics_tasks", "import_ics"]
 
 _UID_YOK = "(uid-yok)"
 _BASSIZ = "(Başlıksız)"
@@ -42,12 +42,28 @@ class ParsedEvent:
 
 
 @dataclass(frozen=True)
+class ParsedTask:
+    """Tek VTODO'nun ayrıştırılmış karşılığı (henüz kaydedilmemiş: `id=None`).
+
+    `blok_uid` dışa aktarıcımızın yazdığı `X-TAKVIM-BLOK-UID`: görevin bağlı
+    olduğu zaman bloğunun (VEVENT) UID'si. `import_ics` bloğu bulursa görevi
+    ona bağlar, bulamazsa `task.plan_day` ile gün planlı bırakır.
+    """
+
+    task: Task
+    blok_uid: str | None = None
+
+
+@dataclass(frozen=True)
 class ImportReport:
     """İçe aktarma sonucu: kullanıcıya gösterilecek özet.
 
     `errors` (`uid`, sebep) çiftleridir; tek bozuk VEVENT kalanı düşürmez.
     `warnings` serbest metindir (bilinmeyen saat dilimi, varsayılan süre...).
     `overrides` yazılan (veya `dry_run` ise yazılacak olan) override sayısıdır.
+    `tasks_added`/`tasks_skipped` VTODO'lar için: etkinliklerin
+    `added`/`skipped`'ından AYRI sayılıyor, yoksa "3 yeni etkinlik" diyen bir
+    önizleme görevleri de sayıp yanıltırdı.
     """
 
     added: int = 0
@@ -56,6 +72,8 @@ class ImportReport:
     overrides: int = 0
     errors: tuple[tuple[str, str], ...] = ()
     warnings: tuple[str, ...] = ()
+    tasks_added: int = 0
+    tasks_skipped: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -694,6 +712,144 @@ def parse_ics(source: str | Path, *, default_tzid: str) -> tuple[list[ParsedEven
 
 
 # ---------------------------------------------------------------------------
+# VTODO -> görev
+# ---------------------------------------------------------------------------
+
+
+def _gorev_gunu(comp, default_tzid: str, warnings: list[str], uid: str) -> date | None:
+    """VTODO'nun DUE (yoksa DTSTART) değerinden YEREL takvim günü.
+
+    Görevin saati yok (saat blokta): saatli bir DUE de yalnızca gününe indirgeniyor.
+    UTC ('Z') değer uygulamanın diliminde yerel güne çevriliyor -- `DUE:...T230000Z`
+    İstanbul'da ertesi gündür, tarih kısmını olduğu gibi almak görevi bir gün erkene kaydırırdı.
+    """
+    for ad in ("DUE", "DTSTART"):
+        ham = _tek_ham(comp, ad, uid, warnings)
+        deger = _dt_degeri(ham)
+        if deger is None:
+            continue
+        if isinstance(deger, datetime):
+            utc, tzid = _an_to_utc(deger, _tzid_parami(ham), default_tzid, warnings, uid, ad)
+            return to_local(utc, tzid).date()
+        return deger
+    return None
+
+
+def _gorev_tamamlanma(comp, warnings: list[str], uid: str) -> datetime | None:
+    """VTODO tamamlandıysa tamamlanma anı (UTC), değilse None.
+
+    Tamamlanmış sayılan üç işaret: `STATUS:COMPLETED`, `COMPLETED` özelliği,
+    `PERCENT-COMPLETE:100`. Hangisi verilirse; üreticiler birini yazıp
+    ötekini unutabiliyor.
+    """
+    ham_bitis = _tek_ham(comp, "COMPLETED", uid, warnings)
+    yuzde = comp.get("PERCENT-COMPLETE")
+    try:
+        yuzde_tam = int(yuzde) if yuzde is not None else 0
+    except (TypeError, ValueError):
+        yuzde_tam = 0
+    bitti = (_status(comp) or "") == "COMPLETED" or ham_bitis is not None or yuzde_tam >= 100
+    if not bitti:
+        return None
+    an = _dt_degeri(ham_bitis)
+    if isinstance(an, datetime) and an.tzinfo is not None:
+        return an.astimezone(UTC)
+    damga = _dt_degeri(_tek_ham(comp, "DTSTAMP", uid, warnings))
+    if isinstance(damga, datetime) and damga.tzinfo is not None:
+        return damga.astimezone(UTC)
+    return datetime.now(UTC)
+
+
+def parse_ics_tasks(
+    source: str | Path, *, default_tzid: str
+) -> tuple[list[ParsedTask], ImportReport]:
+    """VTODO'ları görev modeline çevirir, DB'ye dokunmaz.
+
+    `parse_ics` ile AYNI kaynağı okur ama VEVENT'e hiç bakmaz (etkinlik
+    ayrıştırması eskisi gibi VTODO'yu atlıyor; onun testleri ve sözleşmesi
+    değişmedi). Kaynak okunamıyorsa boş döner: o hatayı zaten `parse_ics`
+    raporluyor, ikisi birden bildirmesin.
+
+    Görevler tekrarlanamaz: RRULE'lu VTODO tek seferlik alınır ve UYARI yazılır
+    (sessizce serinin ilk örneğine indirgemek yerine söylüyoruz). İptal edilmiş
+    (`STATUS:CANCELLED`) VTODO atlanır.
+    """
+    try:
+        get_tz(default_tzid)
+    except ValueError as exc:
+        raise ValueError(f"default_tzid geçersiz: {default_tzid!r}") from exc
+    try:
+        takvim = _to_calendar(source)
+    except Exception:
+        return [], ImportReport()
+
+    gorevler: list[ParsedTask] = []
+    hatalar: list[tuple[str, str]] = []
+    uyarilar: list[str] = []
+    atlanan = 0
+    gorulen: set[str] = set()
+
+    for comp in (c for c in takvim.walk() if getattr(c, "name", None) == "VTODO"):
+        uid_ham = _metin(comp, "UID")
+        uid = uid_ham.strip() if uid_ham else ""
+        if not uid:
+            hatalar.append((_UID_YOK, "UID yok, VTODO atlandı"))
+            continue
+        if uid in gorulen:
+            atlanan += 1
+            uyarilar.append(f"({uid}) aynı UID ile birden çok VTODO var, ilki alındı")
+            continue
+        gorulen.add(uid)
+
+        if (_status(comp) or "") == "CANCELLED":
+            atlanan += 1
+            continue
+        if "RRULE" in comp:
+            uyarilar.append(f"({uid}) tekrarlı görev tek seferlik içe aktarıldı")
+
+        try:
+            gorev = Task(
+                id=None,
+                uid=uid,
+                title=_metin(comp, "SUMMARY") or _BASSIZ,
+                notes=_metin(comp, "DESCRIPTION"),
+                plan_day=_gorev_gunu(comp, default_tzid, uyarilar, uid),
+                done_at=_gorev_tamamlanma(comp, uyarilar, uid),
+            )
+        except ValueError as exc:
+            hatalar.append((uid, str(exc)))
+            continue
+        gorevler.append(ParsedTask(gorev, _metin(comp, "X-TAKVIM-BLOK-UID")))
+
+    return gorevler, ImportReport(
+        skipped=atlanan, errors=tuple(hatalar), warnings=tuple(uyarilar)
+    )
+
+
+def _gorevi_bagla(repo, parsed: ParsedTask) -> Task:
+    """Görevi kaydedilecek hâle getirir: bloğu varsa ona bağlar, yoksa gün planlı kalır.
+
+    Blok, AYNI dosyadan az önce içe aktarılmış (ya da zaten var olan) VEVENT.
+    Bağlanamayan durumlar: blok yok, tekrarlı/tüm gün, ya da başka bir göreve ait.
+    Hepsinde görev gün planına düşüyor (`plan_day`, DUE'dan): veri kaybı yok, yalnızca saat
+    bağı kopuyor.
+    """
+    from dataclasses import replace
+
+    gorev = parsed.task
+    if parsed.blok_uid:
+        blok = repo.get_event_by_uid(parsed.blok_uid)
+        if (
+            blok is not None
+            and not blok.is_recurring
+            and not blok.all_day
+            and not repo.tasks_by_event([blok.id])
+        ):
+            return replace(gorev, plan_day=None, event_id=blok.id)
+    return gorev
+
+
+# ---------------------------------------------------------------------------
 # Kaydetme
 # ---------------------------------------------------------------------------
 
@@ -795,6 +951,28 @@ def import_ics(
         except Exception as exc:
             hatalar.append((uid, f"güncellenemedi: {exc}"))
 
+    # Görevler (VTODO), etkinliklerden SONRA: saat planlı görevin bloğu aynı
+    # dosyadaki bir VEVENT ve önce kaydedilmiş olmalı ki bağlanabilsin.
+    gorevler, gorev_rapor = parse_ics_tasks(source, default_tzid=default_tzid)
+    hatalar.extend(gorev_rapor.errors)
+    uyarilar.extend(gorev_rapor.warnings)
+    eklenen_gorev = 0
+    atlanan_gorev = gorev_rapor.skipped
+    for pg in gorevler:
+        if repo.get_task_by_uid(pg.task.uid) is not None:
+            # Görevlerde SEQUENCE saklamıyoruz: var olanı ezmek elle yapılmış bir
+            # düzenlemeyi sessizce silerdi, o yüzden dokunmuyoruz.
+            atlanan_gorev += 1
+            continue
+        if dry_run:
+            eklenen_gorev += 1
+            continue
+        try:
+            repo.add_task(_gorevi_bagla(repo, pg))
+            eklenen_gorev += 1
+        except Exception as exc:
+            hatalar.append((pg.task.uid, f"görev kaydedilemedi: {exc}"))
+
     return ImportReport(
         added=eklenen,
         updated=guncellenen,
@@ -802,4 +980,6 @@ def import_ics(
         overrides=yazilan_override,
         errors=tuple(hatalar),
         warnings=tuple(uyarilar),
+        tasks_added=eklenen_gorev,
+        tasks_skipped=atlanan_gorev,
     )

@@ -42,6 +42,7 @@ const TR = {
   eklendi_tarihli: "Eklendi: {baslik} ({gun} {ay} {saat})",
   dosya_okunamadi: "Dosya okunamadı",
   ice_aktarildi: "İçe aktarıldı: {yeni} yeni, {guncellenen} güncellendi",
+  ice_aktarildi_gorevli: "İçe aktarıldı: {yeni} yeni, {guncellenen} güncellendi, {gorev} görev",
 
   // --- eylem başarıları ---
   takvim_eklendi: "Takvim eklendi: {ad}",
@@ -149,6 +150,7 @@ const TR = {
   parca_guncellenecek: "{n} güncellenecek",
   parca_atlanacak: "{n} atlanacak",
   parca_override: "{n} örnek değişikliği",
+  parca_gorev: "{n} görev",
   parca_hatali: "{n} hatalı kayıt YOK SAYILACAK",
   parca_uyari: "Uyarılar: {liste}",
 
@@ -186,7 +188,7 @@ const TR = {
   takvimler: "Takvimler",
   yeni_takvim_title: "Yeni takvim",
   arama_sonuclari: "Arama sonuçları",
-  ipucu: "Boş bir saate tıkla, yeni etkinlik oluştur.<br>Etkinliğe tıkla, ayrıntısı sağda açılır.<br><kbd>←</kbd> <kbd>→</kbd> gezin · <kbd>T</kbd> bugün · <kbd>G</kbd>/<kbd>H</kbd>/<kbd>A</kbd> görünüm · <kbd>Esc</kbd> kapat<br>Seçiliyken: <kbd>Del</kbd> sil · <kbd>Shift</kbd>+<kbd>Del</kbd> seriyi sil · <kbd>F2</kbd> / <kbd>Enter</kbd> düzenle",
+  ipucu: "Boş bir saate tıkla, yeni etkinlik oluştur.<br>Etkinliğe tıkla, ayrıntısı sağda açılır.<br><kbd>←</kbd> <kbd>→</kbd> gezin · <kbd>T</kbd> bugün · <kbd>G</kbd>/<kbd>H</kbd>/<kbd>A</kbd> görünüm · <kbd>Esc</kbd> kapat<br>Seçiliyken: <kbd>Del</kbd> sil · <kbd>Shift</kbd>+<kbd>Del</kbd> seriyi sil · <kbd>F2</kbd> / <kbd>Enter</kbd> düzenle<br>Hızlı ekleme kutusuna <kbd>görev:</kbd> ile başla: görev olarak eklenir",
   ice_aktar_title: ".ics dosyasından içe aktar (önizlemeli)",
   ice_aktar_btn: "İçe aktar",
   disa_aktar_title: "Tüm takvimi .ics olarak indir",
@@ -230,6 +232,7 @@ const TR = {
   gorev_mevcut_hat: "Mevcut hatırlatıcılar: {liste}",
   hat_yok: "Yok",
   gorev_eklendi: "Görev eklendi: {baslik}",
+  gorev_eklendi_zaman: "Görev eklendi: {baslik} ({eslesme})",
   gorev_guncellendi: "Görev güncellendi",
   gorev_silindi: "Görev silindi: {baslik}",
   gorev_planlandi: "Planlandı: {baslik} → {hedef}",
@@ -289,6 +292,7 @@ const TR = {
   hata_gorev_bulunamadi: "görev bulunamadı",
   hata_bilinmeyen_plan: "bilinmeyen plan: {plan}",
   hata_gorev_blogu_tekrarli: "görev bloğu tekrarlı ya da tüm gün olamaz",
+  hata_gorev_tekrarlanamaz: "görevler tekrarlanamaz",
   hata_gorev_hatirlatici_saat_ister: "hatırlatıcı için görevin belirli saatleri olmalı",
   hata_seri_bolunemez_cok_kuralli: "çok kurallı seriler bölünemez",
   hata_seri_bolunemez_tekrarsiz: "tekrarsız seri bölünemez",
@@ -334,6 +338,7 @@ const EN = {
   eklendi_tarihli: "Added: {baslik} ({gun} {ay} {saat})",
   dosya_okunamadi: "Couldn't read the file",
   ice_aktarildi: "Imported: {yeni} new, {guncellenen} updated",
+  ice_aktarildi_gorevli: "Imported: {yeni} new, {guncellenen} updated, {gorev} tasks",
 
   // --- action confirmations ---
   takvim_eklendi: "Calendar added: {ad}",
@@ -441,6 +446,7 @@ const EN = {
   parca_guncellenecek: "{n} to update",
   parca_atlanacak: "{n} to skip",
   parca_override: "{n} occurrence changes",
+  parca_gorev: "{n} tasks",
   parca_hatali: "{n} invalid entries WILL BE SKIPPED",
   parca_uyari: "Warnings: {liste}",
 
@@ -478,7 +484,7 @@ const EN = {
   takvimler: "Calendars",
   yeni_takvim_title: "New calendar",
   arama_sonuclari: "Search results",
-  ipucu: "Click an empty time slot to create a new event.<br>Click an event to see its details on the right.<br><kbd>←</kbd> <kbd>→</kbd> navigate · <kbd>T</kbd> today · <kbd>G</kbd>/<kbd>H</kbd>/<kbd>A</kbd> view · <kbd>Esc</kbd> close<br>When selected: <kbd>Del</kbd> delete · <kbd>Shift</kbd>+<kbd>Del</kbd> delete series · <kbd>F2</kbd> / <kbd>Enter</kbd> edit",
+  ipucu: "Click an empty time slot to create a new event.<br>Click an event to see its details on the right.<br><kbd>←</kbd> <kbd>→</kbd> navigate · <kbd>T</kbd> today · <kbd>G</kbd>/<kbd>H</kbd>/<kbd>A</kbd> view · <kbd>Esc</kbd> close<br>When selected: <kbd>Del</kbd> delete · <kbd>Shift</kbd>+<kbd>Del</kbd> delete series · <kbd>F2</kbd> / <kbd>Enter</kbd> edit<br>Start the quick-add box with <kbd>görev:</kbd> to add a task instead",
   ice_aktar_title: "Import from a .ics file (with preview)",
   ice_aktar_btn: "Import",
   disa_aktar_title: "Download the whole calendar as .ics",
@@ -522,6 +528,7 @@ const EN = {
   gorev_mevcut_hat: "Existing reminders: {liste}",
   hat_yok: "None",
   gorev_eklendi: "Task added: {baslik}",
+  gorev_eklendi_zaman: "Task added: {baslik} ({eslesme})",
   gorev_guncellendi: "Task updated",
   gorev_silindi: "Task deleted: {baslik}",
   gorev_planlandi: "Scheduled: {baslik} → {hedef}",
@@ -580,6 +587,7 @@ const EN = {
   hata_gorev_bulunamadi: "task not found",
   hata_bilinmeyen_plan: "unknown plan: {plan}",
   hata_gorev_blogu_tekrarli: "a task block can't be recurring or all-day",
+  hata_gorev_tekrarlanamaz: "tasks can't repeat",
   hata_gorev_hatirlatici_saat_ister: "a reminder needs the task to have specific hours",
   hata_seri_bolunemez_cok_kuralli: "multi-rule series can't be split",
   hata_seri_bolunemez_tekrarsiz: "non-recurring series can't be split",

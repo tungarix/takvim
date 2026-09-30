@@ -18,8 +18,9 @@ from pathlib import Path
 from icalendar import Calendar as ICalendar
 from icalendar import Event as IEvent
 from icalendar import Timezone, vRecur
+from icalendar import Todo as ITodo
 
-from core import UTC, Event, Override
+from core import UTC, Event, Override, Task
 from core.timeutil import get_tz
 
 __all__ = ["export_text", "export_repo", "write_file", "PRODID"]
@@ -86,6 +87,44 @@ def _vevent(event: Event, dtstamp: datetime) -> IEvent:
     return ve
 
 
+# Görev bloğu bilgisi: (başlangıç_utc, bitiş_utc, tzid, blok etkinliğinin UID'si).
+GorevBlogu = tuple[datetime, datetime, str, str]
+
+
+def _vtodo(task: Task, dtstamp: datetime, blok: GorevBlogu | None) -> ITodo:
+    """Görevin VTODO'su.
+
+    Saat planlı görevde saat, bloğun GEÇERLİ saatinden (sürüklemeyle taşınmış
+    olabilir) yazılıyor ve `X-TAKVIM-BLOK-UID` bloğun VEVENT'ini gösteriyor:
+    kendi içe aktarıcımız görevi ikinci bir blok açmadan ona bağlıyor. Başka
+    uygulamalar `X-` özelliğini yok sayar; onlar için VTODO kendi başına anlamlı
+    (DTSTART/DUE bloğun saatleri). Gün planlıda yalnızca `DUE` (tarih): saatsiz
+    görevin ızgarada yeri yok, tüm gün etkinliği gibi yazmak yanlış olurdu.
+    """
+    vt = ITodo()
+    vt.add("UID", task.uid)
+    vt.add("DTSTAMP", dtstamp)
+    vt.add("SUMMARY", task.title)
+    if task.notes:
+        vt.add("DESCRIPTION", task.notes)
+
+    if task.done_at is not None:
+        vt.add("STATUS", "COMPLETED")
+        vt.add("COMPLETED", task.done_at)
+        vt.add("PERCENT-COMPLETE", 100)
+    else:
+        vt.add("STATUS", "NEEDS-ACTION")
+
+    if blok is not None:
+        bas, bit, tzid, blok_uid = blok
+        vt.add("DTSTART", _yerel(bas, tzid))
+        vt.add("DUE", _yerel(bit, tzid))
+        vt.add("X-TAKVIM-BLOK-UID", blok_uid)
+    elif task.plan_day is not None:
+        vt.add("DUE", task.plan_day)
+    return vt
+
+
 def _override_vevent(event: Event, ov: Override, dtstamp: datetime) -> IEvent:
     """Bir örnek geçersiz kılmanın VEVENT'i (aynı UID + RECURRENCE-ID)."""
     ve = IEvent()
@@ -118,12 +157,15 @@ def export_text(
     events: list[Event],
     overrides_by_event: dict[int | None, list[Override]] | None = None,
     *,
+    tasks: list[Task] | None = None,
+    task_blocks: dict[int, GorevBlogu] | None = None,
     prodid: str = PRODID,
     dtstamp: datetime | None = None,
 ) -> str:
-    """Etkinlikleri `.ics` metnine çevirir. DB bilmez, saf.
+    """Etkinlikleri (ve verilmişse görevleri) `.ics` metnine çevirir. DB bilmez, saf.
 
-    `overrides_by_event` anahtarı `event.id`'dir. `dtstamp` testlerde sabit
+    `overrides_by_event` anahtarı `event.id`'dir. `task_blocks` anahtarı
+    görevin `event_id`'si (bkz. `GorevBlogu`). `dtstamp` testlerde sabit
     verilebilsin diye parametre; verilmezse şimdiki an kullanılır.
     """
     overrides_by_event = overrides_by_event or {}
@@ -136,7 +178,11 @@ def export_text(
 
     # Saatli etkinliklerin kullandığı her dilim için VTIMEZONE.
     # Tüm gün etkinlikler TZID taşımadığı için onları saymıyoruz.
-    dilimler = sorted({e.tzid for e in events if not e.all_day})
+    # Saat planlı görevin VTODO'su da bloğunun diliminde yazılıyor.
+    task_blocks = task_blocks or {}
+    dilimler = sorted(
+        {e.tzid for e in events if not e.all_day} | {b[2] for b in task_blocks.values()}
+    )
     for tzid in dilimler:
         takvim.add_component(Timezone.from_tzid(tzid))
 
@@ -144,6 +190,10 @@ def export_text(
         takvim.add_component(_vevent(event, dtstamp))
         for ov in overrides_by_event.get(event.id, []):
             takvim.add_component(_override_vevent(event, ov, dtstamp))
+
+    for gorev in tasks or []:
+        blok = task_blocks.get(gorev.event_id) if gorev.event_id is not None else None
+        takvim.add_component(_vtodo(gorev, dtstamp, blok))
 
     return takvim.to_ical().decode("utf-8")
 
@@ -158,16 +208,31 @@ def export_repo(
     """Veritabanındaki etkinlikleri `.ics` metnine çevirir.
 
     `calendar_ids` verilmezse GÖRÜNÜRLÜKTEN BAĞIMSIZ olarak hepsi aktarılır:
-    dışa aktarma bir yedek, ekran filtresi değil.
+    dışa aktarma bir yedek, ekran filtresi değil. Görevler takvime ait değil;
+    yalnızca TAM dışa aktarmada (takvim süzgeci yokken) yazılıyor.
     """
     if calendar_ids is None:
         events = repo.list_events()
+        gorevler = repo.list_tasks()
     else:
         events = [e for cid in calendar_ids for e in repo.list_events(calendar_id=cid)]
         events.sort(key=lambda e: e.start_utc)
+        gorevler = []
 
     overrides = {e.id: repo.list_overrides(e.id) for e in events}
-    return export_text(events, overrides, prodid=prodid, dtstamp=dtstamp)
+
+    # Bloğun GEÇERLİ saati (sürüklemede override yazılıyor; etkinlik satırı eski kalır).
+    blok_idleri = [g.event_id for g in gorevler if g.event_id is not None]
+    slotlar = repo.task_slots(blok_idleri)
+    bloklar = repo.get_events(blok_idleri)
+    task_blocks = {
+        eid: (slotlar[eid][0], slotlar[eid][1], bloklar[eid].tzid, bloklar[eid].uid)
+        for eid in blok_idleri if eid in slotlar and eid in bloklar
+    }
+    return export_text(
+        events, overrides, tasks=gorevler, task_blocks=task_blocks,
+        prodid=prodid, dtstamp=dtstamp,
+    )
 
 
 def write_file(

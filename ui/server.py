@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from core import UTC, Event, Task, from_wall_clock, parse_iso
+from core import UTC, Event, Task, from_wall_clock, parse_iso, parse_task_add, to_local
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
@@ -88,6 +88,10 @@ def _hata_esle(mesaj: str) -> tuple[str | None, dict | None]:
         return "gorev_bulunamadi", {"id": mesaj.rsplit("=", 1)[-1]}
     if mesaj == "görev bulunamadı":
         return "gorev_bulunamadi", None
+    if mesaj == "görevler tekrarlanamaz":
+        return "gorev_tekrarlanamaz", None
+    if mesaj.startswith("görev başlığı boş olamaz"):
+        return "baslik_bos", None
     if mesaj.startswith("görev bloğu tekrarlı ya da tüm gün olamaz"):
         return "gorev_blogu_tekrarli", None
     if mesaj == "çok kurallı seriler bölünemez":
@@ -836,6 +840,32 @@ class _Handler(BaseHTTPRequestHandler):
             hatirlaticilar = self.repo.list_reminders(gorev.event_id)
         return gorev_sozluk(gorev, slot, takvim_id, self.tzid, hatirlaticilar)
 
+    def _gorev_metnini_govdeye_cevir(self, govde: dict) -> tuple[dict, dict]:
+        """`{"text": "görev: rapor yaz yarın 14:00"}` -> açık gövde + ayrıştırma özeti.
+
+        Hızlı ekleme kutusu (AGENTS 44'ün etkinlikteki ikiliğinin görevdeki
+        karşılığı): metinden çözülen alanlar açık gövdeyle AYNI doğrulamadan
+        geçiyor, yani "görev:" yolu ile form yolu aynı kuralları paylaşıyor.
+        Referans an BUGÜN (AGENTS 45): "yarın" her yerde yarın demek.
+        """
+        metin = (govde.get("text") or "").strip()
+        if not metin:
+            raise _KodluHata("metin_bos", "metin boş")
+        cozum = parse_task_add(metin, now=datetime.now(UTC), tzid=self.tzid)
+        yeni = {k: v for k, v in govde.items() if k != "text"}
+        yeni["title"] = cozum.title
+        yeni["plan"] = cozum.plan
+        if cozum.day is not None:
+            yeni["date"] = cozum.day.isoformat()
+        if cozum.start_utc is not None and cozum.end_utc is not None:
+            yerel = to_local(cozum.start_utc, self.tzid)
+            dakika = yerel.hour * 60 + yerel.minute
+            sure = int((cozum.end_utc - cozum.start_utc).total_seconds() // 60)
+            yeni["minutes"] = dakika
+            yeni["endMinutes"] = dakika + sure
+        ozet = {"title": cozum.title, "matched": cozum.matched, "plan": cozum.plan}
+        return yeni, ozet
+
     def _gorev_olustur(self) -> None:
         """POST /api/tasks — görev ekler (isteğe bağlı planıyla birlikte).
 
@@ -843,8 +873,14 @@ class _Handler(BaseHTTPRequestHandler):
         `yok`), `date` (gun/saat için), `minutes`+`endMinutes` (saat için, gün
         başından dakika), `calendarId`? ve `reminderMinutes`? (saat için).
         Silmenin "Geri al"ı aynı gövdeyle görevi yeniden kuruyor.
+
+        Ya da `{"text": "görev: rapor yaz yarın 14:00"}`: hızlı ekleme, metinden
+        ayrıştırılır ve yanıta `parsed` (tanınan ifade) eklenir.
         """
         govde = self._govde()
+        ayristirma = None
+        if govde.get("title") is None and govde.get("text") is not None:
+            govde, ayristirma = self._gorev_metnini_govdeye_cevir(govde)
         baslik = (govde.get("title") or "").strip()
         if not baslik:
             raise _KodluHata("baslik_bos", "başlık boş")
@@ -870,7 +906,10 @@ class _Handler(BaseHTTPRequestHandler):
             if gorev.id is not None:
                 self.repo.delete_task(gorev.id)
             raise
-        self._json({"task": self._gorev_yaniti(gorev)}, 201)
+        yanit = {"task": self._gorev_yaniti(gorev)}
+        if ayristirma is not None:
+            yanit["parsed"] = ayristirma
+        self._json(yanit, 201)
 
     def _gorev_guncelle(self, task_id: int) -> None:
         """PATCH /api/tasks/<id> — verilen alanları günceller.
@@ -1195,6 +1234,9 @@ class _Handler(BaseHTTPRequestHandler):
                 "updated": rapor.updated,
                 "skipped": rapor.skipped,
                 "overrides": rapor.overrides,
+                # VTODO'lar etkinlik sayılarından AYRI: "N yeni" önizlemesi görevleri saymasın.
+                "tasks": rapor.tasks_added,
+                "tasks_skipped": rapor.tasks_skipped,
                 "errors": [{"uid": u, "reason": r} for u, r in rapor.errors],
                 "warnings": list(rapor.warnings),
                 "dry_run": onizleme,

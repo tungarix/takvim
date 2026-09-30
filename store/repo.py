@@ -1308,14 +1308,28 @@ class Repo:
         )
         return [_row_to_reminder(r) for r in rows]
 
-    def all_reminders(self) -> dict[int, list[Reminder]]:
+    def all_reminders(
+        self, *, exclude_done_tasks: bool = False
+    ) -> dict[int, list[Reminder]]:
         """Tüm hatırlatıcılar, event_id'ye göre gruplu.
 
         Arka plan süreci her turda bunu bir kez çekiyor; etkinlik başına ayrı
         sorgu atmak N+1 olurdu.
+
+        `exclude_done_tasks=True`: TAMAMLANMIŞ bir görevin bloğuna bağlı
+        hatırlatıcılar dışarıda. Bildirim "şunu yap" demek; yapılmış işi
+        hatırlatmak gürültü. Arayüz bunu ÇEKMİYOR: tamamlanmış bloğun panelinde
+        hatırlatıcılar görünmeye devam etmeli, görev yeniden açılırsa bildirim
+        de geri gelir.
         """
+        sorgu = "SELECT * FROM reminders"
+        if exclude_done_tasks:
+            sorgu += (
+                " WHERE NOT EXISTS (SELECT 1 FROM tasks t"
+                " WHERE t.event_id = reminders.event_id AND t.done_at IS NOT NULL)"
+            )
         grouped: dict[int, list[Reminder]] = defaultdict(list)
-        for row in self.conn.execute("SELECT * FROM reminders ORDER BY minutes_before DESC"):
+        for row in self.conn.execute(sorgu + " ORDER BY minutes_before DESC"):
             grouped[row["event_id"]].append(_row_to_reminder(row))
         return dict(grouped)
 

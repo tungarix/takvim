@@ -94,7 +94,7 @@ def run_once(
     aynı anda çalışsa bile yalnızca biri True alır.
     """
     now = (now or datetime.now(UTC)).astimezone(UTC)
-    reminders = repo.all_reminders()
+    reminders = repo.all_reminders(exclude_done_tasks=True)
     if not reminders:
         return []
 
@@ -156,7 +156,7 @@ def run_forever(
                     repo.occurrences(
                         simdi, simdi + timedelta(days=2), include_hidden=False
                     ),
-                    repo.all_reminders(),
+                    repo.all_reminders(exclude_done_tasks=True),
                     simdi,
                 )
                 if sonraki is not None:

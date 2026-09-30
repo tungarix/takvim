@@ -729,3 +729,63 @@ def test_gecmis_gunlu_gorev_gecikmis_grubunda(page, sunucu):
     page.reload()
     page.wait_for_selector(".gorev-satir.gecikmis:has-text('Eski iş')")
     assert page.locator(".gorev-grup.gecikmis", has_text="Gecikmiş").count() == 1
+
+
+def test_hizli_ekleme_gorev_oneki_gorev_kurar_etkinlik_degil(page, sunucu):
+    """"görev: ..." önekiyle yazılan metin görev olur; ızgarada (tüm gün şeridi dahil) etkinlik çıkmaz."""
+    page.goto(sunucu)
+    page.wait_for_selector("#hizli-girdi")
+
+    page.fill("#hizli-girdi", "görev: rapor yaz yarın")
+    page.click("#hizli-form button[type=submit]")
+
+    page.wait_for_selector(".gorev-satir:has-text('rapor yaz')")
+    page.wait_for_selector("#bildirim:has-text('Görev eklendi: rapor yaz (yarın)')")
+    assert page.locator(".blok").count() == 0 and page.locator(".tumgun-blok").count() == 0
+    assert page.input_value("#hizli-girdi") == ""
+
+
+def test_hizli_ekleme_gorev_saatli_blok_planlar(page, sunucu):
+    """"görev: ... bugün 14:00-15:30": görev saat planlı olur (blok oluşur)."""
+    page.goto(sunucu)
+    page.wait_for_selector("#hizli-girdi")
+
+    page.fill("#hizli-girdi", "görev: sunum bugün 14:00-15:30")
+    page.click("#hizli-form button[type=submit]")
+
+    page.wait_for_selector(".gorev-satir:has-text('sunum')")
+    gorev = page.evaluate("fetch('/api/tasks').then(r => r.json())")["tasks"][0]
+    assert (gorev["plan"], gorev["startMin"], gorev["endMin"]) == ("saat", 14 * 60, 15 * 60 + 30)
+
+
+def test_hizli_ekleme_tekrarli_gorev_hata_gosterir(page, sunucu):
+    page.goto(sunucu)
+    page.wait_for_selector("#hizli-girdi")
+
+    page.fill("#hizli-girdi", "görev: spor her salı 18:00")
+    page.click("#hizli-form button[type=submit]")
+
+    page.wait_for_selector("#bildirim.hata:has-text('görevler tekrarlanamaz')")
+    assert page.locator(".gorev-satir").count() == 0
+
+
+def test_ics_iceri_aktarma_gorevleri_de_alir(page, sunucu, tmp_path):
+    """.ics dosyasındaki VTODO: önizleme '1 görev' der, onaylayınca görev listede belirir."""
+    dosya = tmp_path / "gorevli.ics"
+    # write_bytes: write_text Windows'ta \n'yi \r\n'ye çevirip "\r\n"i "\r\r\n" yapardı.
+    dosya.write_bytes("\r\n".join([
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Test//TR",
+        "BEGIN:VTODO", "UID:g1@t", "SUMMARY:Dosyadan gelen görev", "DUE;VALUE=DATE:20261001", "END:VTODO",
+        "END:VCALENDAR", "",
+    ]).encode("utf-8"))
+    page.goto(sunucu)
+    page.wait_for_selector("#ice-aktar-dosya", state="attached")
+
+    page.set_input_files("#ice-aktar-dosya", str(dosya))
+
+    page.wait_for_selector("#modal-baslik:has-text('İçe aktar')")
+    assert "1 görev" in page.inner_text("#modal-metin")
+    page.click("#modal-tamam")
+
+    page.wait_for_selector(".gorev-satir:has-text('Dosyadan gelen görev')")
+    page.wait_for_selector("#bildirim:has-text('1 görev')")

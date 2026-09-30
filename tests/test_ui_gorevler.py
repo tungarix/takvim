@@ -416,3 +416,38 @@ def test_blok_silinince_gorev_listede_kalir_plansiz(sunucu):
 
     (kalan,) = _liste(sunucu)["tasks"]
     assert (kalan["title"], kalan["plan"], kalan["eventId"]) == ("Rapor", "yok", None)
+
+
+# ---------------------------------------------------------------------------
+# .ics içe aktarma: VTODO
+# ---------------------------------------------------------------------------
+
+def _ics_gorevli():
+    return "\r\n".join([
+        "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Test//TR",
+        "BEGIN:VTODO", "UID:g1@t", "SUMMARY:Dosyadan gelen görev", "DUE;VALUE=DATE:20261001", "END:VTODO",
+        "END:VCALENDAR", "",
+    ])
+
+
+def _ice_aktar(temel, metin, sorgu=""):
+    req = urllib.request.Request(
+        temel + "/api/import" + sorgu, method="POST", data=metin.encode("utf-8"),
+        headers={"Content-Type": "text/calendar; charset=utf-8"},
+    )
+    with urllib.request.urlopen(req) as yanit:
+        return json.loads(yanit.read().decode("utf-8"))
+
+
+def test_ice_aktarma_yaniti_gorev_sayisini_ayri_verir(sunucu, repo):
+    """Önizleme 'N yeni etkinlik' derken görevleri saymamalı: alanlar ayrı."""
+    onizleme = _ice_aktar(sunucu, _ics_gorevli(), "?dry_run=1")
+
+    assert (onizleme["added"], onizleme["tasks"]) == (0, 1)
+    assert repo.list_tasks() == [], "önizleme yazmaz"
+
+    gercek = _ice_aktar(sunucu, _ics_gorevli())
+    assert gercek["tasks"] == 1
+    (g,) = repo.list_tasks()
+    assert (g.title, g.plan_day) == ("Dosyadan gelen görev", date(2026, 10, 1))
+    assert _ice_aktar(sunucu, _ics_gorevli())["tasks_skipped"] == 1

@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from core import Task
+from remind.daemon import run_once
 from store import Repo, new_uid
 from tests.helpers import IST, ist, make_event
 
@@ -406,3 +407,80 @@ def test_yeniden_planlama_surukleme_override_ini_temizler(repo, kisisel):
 
     assert repo.list_overrides(t.event_id) == []
     assert repo.task_slots([t.event_id])[t.event_id] == (ist(2026, 10, 1, 14), ist(2026, 10, 1, 15))
+
+
+# ---------------------------------------------------------------------------
+# Hatırlatıcı: tamamlanmış görev için bildirim gelmemeli
+# ---------------------------------------------------------------------------
+
+class _Yakalayan:
+    """Gönderilenleri biriktiren sahte bildirim arka ucu."""
+
+    def __init__(self) -> None:
+        self.gonderilen: list[tuple[str, str]] = []
+
+    def available(self) -> bool:
+        return True
+
+    def notify(self, title: str, body: str) -> bool:
+        self.gonderilen.append((title, body))
+        return True
+
+
+def _hatirlaticili_gorev(repo, kisisel, dakika=15):
+    t = repo.add_task(_gorev(title="Rapor yaz"))
+    t = repo.plan_task_slot(t.id, ist(2026, 10, 1, 10), ist(2026, 10, 1, 11), kisisel.id, IST)
+    repo.add_reminder(t.event_id, dakika)
+    return t
+
+
+def test_acik_gorevin_blogu_bildirim_verir(repo, kisisel):
+    _hatirlaticili_gorev(repo, kisisel)
+    bildirici = _Yakalayan()
+
+    run_once(repo, IST, bildirici, now=ist(2026, 10, 1, 9, 50))
+
+    assert [b[0] for b in bildirici.gonderilen] == ["Rapor yaz"]
+
+
+def test_tamamlanan_gorevin_blogu_bildirim_vermez(repo, kisisel):
+    """Bitirilmiş işi hatırlatmak gürültü."""
+    t = _hatirlaticili_gorev(repo, kisisel)
+    repo.set_task_done(t.id, True)
+    bildirici = _Yakalayan()
+
+    assert run_once(repo, IST, bildirici, now=ist(2026, 10, 1, 9, 50)) == []
+    assert bildirici.gonderilen == []
+
+
+def test_gorev_yeniden_acilinca_bildirim_geri_gelir(repo, kisisel):
+    t = _hatirlaticili_gorev(repo, kisisel)
+    repo.set_task_done(t.id, True)
+    repo.set_task_done(t.id, False)
+    bildirici = _Yakalayan()
+
+    run_once(repo, IST, bildirici, now=ist(2026, 10, 1, 9, 50))
+
+    assert len(bildirici.gonderilen) == 1
+
+
+def test_tamamlanan_gorevin_hatirlaticilari_yine_de_listelenir(repo, kisisel):
+    """Filtre yalnızca bildirim turunda: panel tamamlanmış bloğun hatırlatıcılarını göstermeli."""
+    t = _hatirlaticili_gorev(repo, kisisel)
+    repo.set_task_done(t.id, True)
+
+    assert t.event_id in repo.all_reminders()
+    assert repo.all_reminders(exclude_done_tasks=True) == {}
+
+
+def test_tamamlanan_gorev_siradan_etkinligin_hatirlaticisini_susturmaz(repo, kisisel):
+    t = _hatirlaticili_gorev(repo, kisisel)
+    repo.set_task_done(t.id, True)
+    baska = repo.add_event(make_event(ist(2026, 10, 1, 10), ist(2026, 10, 1, 11), event_id=None,
+                                      uid=new_uid(), calendar_id=kisisel.id, title="Toplantı"))
+    repo.add_reminder(baska.id, 15)
+    bildirici = _Yakalayan()
+
+    run_once(repo, IST, bildirici, now=ist(2026, 10, 1, 9, 50))
+
+    assert [b[0] for b in bildirici.gonderilen] == ["Toplantı"]

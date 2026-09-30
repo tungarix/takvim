@@ -10,7 +10,7 @@ Bu paket disk, veritabanı ve ekran hakkında hiçbir şey bilmez; girdisi veri,
 from .layout import layout
 from .models import Calendar, Event, Occurrence, Override, Task
 from .query import conflicts, free_slots, overlaps
-from .quickadd import QuickAdd, parse_quick_add
+from .quickadd import QuickAdd, TaskAdd, gorev_metni_mi, parse_quick_add, parse_task_add
 from .recurrence import expand, instance_starts, next_rule_start, series_end
 from .reminders import DueReminder, Reminder, due_reminders, fire_key, next_fire_time
 from .timeutil import (
@@ -44,7 +44,10 @@ __all__ = [
     "free_slots",
     # hızlı ekleme
     "QuickAdd",
+    "TaskAdd",
+    "gorev_metni_mi",
     "parse_quick_add",
+    "parse_task_add",
     # hatırlatıcı
     "Reminder",
     "DueReminder",
