@@ -13,7 +13,7 @@
 ## English
 
 Takvim ("calendar" in Turkish) is a local-first, account-free, offline
-desktop calendar app for Windows. Everything — events, calendars, backups —
+desktop calendar app for Windows. Everything — events, tasks, calendars, backups —
 stays on your own machine in a local SQLite database; there's no server,
 no sign-up, no sync.
 
