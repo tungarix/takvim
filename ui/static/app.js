@@ -1625,6 +1625,12 @@ function panoyaKopyala(occ) {
     bildir(t("tumgun_kopyalanamaz"), true);
     return false;
   }
+  // Kopyalama, kesme ve çoğaltmanın TEK kapısı. Görev bloğunun kopyası görevle
+  // bağı olmayan sıradan bir etkinlik olurdu (kesmek de görevi plansızda bırakırdı).
+  if (occ.taskId) {
+    bildir(t("gorev_kopyalanamaz"), true);
+    return false;
+  }
   durum.pano = {
     title: occ.title,
     location: occ.location || "",

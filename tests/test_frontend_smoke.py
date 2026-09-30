@@ -789,3 +789,20 @@ def test_ics_iceri_aktarma_gorevleri_de_alir(page, sunucu, tmp_path):
 
     page.wait_for_selector(".gorev-satir:has-text('Dosyadan gelen görev')")
     page.wait_for_selector("#bildirim:has-text('1 görev')")
+
+
+def test_gorev_blogu_kopyalanamaz(page, sunucu):
+    """Ctrl+C/X/D görev bloğunda reddedilir: kopya görevsiz sıradan bir etkinlik olurdu."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    _gorev_formu(page, "Sunum hazırlığı", plan="saat")
+    page.locator(".blok.gorev-blok .b-baslik").click()
+    page.wait_for_selector("#panel:not([hidden])")
+
+    for tus in ("Control+c", "Control+x", "Control+d"):
+        page.keyboard.press(tus)
+        page.wait_for_selector("#bildirim.hata:has-text('kopyalanamaz')")
+        page.evaluate("document.getElementById('bildirim').hidden = true")
+
+    assert page.locator(".blok.gorev-blok").count() == 1, "kesme bloğu silmemeli"
+    assert page.evaluate("fetch('/api/tasks').then(r => r.json())")["tasks"][0]["plan"] == "saat"
