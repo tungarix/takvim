@@ -73,6 +73,18 @@
     </h2>
     <ul id="takvim-listesi" class="takvim-listesi"></ul>
 
+    <div id="gorev-bolum" class="gorev-bolum">
+      <h2 class="kenar-baslik" id="gorev-baslik">
+        <span class="kb-metin" data-i18n="gorevler">Görevler</span>
+        <button type="button" id="gorev-ekle" class="kenar-ekle" title="Yeni görev" data-i18n-title="yeni_gorev_title">+</button>
+      </h2>
+      <form id="gorev-hizli-form" class="gorev-hizli" autocomplete="off">
+        <input id="gorev-hizli-girdi" type="text" placeholder="Görev ekle…" aria-label="Görev ekle"
+               data-i18n-ph="gorev_ph" data-i18n-aria="gorev_ekle_aria">
+      </form>
+      <div id="gorev-listesi" class="gorev-listesi"></div>
+    </div>
+
     <div id="arama-bolum" class="arama-bolum" hidden>
       <h2 class="kenar-baslik"><span class="kb-metin" data-i18n="arama_sonuclari">Arama sonuçları</span></h2>
       <ul id="arama-listesi" class="arama-listesi"></ul>

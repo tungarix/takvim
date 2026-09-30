@@ -516,3 +516,216 @@ def test_ayarlar_select_metin_kutuya_sigiyor(page, sunucu):
       return kotu;
     }""")
     assert sigmayan == []
+
+
+# ---------------------------------------------------------------------------
+# Görevler
+# ---------------------------------------------------------------------------
+
+def _gorev_formu(page, baslik, plan="yok", *, bas="14:00", bit="15:00"):
+    """Kenar çubuğundaki + ile görev formunu açıp doldurur ve Ekle'ye basar.
+
+    Tarih olarak GÖRÜNEN haftanın sabitini (`durum.anchor`) yazıyor: form
+    varsayılanı sunucunun "bugün"ü, ızgara ise tarayıcının "bugün"ü -- gün
+    sınırında (UTC 21:00 sonrası İstanbul ertesi gün) blok görünmeyen bir
+    haftaya düşüp testi yarışa sokardı.
+    """
+    page.click("#gorev-ekle")
+    page.wait_for_selector("#modal-baslik:has-text('Yeni görev')")
+    alan = lambda ad: page.locator("#modal-alanlar label", has_text=ad)
+    alan("Başlık").locator("input").fill(baslik)
+    alan("Ne zaman?").locator("select").select_option(plan)
+    if plan != "yok":
+        alan("Tarih").locator("input").fill(page.evaluate("durum.anchor"))
+    if plan == "saat":
+        alan("Başlangıç").locator("input").fill(bas)
+        alan("Bitiş").locator("input").fill(bit)
+    page.click("#modal-tamam")
+    page.wait_for_selector("#perde", state="hidden")
+
+
+def test_gorev_hizli_giris_plansiz_gorev_ekler(page, sunucu):
+    """Kenar çubuğuna yazıp Enter: plansız görev, ızgarada hiçbir şey belirmez."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-hizli-girdi")
+
+    page.fill("#gorev-hizli-girdi", "Rapor yaz")
+    page.press("#gorev-hizli-girdi", "Enter")
+
+    page.wait_for_selector(".gorev-satir:has-text('Rapor yaz')")
+    assert page.locator(".gorev-grup", has_text="Plansız").count() == 1
+    assert page.locator(".blok").count() == 0
+    assert page.input_value("#gorev-hizli-girdi") == ""
+
+
+def test_gorev_formu_alanlari_plana_gore_gorunur(page, sunucu):
+    """"Ne zaman?" plansızken tarih/saat yok; saat seçilince hepsi geliyor."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    page.click("#gorev-ekle")
+    page.wait_for_selector("#modal-baslik:has-text('Yeni görev')")
+    alan = lambda ad: page.locator("#modal-alanlar label", has_text=ad)
+
+    for ad in ("Tarih", "Başlangıç", "Bitiş", "Hatırlatıcı"):
+        assert alan(ad).is_hidden(), f"{ad} plansızken görünmemeli"
+
+    alan("Ne zaman?").locator("select").select_option("gun")
+    assert alan("Tarih").is_visible() and alan("Başlangıç").is_hidden()
+
+    alan("Ne zaman?").locator("select").select_option("saat")
+    for ad in ("Tarih", "Başlangıç", "Bitiş", "Hatırlatıcı"):
+        assert alan(ad).is_visible(), f"{ad} saat planında görünmeli"
+
+
+def test_gorev_gun_plani_izgarada_gorunmez(page, sunucu):
+    """Karar: saatsiz görev tüm gün şeridine de düşmez, yalnızca listede durur."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+
+    _gorev_formu(page, "Bugün bir ara", plan="gun")
+
+    page.wait_for_selector(".gorev-satir:has-text('Bugün bir ara')")
+    assert page.locator(".blok").count() == 0
+    assert page.locator(".tumgun-blok").count() == 0
+
+
+def test_gorev_saat_plani_izgarada_blok_olusturur(page, sunucu):
+    """Belirli saatlerde: ızgarada onay kutulu blok + listede saat aralığı."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+
+    _gorev_formu(page, "Sunum hazırlığı", plan="saat", bas="14:00", bit="15:30")
+
+    page.wait_for_selector(".blok.gorev-blok:has-text('Sunum hazırlığı')")
+    assert page.locator(".blok.gorev-blok .b-gorev-kutu").count() == 1
+    assert "14:00–15:30" in page.inner_text(".gorev-satir:has-text('Sunum hazırlığı') .gorev-meta")
+
+
+def test_gorev_blok_onay_kutusu_tamamlar(page, sunucu):
+    """Blokta kutuyu işaretlemek görevi tamamlar: blok soluyor, liste 'Tamamlanan'a geçiyor."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    _gorev_formu(page, "Sunum hazırlığı", plan="saat")
+    page.wait_for_selector(".blok.gorev-blok")
+
+    page.check(".blok.gorev-blok .b-gorev-kutu")
+
+    page.wait_for_selector(".blok.gorev-blok.bitti")
+    page.wait_for_selector(".gorev-grup:has-text('Tamamlanan (1)')")
+    # Kutuya tıklamak paneli açmamalı (tıklama bloğa ulaşmıyor).
+    assert page.is_hidden("#panel")
+
+    # Tamamlanan grup kapalı gelir; açınca satır görünür, kutuyu kaldırmak görevi geri açar.
+    assert page.locator(".gorev-satir").count() == 0
+    page.click(".gorev-grup:has-text('Tamamlanan')")
+    page.wait_for_selector(".gorev-satir.bitti:has-text('Sunum hazırlığı')")
+    page.uncheck(".gorev-satir.bitti .gorev-kutu")
+    page.wait_for_selector(".gorev-grup:has-text('Bugün')")
+    page.wait_for_selector(".blok.gorev-blok:not(.bitti)")
+
+
+def test_gorev_listeden_izgaraya_surukleyince_saat_alir(page, sunucu):
+    """Kenar çubuğundaki görevi ızgaraya bırakmak göreve saat verir (blok oluşur)."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-hizli-girdi")
+    page.fill("#gorev-hizli-girdi", "Rapor yaz")
+    page.press("#gorev-hizli-girdi", "Enter")
+    page.wait_for_selector(".gorev-satir:has-text('Rapor yaz')")
+
+    # 14:12'ye bırak: 30 dakikaya yuvarlanınca 14:00 (sınırda 13:59 riskine girmemek için).
+    page.drag_and_drop(
+        ".gorev-satir:has-text('Rapor yaz')", ".gun-sutun >> nth=2",
+        target_position={"x": 30, "y": 14 * 48 + 12},
+    )
+
+    page.wait_for_selector(".blok.gorev-blok:has-text('Rapor yaz')")
+    gorev = page.evaluate("fetch('/api/tasks').then(r => r.json())")["tasks"][0]
+    assert (gorev["plan"], gorev["startMin"], gorev["endMin"]) == ("saat", 14 * 60, 15 * 60)
+
+
+def test_gorev_blogunu_silmek_gorevi_listede_birakir_geri_alinir(page, sunucu):
+    """Bloğu sil: görev listede KALIR (plansız); 'Geri al' aynı bloğu geri bağlar."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    _gorev_formu(page, "Sunum hazırlığı", plan="saat", bas="14:00", bit="15:30")
+    page.wait_for_selector(".blok.gorev-blok")
+
+    page.locator(".blok.gorev-blok .b-baslik").click()
+    page.wait_for_selector("#panel:not([hidden])")
+    page.get_by_role("button", name="Sil", exact=True).click()
+    page.wait_for_selector("#modal-baslik:has-text('Bloğu sil')")
+    assert "görev listede kalır" in page.inner_text("#modal-metin")
+    page.click("#modal-tamam")
+
+    page.wait_for_selector("#bildirim:has-text('Silindi')")
+    page.wait_for_selector(".blok.gorev-blok", state="detached")
+    assert page.locator(".gorev-satir:has-text('Sunum hazırlığı')").count() == 1
+    assert page.locator(".gorev-grup", has_text="Plansız").count() == 1
+
+    page.click("#bildirim .bildirim-dugme")
+    page.wait_for_selector(".blok.gorev-blok:has-text('Sunum hazırlığı')")
+    gorevler = page.evaluate("fetch('/api/tasks').then(r => r.json())")["tasks"]
+    assert len(gorevler) == 1 and gorevler[0]["plan"] == "saat"
+    assert (gorevler[0]["startMin"], gorevler[0]["endMin"]) == (14 * 60, 15 * 60 + 30)
+
+
+def test_gorevi_formdan_silmek_geri_alinabilir(page, sunucu):
+    """Düzenle kutusundaki Sil görevi (bloğuyla) siler; 'Geri al' yeniden kurar."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    _gorev_formu(page, "Sunum hazırlığı", plan="saat", bas="14:00", bit="15:30")
+    page.wait_for_selector(".blok.gorev-blok")
+
+    page.locator(".gorev-satir:has-text('Sunum hazırlığı') .gorev-ad").click()
+    page.wait_for_selector("#modal-baslik:has-text('Görevi düzenle')")
+    page.click("#modal-ucuncu")
+
+    page.wait_for_selector(".gorev-satir", state="detached")
+    page.wait_for_selector(".blok.gorev-blok", state="detached")
+
+    page.click("#bildirim .bildirim-dugme")
+    page.wait_for_selector(".blok.gorev-blok:has-text('Sunum hazırlığı')")
+    assert page.locator(".gorev-satir:has-text('Sunum hazırlığı')").count() == 1
+
+
+def test_gorevler_ingilizce_arayuz(page, sunucu_en):
+    """Dil `en` iken görev bölümü İngilizce; hiçbir konsol hatası yok."""
+    hatalar = []
+    page.on("console", lambda m: hatalar.append(m.text) if m.type == "error" else None)
+    page.on("pageerror", lambda e: hatalar.append(str(e)))
+
+    page.goto(sunucu_en)
+    page.wait_for_selector("#gorev-hizli-girdi")
+
+    assert page.inner_text("#gorev-baslik .kb-metin").lower() == "tasks"
+    assert page.get_attribute("#gorev-hizli-girdi", "placeholder") == "Add a task…"
+    page.click("#gorev-ekle")
+    page.wait_for_selector("#modal-baslik:has-text('New task')")
+    assert page.locator("#modal-alanlar label", has_text="When?").count() == 1
+    assert hatalar == []
+
+
+def test_ilk_gorev_karsilama_perdesini_kapatir(page, sunucu):
+    """Karşılama perdesi ızgarayı örtüyor: ilk görev 'bir şey eklendi' sayılıp onu kapatmalı,
+    yoksa kullanıcı görevi ızgaraya sürükleyemezdi."""
+    page.goto(sunucu)
+    page.wait_for_selector("#bos-durum:not([hidden])")
+
+    page.fill("#gorev-hizli-girdi", "Rapor yaz")
+    page.press("#gorev-hizli-girdi", "Enter")
+
+    page.wait_for_selector(".gorev-satir:has-text('Rapor yaz')")
+    page.wait_for_selector("#bos-durum", state="hidden")
+
+
+def test_gecmis_gunlu_gorev_gecikmis_grubunda(page, sunucu):
+    """Günü geçmiş açık görev 'Gecikmiş' başlığı altında, vurgulu satırla görünür."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-hizli-girdi")
+    page.evaluate("""fetch('/api/tasks', {method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({title: 'Eski iş', plan: 'gun', date: '2020-01-01'})})""")
+
+    page.reload()
+    page.wait_for_selector(".gorev-satir.gecikmis:has-text('Eski iş')")
+    assert page.locator(".gorev-grup.gecikmis", has_text="Gecikmiş").count() == 1

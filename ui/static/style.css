@@ -365,6 +365,7 @@ html, body {
    yalnızca görsel taşma önleniyor -- metni sunucu zaten kısa gönderiyorsa
    sorun yok, uzun gelirse "…" devreye girer). */
 @media (max-width: 1039px) {
+  .gorev-bolum { display: none; }
   .kenar { width: var(--kenar-ray); padding: var(--bosluk-2); align-items: center; }
   .kenar-marka { justify-content: center; }
   .km-ikon { display: inline-flex; }
@@ -1091,3 +1092,107 @@ select.modal-girdi { height: auto; line-height: 1.5; }
 }
 .yedek-bilgi { font-size: 12px; color: var(--metin-soluk); }
 .yedek-satir .dugme { flex-shrink: 0; padding: 4px 10px; height: 28px; }
+
+/* ---------- görevler ---------- */
+
+.gorev-hizli { margin: 0 0 6px; }
+.gorev-hizli input {
+  width: 100%;
+  box-sizing: border-box;
+  height: var(--girdi-yukseklik);
+  padding: 0 10px;
+  background: var(--zemin);
+  color: var(--metin);
+  border: 1px solid var(--cizgi);
+  border-radius: var(--yaricap);
+  font: inherit;
+  font-size: 13px;
+}
+.gorev-hizli input::placeholder { color: var(--metin-silik); }
+
+/* Uzun bir liste kenar çubuğunun geri kalanını (mini takvim, eylemler) itmesin. */
+.gorev-listesi { display: grid; gap: 2px; max-height: 40vh; overflow-y: auto; }
+
+.gorev-grup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  padding: 0;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--metin-silik);
+}
+button.gorev-grup { cursor: pointer; }
+.gorev-grup.gecikmis { color: var(--uyari-metin); }
+
+.gorev-satir {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: var(--yaricap);
+  cursor: grab;
+}
+.gorev-satir:hover { background: var(--yuzey-2); }
+.gorev-satir.suruklenen { opacity: .45; }
+
+.gorev-kutu {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 2px 0 0;
+  accent-color: var(--vurgu);
+  cursor: pointer;
+}
+.gorev-ic { flex: 1; min-width: 0; }
+.gorev-ad {
+  display: block;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--metin);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.gorev-meta { display: block; font-size: 11px; color: var(--metin-silik); }
+.gorev-satir.gecikmis .gorev-meta { color: var(--uyari-metin); }
+.gorev-satir.bitti .gorev-ad { color: var(--metin-silik); text-decoration: line-through; }
+.gorev-bos { margin: 2px 0 0; font-size: 12px; color: var(--metin-silik); line-height: 1.4; }
+
+/* Izgarada görev bloğu: sıradan bir etkinlik, yalnızca onay kutusu + soluk
+   tamamlanma hâli ekleniyor. */
+.b-gorev-kutu {
+  float: left;
+  width: 12px;
+  height: 12px;
+  margin: 1px 5px 0 0;
+  accent-color: var(--vurgu);
+  cursor: pointer;
+}
+.blok.gorev-blok.bitti,
+.ay-blok.gorev-blok.bitti { opacity: .55; }
+.blok.gorev-blok.bitti .b-baslik,
+.ay-blok.gorev-blok.bitti { text-decoration: line-through; }
+
+/* Görev listeden sürüklenirken bırakma hedefi. */
+.gun-sutun.gorev-hedef { background: rgba(255, 86, 60, .07); }
+.gorev-birak-cizgi {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--vurgu);
+  pointer-events: none;
+  z-index: 5;
+}
+.ay-hucre.gorev-hedef { outline: 2px dashed var(--vurgu); outline-offset: -2px; }

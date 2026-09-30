@@ -43,6 +43,10 @@ const durum = {
   // sonraki her yukle()'de veri artık boş değilse kapatılıyor (kullanıcı
   // "Etkinlik ekle"den bir şey oluşturunca ekranda asılı kalmasın diye).
   ilkYuklemeKaldi: true,
+  // Görev listesi (`/api/tasks`: {today, tasks}); yukle() her çağrıda tazeliyor.
+  gorevler: null,
+  gorevSurukle: null,     // listeden ızgaraya sürüklenen görev (HTML5 sürükle-bırak)
+  tamamlananAcik: false,  // kenar çubuğunda "Tamamlanan" grubu açık mı
 };
 
 const el = (id) => document.getElementById(id);
@@ -310,8 +314,10 @@ function modalForm(baslik, metin, alanlar, onay = t("kaydet"), ucuncu = null, ge
     genislik,
     kur: (govde) => {
       let ilk = null;
+      const satirlar = {};
       alanlar.forEach((a) => {
         const satir = document.createElement("label");
+        satirlar[a.ad] = satir;
         satir.className = "modal-alan" + (a.dar ? " dar" : "");
         const etiket = document.createElement("span");
         etiket.className = "modal-etiket";
@@ -347,6 +353,18 @@ function modalForm(baslik, metin, alanlar, onay = t("kaydet"), ucuncu = null, ge
         girdiler[a.ad] = g;
         if (!ilk && !a.devredisi) ilk = g;
       });
+      // `iliski: {alan, degerler}`: bu satır yalnızca başka bir SEÇİM alanı
+      // listedeki değerlerden birindeyken görünüyor (görev formunda "Ne zaman?").
+      // Gizli alanların değeri yine `oku()`'ya giriyor; çağıran plana bakıp yok sayıyor.
+      const iliskiUygula = () => {
+        alanlar.forEach((a) => {
+          if (a.iliski) satirlar[a.ad].hidden = !a.iliski.degerler.includes(girdiler[a.iliski.alan].value);
+        });
+      };
+      alanlar.forEach((a) => {
+        if (a.iliski) girdiler[a.iliski.alan].addEventListener("change", iliskiUygula);
+      });
+      iliskiUygula();
       return ilk;
     },
     oku: () => {
@@ -405,6 +423,7 @@ async function yukle() {
     durum.veri.calendars.forEach((c) => {
       if (!durum.takvimGorunur.has(c.id)) durum.takvimGorunur.set(c.id, c.visible);
     });
+    await gorevleriYukle();
     ciz();
   } catch (hata) {
     bildir(t("veri_alinamadi", { ayrinti: hata.message }), true);
@@ -439,6 +458,7 @@ function ciz() {
   el("tz-etiketi-kisa").textContent = sehir.slice(0, 3).toUpperCase();
   el("tz-etiketi-kisa").title = veri.tzid;
   takvimleriCiz();
+  gorevleriCiz();
   miniAyCiz();
   bosDurumKontrol(veri);
 
@@ -486,6 +506,9 @@ function takvimleriCiz() {
 
 /** Hafta/gün `days[i]` = {timed,allDay}; ay `days[i]` = {events}. */
 function veriBosMu(veri) {
+  // Görev de "bir şey eklendi" demek: karşılama perdesi ızgaranın tamamını
+  // örtüyor, ilk görevi ekleyen kullanıcı onu listeden ızgaraya sürükleyemezdi.
+  if (durum.gorevler && durum.gorevler.tasks.length) return false;
   if (!veri.days) return true;
   return veri.days.every((g) =>
     (g.timed || []).length === 0 &&
@@ -724,6 +747,11 @@ function zamanCiz(veri) {
     });
     sutun.addEventListener("mouseleave", () => { durum.imlecSaat = null; });
 
+    // Kenar çubuğundan sürüklenen görev buraya bırakılınca saat alır.
+    sutun.addEventListener("dragover", (e) => gorevSurukleUzerinde(e, sutun, g));
+    sutun.addEventListener("dragleave", (e) => gorevSurukleAyrildi(e, sutun));
+    sutun.addEventListener("drop", (e) => gorevBirak(e, sutun, g));
+
     g.timed.filter(gorunurMu).forEach((occ) => sutun.appendChild(blokYap(occ, g)));
 
     if (g.date === bugun) {
@@ -774,6 +802,22 @@ function blokYap(occ, gun) {
   // (.kisa, [data-yogunluk]); imleci üzerine getirince tam başlık ve saat yine
   // de görünsün diye tarayıcının kendi araç ipucuna (title) da yazıyoruz.
   blok.title = `${occ.title} · ${saatBicim(occ.startUtc, occ.tzid)}–${saatBicim(occ.endUtc, occ.tzid)}`;
+
+  // Görev bloğu: sıradan etkinlik + onay kutusu. Kutu tıklaması/işaretçisi
+  // bloğa ulaşmamalı: yoksa paneli açar ya da sürüklemeyi başlatırdı.
+  if (occ.taskId) {
+    blok.classList.add("gorev-blok");
+    if (occ.taskDone) blok.classList.add("bitti");
+    const kutu = document.createElement("input");
+    kutu.type = "checkbox";
+    kutu.className = "b-gorev-kutu";
+    kutu.checked = !!occ.taskDone;
+    kutu.setAttribute("aria-label", t("gorev_kutu_aria", { baslik: occ.title }));
+    kutu.addEventListener("pointerdown", (e) => e.stopPropagation());
+    kutu.addEventListener("click", (e) => e.stopPropagation());
+    kutu.addEventListener("change", () => gorevIsaretle({ id: occ.taskId }, kutu.checked));
+    blok.prepend(kutu);
+  }
 
   blok.onclick = () => { if (!surukleme.tasindi) panelAc(occ); };
   blok.addEventListener("pointerdown", (e) => surukleBasla(e, blok, occ, gun, "tasi"));
@@ -1192,9 +1236,12 @@ function ayCiz(veri) {
       const blok = document.createElement("button");
       blok.type = "button";
       blok.className = "ay-blok";
-      const metin = occ.allDay
+      const gorevOnek = occ.taskId ? (occ.taskDone ? "☑ " : "☐ ") : "";
+      const metin = gorevOnek + (occ.allDay
         ? occ.title
-        : `${saatBicim(occ.startUtc, occ.tzid)} ${occ.title}`;
+        : `${saatBicim(occ.startUtc, occ.tzid)} ${occ.title}`);
+      if (occ.taskId) blok.classList.add("gorev-blok");
+      if (occ.taskDone) blok.classList.add("bitti");
       blok.textContent = metin;
       blok.title = metin;
       blok.style.background = zemin(occ.color);
@@ -1215,6 +1262,16 @@ function ayCiz(veri) {
       daha.onclick = (e) => { e.stopPropagation(); gunListesiAc(g, gorunurler, daha); };
       hucre.appendChild(daha);
     }
+
+    // Kenar çubuğundan sürüklenen görev günü değiştirir (saati varsa korunur).
+    hucre.addEventListener("dragover", (e) => {
+      if (!durum.gorevSurukle) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      hucre.classList.add("gorev-hedef");
+    });
+    hucre.addEventListener("dragleave", (e) => gorevSurukleAyrildi(e, hucre));
+    hucre.addEventListener("drop", (e) => gorevAyaBirak(e, hucre, g));
 
     // Hücreye tıklayınca o günün gün görünümüne geç
     hucre.onclick = () => { durum.gorunum = "day"; durum.anchor = g.date; yukle(); };
@@ -1329,6 +1386,9 @@ function panelAc(occ) {
   if (occ.allDay) rozetler.push(`<span class="rozet">${kacir(t("rozet_tumgun"))}</span>`);
   if (occ.isOverride) rozetler.push(`<span class="rozet override">${kacir(t("rozet_tasindi"))}</span>`);
   if (occ.clipped) rozetler.push(`<span class="rozet">${kacir(t("rozet_gece"))}</span>`);
+  if (occ.taskId) {
+    rozetler.push(`<span class="rozet">${kacir(occ.taskDone ? t("rozet_gorev_bitti") : t("rozet_gorev"))}</span>`);
+  }
   if (rozetler.length) satirlar.push([t("p_durum"), rozetler.join(" ")]);
 
   if (occ.reminders && occ.reminders.length) {
@@ -1465,11 +1525,14 @@ async function etkinligiDuzenle(occ) {
 
 /** Tekrarlıda bu örneği iptal eder, tekrarsızda etkinliği SİLER. */
 async function ornegiSil(occ) {
+  // Görev bloğunu silmek GÖREVİ silmez (o plansıza döner); kullanıcı bunu bilmeli.
   const tamam = await onayla(
-    occ.recurring ? t("sil_ornek_baslik") : t("sil_etkinlik_baslik"),
-    occ.recurring
-      ? t("sil_ornek_metin", { baslik: occ.title })
-      : t("sil_etkinlik_metin", { baslik: occ.title }),
+    occ.taskId ? t("blok_sil_baslik") : occ.recurring ? t("sil_ornek_baslik") : t("sil_etkinlik_baslik"),
+    occ.taskId
+      ? t("blok_sil_metin", { baslik: occ.title })
+      : occ.recurring
+        ? t("sil_ornek_metin", { baslik: occ.title })
+        : t("sil_etkinlik_metin", { baslik: occ.title }),
     t("sil"),
     true,
   );
@@ -1484,7 +1547,9 @@ async function ornegiSil(occ) {
     // Tüm gün etkinliğinde geri alma YOK: yeniden oluşturma yolu saatli
     // etkinlik kuruyor ve sessizce yanlış bir şey geri getirmek, geri
     // getirmemekten kötü.
-    occ.allDay ? null : () => silmeyiGeriAl(occ),
+    // Görev bloğunda "geri al" sıradan etkinliği YENİDEN kurmaz (görevle bağı
+    // kopardı, ikinci bir kopya olurdu): mevcut görevi aynı saate yeniden planlar.
+    occ.taskId ? () => gorevBlogunuGeriKur(occ) : occ.allDay ? null : () => silmeyiGeriAl(occ),
   );
 }
 
@@ -1819,6 +1884,15 @@ function islemleriCiz(occ) {
     b.onclick = islev;
     kap.appendChild(b);
   };
+
+  if (occ.taskId) {
+    ekle(occ.taskDone ? t("gorev_yeniden_ac") : t("gorev_tamamla"), false,
+      () => gorevIsaretle({ id: occ.taskId }, !occ.taskDone));
+    ekle(t("gorev_duzenle"), false, () => {
+      const g = gorevBul(occ.taskId);
+      if (g) gorevFormuAc(g);
+    });
+  }
 
   ekle(t("duzenle"), false, () => etkinligiDuzenle(occ), "F2 · Enter");
 
@@ -2437,6 +2511,433 @@ document.addEventListener("keydown", (e) => {
   const islev = kisayollar[e.key] || kisayollar[e.key.toLowerCase()];
   if (islev) { e.preventDefault(); islev(); }
 });
+
+/* ---------- görevler ---------- */
+
+/* Görev takvim etkinliği DEĞİL: saati olmayabilir. Üç hâlden biri: plansız,
+ * "şu gün içinde bir ara" (saatsiz) ya da belirli saatlerde. Saatsiz görev
+ * ızgarada -- tüm gün şeridi dahil -- HİÇ görünmez, yalnızca kenar çubuğundaki
+ * listede durur. Saat planlıysa ızgarada göreve bağlı sıradan bir etkinlik
+ * (blok) çizilir; blok `taskId` taşır, onay kutusu ve soluk tamamlanma hâli
+ * bundan geliyor. Gün/saat hesabı sunucuda (`presenter.gorev_sozluk`): burada
+ * yalnızca gelen `day`/`startMin`/`endMin` basılıyor.
+ */
+
+function jsonIstek(yol, yontem, govde) {
+  return istek(yol, {
+    method: yontem,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(govde),
+  });
+}
+
+/** Görev listesini yükler. Başarısızlık ızgarayı ENGELLEMEZ: takvim görevsiz de çalışır. */
+async function gorevleriYukle() {
+  try {
+    durum.gorevler = await istek("/api/tasks");
+  } catch (hata) {
+    bildir(t("veri_alinamadi", { ayrinti: hata.message }), true);
+  }
+}
+
+function gorevBul(id) {
+  return ((durum.gorevler && durum.gorevler.tasks) || []).find((g) => g.id === id) || null;
+}
+
+function kisaTarih(iso) {
+  return new Date(`${iso}T12:00:00Z`).toLocaleDateString(yerel(), {
+    weekday: "short", day: "numeric", month: "short", timeZone: "UTC",
+  });
+}
+
+function gorevMeta(g, bugun) {
+  const parcalar = [];
+  if (g.day && g.day !== bugun) parcalar.push(kisaTarih(g.day));
+  if (g.plan === "saat") parcalar.push(`${dakikaSaat(g.startMin)}–${dakikaSaat(g.endMin)}`);
+  return parcalar.join(" · ");
+}
+
+function gorevleriCiz() {
+  const kap = el("gorev-listesi");
+  kap.innerHTML = "";
+  const veri = durum.gorevler;
+  if (!veri) return;
+
+  if (veri.tasks.length === 0) {
+    const p = document.createElement("p");
+    p.className = "gorev-bos";
+    p.textContent = t("gorev_bos");
+    kap.appendChild(p);
+    return;
+  }
+
+  // ISO tarihler sözlük sırasıyla kronolojik: düz string karşılaştırma yetiyor.
+  const bugun = veri.today;
+  const gruplar = [
+    { anahtar: "g_gecikmis", liste: [], gecikmis: true },
+    { anahtar: "g_bugun", liste: [] },
+    { anahtar: "g_yaklasan", liste: [] },
+    { anahtar: "g_plansiz", liste: [] },
+  ];
+  const bitmis = [];
+  veri.tasks.forEach((g) => {
+    if (g.done) bitmis.push(g);
+    else if (g.day === null) gruplar[3].liste.push(g);
+    else if (g.day < bugun) gruplar[0].liste.push(g);
+    else if (g.day === bugun) gruplar[1].liste.push(g);
+    else gruplar[2].liste.push(g);
+  });
+
+  gruplar.forEach((grup) => {
+    if (!grup.liste.length) return;
+    const baslik = document.createElement("div");
+    baslik.className = "gorev-grup" + (grup.gecikmis ? " gecikmis" : "");
+    baslik.textContent = t(grup.anahtar);
+    kap.appendChild(baslik);
+    grup.liste.forEach((g) => kap.appendChild(gorevSatiriYap(g, bugun)));
+  });
+
+  if (bitmis.length) {
+    const baslik = document.createElement("button");
+    baslik.type = "button";
+    baslik.className = "gorev-grup";
+    baslik.setAttribute("aria-expanded", String(durum.tamamlananAcik));
+    baslik.textContent = `${durum.tamamlananAcik ? "▾" : "▸"} ${t("g_tamamlanan")} (${bitmis.length})`;
+    baslik.onclick = () => { durum.tamamlananAcik = !durum.tamamlananAcik; gorevleriCiz(); };
+    kap.appendChild(baslik);
+    if (durum.tamamlananAcik) bitmis.forEach((g) => kap.appendChild(gorevSatiriYap(g, bugun)));
+  }
+}
+
+function gorevSatiriYap(g, bugun) {
+  const satir = document.createElement("div");
+  satir.className = "gorev-satir" + (g.done ? " bitti" : "") +
+    (!g.done && g.day && g.day < bugun ? " gecikmis" : "");
+  satir.draggable = true;
+  satir.title = t("gorev_surukle_ipucu");
+  satir.dataset.gorevId = String(g.id);
+
+  const kutu = document.createElement("input");
+  kutu.type = "checkbox";
+  kutu.className = "gorev-kutu";
+  kutu.checked = g.done;
+  kutu.setAttribute("aria-label", t("gorev_kutu_aria", { baslik: g.title }));
+  kutu.addEventListener("change", () => gorevIsaretle(g, kutu.checked));
+
+  const ic = document.createElement("div");
+  ic.className = "gorev-ic";
+  const ad = document.createElement("button");
+  ad.type = "button";
+  ad.className = "gorev-ad";
+  ad.textContent = g.title;
+  ad.onclick = () => gorevFormuAc(g);
+  ic.appendChild(ad);
+  const meta = gorevMeta(g, bugun);
+  if (meta) {
+    const m = document.createElement("span");
+    m.className = "gorev-meta";
+    m.textContent = meta;
+    ic.appendChild(m);
+  }
+  satir.append(kutu, ic);
+
+  satir.addEventListener("dragstart", (e) => {
+    durum.gorevSurukle = g;
+    e.dataTransfer.effectAllowed = "move";
+    // Bazı tarayıcılar veri yüklenmemiş sürüklemeyi hiç başlatmıyor.
+    e.dataTransfer.setData("text/plain", String(g.id));
+    satir.classList.add("suruklenen");
+  });
+  satir.addEventListener("dragend", () => {
+    durum.gorevSurukle = null;
+    satir.classList.remove("suruklenen");
+    gorevHedefleriTemizle();
+  });
+  return satir;
+}
+
+/** Kutuyu işaretler/kaldırır. Panel açıkken kapanıyor: içeriği bayat kalırdı. */
+async function gorevIsaretle(g, bitti) {
+  try {
+    await jsonIstek(`/api/tasks/${g.id}`, "PATCH", { done: bitti });
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+  if (durum.secili && durum.secili.taskId === g.id) panelKapat();
+  await yukle();
+}
+
+/** `eylem` gibi ama açık paneli KAPATMIYOR (yalnızca bir görev bloğunu etkiliyorsa). */
+async function gorevEylem(islev, basariMesaji, geriAl = null) {
+  try {
+    await islev();
+    bildir(basariMesaji, false, geriAl);
+    if (durum.secili && durum.secili.taskId) panelKapat();
+    await yukle();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+}
+
+async function gorevSil(g) {
+  try {
+    const yanit = await istek(`/api/tasks/${g.id}`, { method: "DELETE" });
+    const ozet = yanit.task;
+    bildir(t("gorev_silindi", { baslik: g.title }), false, () => gorevGeriAl(ozet));
+    if (durum.secili && durum.secili.taskId === g.id) panelKapat();
+    await yukle();
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+}
+
+/** Silinen görevi, sunucunun döndürdüğü özetle YENİDEN kurar (bloğu, takvimi,
+ *  hatırlatıcıları ve tamamlanma durumuyla); sunucuda ayrı geri alma durumu yok. */
+async function gorevGeriAl(o) {
+  const govde = { title: o.title, notes: o.notes, done: o.done, plan: o.plan };
+  if (o.plan === "gun") govde.date = o.day;
+  if (o.plan === "saat") {
+    Object.assign(govde, {
+      date: o.day,
+      minutes: o.startMin,
+      endMinutes: o.endMin,
+      calendarId: o.calendarId,
+      reminderMinutes: (o.reminders || []).map((r) => r.minutesBefore),
+    });
+  }
+  await gorevEylem(() => jsonIstek("/api/tasks", "POST", govde), t("gorev_geri_alindi"));
+}
+
+/** Ekle/düzenle formu. "Ne zaman?" seçimine göre tarih/saat alanları görünüyor. */
+async function gorevFormuAc(g = null) {
+  const yeni = g === null;
+  const takvimler = durum.veri.calendars;
+  const varsayilanTakvim = takvimler.find((c) => durum.takvimGorunur.get(c.id) !== false)
+    || takvimler[0] || {};
+  const bugun = durum.gorevler ? durum.gorevler.today : bugunISO();
+  const saatPlani = { alan: "plan", degerler: ["saat"] };
+
+  const alanlar = [
+    { ad: "baslik", etiket: t("baslik_etiket"), tur: "metin", deger: g ? g.title : "" },
+    { ad: "not", etiket: t("not_etiket"), tur: "uzunmetin", deger: g && g.notes ? g.notes : "" },
+    {
+      ad: "plan",
+      etiket: t("ne_zaman"),
+      tur: "secim",
+      deger: g ? g.plan : "yok",
+      secenekler: [
+        { deger: "yok", etiket: t("plan_yok") },
+        { deger: "gun", etiket: t("plan_gun") },
+        { deger: "saat", etiket: t("plan_saat") },
+      ],
+    },
+    {
+      ad: "tarih",
+      etiket: t("tarih_etiket"),
+      tur: "tarih",
+      deger: g && g.day ? g.day : bugun,
+      iliski: { alan: "plan", degerler: ["gun", "saat"] },
+    },
+    {
+      ad: "baslangic", etiket: t("baslangic"), tur: "saat", dar: true, iliski: saatPlani,
+      deger: g && g.startMin != null ? dakikaSaat(g.startMin) : "09:00",
+    },
+    {
+      ad: "bitis", etiket: t("bitis"), tur: "saat", dar: true, iliski: saatPlani,
+      deger: g && g.endMin != null ? dakikaSaat(g.endMin) : "10:00",
+    },
+    {
+      ad: "takvim",
+      etiket: t("p_takvim"),
+      tur: "secim",
+      deger: String((g && g.calendarId) || varsayilanTakvim.id || ""),
+      secenekler: takvimler.map((c) => ({ deger: String(c.id), etiket: c.name })),
+      iliski: saatPlani,
+    },
+    {
+      ad: "hatirlatici",
+      etiket: t("gorev_hatirlatici"),
+      tur: "secim",
+      deger: "yok",
+      iliski: saatPlani,
+      secenekler: [
+        { deger: "yok", etiket: t("hat_yok") },
+        ...[0, 10, 30, 60, 1440].map((d) => ({ deger: String(d), etiket: hatirlaticiMetni(d) })),
+      ],
+    },
+  ];
+
+  const mevcutHat = g && g.reminders && g.reminders.length
+    ? t("gorev_mevcut_hat", { liste: g.reminders.map((r) => hatirlaticiMetni(r.minutesBefore)).join(", ") })
+    : "";
+  const s = await modalForm(
+    yeni ? t("gorev_yeni_baslik") : t("gorev_duzenle_baslik"),
+    mevcutHat,
+    alanlar,
+    yeni ? t("ekle") : t("kaydet"),
+    yeni ? null : { etiket: t("sil"), anahtar: "sil" },
+    460,
+  );
+  if (s === null) return;
+  if (s.sil) { await gorevSil(g); return; }
+
+  const baslik = (s.baslik || "").trim();
+  if (!baslik) { bildir(t("istemci_baslik_bos"), true); return; }
+  const notlar = (s.not || "").trim() || null;
+
+  let bas = 0;
+  let bit = 0;
+  if (s.plan === "saat") {
+    bas = dakikayaCevir(s.baslangic);
+    bit = dakikayaCevir(s.bitis);
+    // Bitiş başlangıçtan küçükse gece yarısını aşıyordur (etkinlik formuyla aynı kural).
+    if (bit <= bas) bit += 24 * 60;
+  }
+  const planGovdesi = () => {
+    if (s.plan === "gun") return { plan: "gun", date: s.tarih };
+    if (s.plan === "saat") {
+      return { plan: "saat", date: s.tarih, minutes: bas, endMinutes: bit, calendarId: Number(s.takvim) || undefined };
+    }
+    return { plan: "yok" };
+  };
+  const hatirlatici = s.plan === "saat" && s.hatirlatici !== "yok"
+    ? { reminderMinutes: Number(s.hatirlatici) } : {};
+
+  if (yeni) {
+    await gorevEylem(
+      () => jsonIstek("/api/tasks", "POST", { title: baslik, notes: notlar, ...planGovdesi(), ...hatirlatici }),
+      t("gorev_eklendi", { baslik }),
+    );
+    return;
+  }
+
+  // Yalnızca DEĞİŞENİ gönder: plan aynıysa yeniden planlamak (özellikle bir
+  // bloğu) gereksiz yazma ve sürüklemeyle kalmış saati sıfırlama demek.
+  const planDegisti = s.plan !== g.plan ||
+    (s.plan !== "yok" && s.tarih !== g.day) ||
+    (s.plan === "saat" && (bas !== g.startMin || bit !== g.endMin || Number(s.takvim) !== g.calendarId));
+  const yama = {};
+  if (baslik !== g.title) yama.title = baslik;
+  if (notlar !== (g.notes || null)) yama.notes = notlar;
+  if (planDegisti) Object.assign(yama, planGovdesi());
+  Object.assign(yama, hatirlatici);
+  if (!Object.keys(yama).length) return; // hiçbir şey değişmedi
+  await gorevEylem(() => jsonIstek(`/api/tasks/${g.id}`, "PATCH", yama), t("gorev_guncellendi"));
+}
+
+/* Kenar çubuğundaki hızlı giriş: yazıp Enter = plansız görev. Planlamak için
+ * forma (+) ya da listeden ızgaraya sürükle. Enter'ı AÇIKÇA ele alıyoruz
+ * (AGENTS 31): tek girdili formda örtük submit'e güvenmiyoruz. */
+el("gorev-hizli-girdi").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing) return;
+  e.preventDefault();
+  const form = el("gorev-hizli-form");
+  if (form.requestSubmit) form.requestSubmit();
+  else form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+});
+
+el("gorev-hizli-form").onsubmit = async (e) => {
+  e.preventDefault();
+  const girdi = el("gorev-hizli-girdi");
+  const baslik = girdi.value.trim();
+  if (!baslik) return;
+  girdi.value = "";
+  await gorevEylem(() => jsonIstek("/api/tasks", "POST", { title: baslik }), t("gorev_eklendi", { baslik }));
+};
+
+el("gorev-ekle").onclick = () => gorevFormuAc();
+
+/* ---------- görev: listeden ızgaraya sürükle-bırak ---------- */
+
+/* HTML5 sürükle-bırak (görev satırı `draggable`): ızgaradaki blok sürüklemesi
+ * işaretçi olaylarıyla çalışıyor ve o kodla KARIŞMASIN diye ayrı mekanizma.
+ * Gün/hafta sütununa bırakmak göreve saat verir (blok oluşur); ay hücresine
+ * bırakmak GÜNÜ değiştirir, saati olan görevin saati korunur. */
+
+function gorevHedefleriTemizle() {
+  document.querySelectorAll(".gorev-hedef").forEach((n) => n.classList.remove("gorev-hedef"));
+  document.querySelectorAll(".gorev-birak-cizgi").forEach((n) => n.remove());
+}
+
+function gorevSurukleUzerinde(e, sutun, gun) {
+  if (!durum.gorevSurukle) return;
+  e.preventDefault(); // bırakmaya izin veren TEK yol
+  e.dataTransfer.dropEffect = "move";
+  sutun.classList.add("gorev-hedef");
+  let cizgi = sutun.querySelector(".gorev-birak-cizgi");
+  if (!cizgi) {
+    cizgi = document.createElement("div");
+    cizgi.className = "gorev-birak-cizgi";
+    sutun.appendChild(cizgi);
+  }
+  cizgi.style.top = `${(sutunDakika(e, sutun, gun) / gun.dayMinutes) * 100}%`;
+}
+
+function gorevSurukleAyrildi(e, hedef) {
+  // Çocuk öğeler arasında gezinirken de `dragleave` geliyor; yalnızca gerçekten çıkınca temizle.
+  if (hedef.contains(e.relatedTarget)) return;
+  hedef.classList.remove("gorev-hedef");
+  const cizgi = hedef.querySelector(".gorev-birak-cizgi");
+  if (cizgi) cizgi.remove();
+}
+
+async function gorevBirak(e, sutun, gun) {
+  const gorev = durum.gorevSurukle;
+  if (!gorev) return;
+  e.preventDefault();
+  gorevHedefleriTemizle();
+  const dakika = sutunDakika(e, sutun, gun);
+  // Saati olan görev süresini korur; yoksa yeni etkinlikle aynı varsayılan (1 saat).
+  const sure = gorev.plan === "saat" ? gorev.endMin - gorev.startMin : OLUSTUR_SURE;
+  await gorevEylem(
+    () => jsonIstek(`/api/tasks/${gorev.id}`, "PATCH", {
+      plan: "saat",
+      date: gun.date,
+      minutes: dakika,
+      endMinutes: dakika + sure,
+      calendarId: gorev.calendarId || undefined,
+    }),
+    t("gorev_planlandi", {
+      baslik: gorev.title, hedef: `${gun.dayNumber} ${gun.monthName} ${dakikaSaat(dakika)}`,
+    }),
+  );
+}
+
+async function gorevAyaBirak(e, hucre, gun) {
+  const gorev = durum.gorevSurukle;
+  if (!gorev) return;
+  e.preventDefault();
+  gorevHedefleriTemizle();
+  const govde = gorev.plan === "saat"
+    ? {
+      plan: "saat", date: gun.date, minutes: gorev.startMin, endMinutes: gorev.endMin,
+      calendarId: gorev.calendarId || undefined,
+    }
+    : { plan: "gun", date: gun.date };
+  await gorevEylem(
+    () => jsonIstek(`/api/tasks/${gorev.id}`, "PATCH", govde),
+    t("gorev_planlandi", { baslik: gorev.title, hedef: kisaTarih(gun.date) }),
+  );
+}
+
+/** Görev bloğunun silinmesini geri alır: görev hâlâ var (plansıza döndü), bloğu
+ *  aynı saate/takvime/hatırlatıcılarla yeniden bağlıyoruz. */
+async function gorevBlogunuGeriKur(occ) {
+  const bas = dakikayaCevir(yerelSaatISO(occ.startUtc, occ.tzid));
+  let bit = dakikayaCevir(yerelSaatISO(occ.endUtc, occ.tzid));
+  if (bit <= bas) bit += 24 * 60;
+  await gorevEylem(
+    () => jsonIstek(`/api/tasks/${occ.taskId}`, "PATCH", {
+      plan: "saat",
+      date: yerelTarihISO(occ.startUtc, occ.tzid),
+      minutes: bas,
+      endMinutes: bit,
+      calendarId: occ.calendarId,
+      reminderMinutes: (occ.reminders || []).map((r) => r.minutesBefore),
+    }),
+    t("gorev_blogu_geri"),
+  );
+}
 
 /* ---------- canlı tazeleme ---------- */
 
