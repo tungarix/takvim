@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 
-from core import Occurrence, layout
+from core import Occurrence, Task, layout
 from core.timeutil import UTC, get_tz
 
 __all__ = [
@@ -22,6 +22,8 @@ __all__ = [
     "week_payload",
     "day_payload",
     "month_payload",
+    "gorev_sozluk",
+    "gorev_payload",
 ]
 
 _GUN_ADLARI = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"]
@@ -98,18 +100,35 @@ def _dakika(an: datetime, gun_baslangici: datetime) -> int:
     )
 
 
+def _gorev_bloklari(repo, occurrences: list[Occurrence]) -> dict[int, Task]:
+    """Penceredeki etkinliklerden görev bloğu olanları, TEK sorguyla.
+
+    Izgara her çizimde bunu soruyor; örnek başına ayrı sorgu N+1 olurdu.
+    """
+    idler = sorted({o.event_id for o in occurrences if o.event_id is not None})
+    return repo.tasks_by_event(idler)
+
+
 def _occ_sozluk(
     occ: Occurrence,
     renkler: dict[int, str],
     hatirlaticilar: dict[int, list] | None = None,
+    gorevler: dict[int, Task] | None = None,
 ) -> dict:
     """Occurrence'ın ekrana taşınacak alanları.
 
     `reminderMinutes` seriye bağlı hatırlatıcıların dakika listesi; panel
     mevcut hatırlatıcıları göstermek için kullanıyor.
+
+    Etkinlik bir GÖREV BLOĞUYSA `taskId`/`taskDone` da gider: arayüz bloğa
+    onay kutusunu koyuyor, tamamlananı soluk çiziyor ve başlığın görevle aynı
+    olduğunu biliyor. Bloklar ayrı bir "görev" katmanı değil sıradan
+    etkinlikler; ızgara onları başka bir kodla çizmiyor.
     """
     kayitli = (hatirlaticilar or {}).get(occ.event_id, [])
+    gorev = (gorevler or {}).get(occ.event_id) if occ.event_id is not None else None
     return {
+        **({"taskId": gorev.id, "taskDone": gorev.done} if gorev is not None else {}),
         "reminders": [
             {"id": r.id, "minutesBefore": r.minutes_before} for r in kayitli
         ],
@@ -183,6 +202,7 @@ def month_payload(
     occurrences = repo.occurrences(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
+    gorevler = _gorev_bloklari(repo, occurrences)
 
     gunler = []
     for offset in range(gun_sayisi):
@@ -201,7 +221,7 @@ def month_payload(
                 "inMonth": gun.month == ilk.month,
                 "events": [
                     dict(
-                        _occ_sozluk(o, renkler, hatirlaticilar),
+                        _occ_sozluk(o, renkler, hatirlaticilar, gorevler),
                         startMin=_dakika(max(o.start_utc, gun_baslangic), gun_baslangic),
                     )
                     for o in icerik
@@ -282,6 +302,7 @@ def _izgara_payload(
     occurrences = repo.occurrences(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
+    gorevler = _gorev_bloklari(repo, occurrences)
 
     gun_adlari, _, ay_adlari = _adlar(dil)
     gunler = []
@@ -301,7 +322,7 @@ def _izgara_payload(
             if not (occ.start_utc < gun_bitis and occ.end_utc > gun_baslangic):
                 continue
             if occ.all_day:
-                tum_gun.append(_occ_sozluk(occ, renkler, hatirlaticilar))
+                tum_gun.append(_occ_sozluk(occ, renkler, hatirlaticilar, gorevler))
                 continue
             # Saatli etkinliği güne kırp; layout() kırpılmış hâl üzerinden çalışsın,
             # yoksa gece yarısını aşan bir etkinlik ertesi sabahı boşuna daraltır.
@@ -318,7 +339,7 @@ def _izgara_payload(
             occ = orijinali[id(parca)]
             # Sözlük GERÇEK sınırları taşır (panel doğru saati göstersin);
             # yalnızca ızgara konumu kırpılmış parçadan gelir.
-            veri = _occ_sozluk(occ, renkler, hatirlaticilar)
+            veri = _occ_sozluk(occ, renkler, hatirlaticilar, gorevler)
             veri.update(
                 {
                     "col": kolon,
@@ -385,3 +406,88 @@ def _hafta_etiketi(pazartesi: date, dil: str = "tr") -> str:
         f"{pazartesi.day} {aylar[pazartesi.month - 1]} {pazartesi.year} - "
         f"{pazar.day} {aylar[pazar.month - 1]} {pazar.year}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Görevler
+# ---------------------------------------------------------------------------
+
+def gorev_sozluk(
+    gorev: Task,
+    slot: tuple[datetime, datetime] | None,
+    takvim_id: int | None,
+    tzid: str,
+    hatirlaticilar: list | None = None,
+) -> dict:
+    """Bir görevin ekrana taşınacak alanları.
+
+    `day` her zaman YEREL takvim günü: gün planlıda `plan_day`, saat planlıda
+    bloğun başladığı gün. Ön yüzün saat dilimi matematiği yapmasına gerek
+    kalmasın diye bunu sunucu hesaplıyor (AGENTS 13: gün sınırı başlangıç+24
+    saat değil). `startMin`/`endMin` o günün başından dakika; bitiş gece
+    yarısını aşan bir blokta 1440'ı geçebilir.
+    """
+    gun = gorev.plan_day
+    bas_dk = bit_dk = None
+    if slot is not None:
+        gun = slot[0].astimezone(get_tz(tzid)).date()
+        gun_baslangic, _ = day_bounds(gun, tzid)
+        bas_dk = _dakika(slot[0], gun_baslangic)
+        bit_dk = _dakika(slot[1], gun_baslangic)
+    return {
+        "id": gorev.id,
+        "uid": gorev.uid,
+        "title": gorev.title,
+        "notes": gorev.notes,
+        "plan": gorev.plan,
+        "day": gun.isoformat() if gun is not None else None,
+        "startMin": bas_dk,
+        "endMin": bit_dk,
+        "startUtc": slot[0].isoformat() if slot is not None else None,
+        "endUtc": slot[1].isoformat() if slot is not None else None,
+        "eventId": gorev.event_id,
+        "calendarId": takvim_id,
+        "reminders": [
+            {"id": r.id, "minutesBefore": r.minutes_before} for r in (hatirlaticilar or [])
+        ],
+        "done": gorev.done,
+        "doneAt": gorev.done_at.isoformat() if gorev.done_at is not None else None,
+    }
+
+
+def gorev_payload(repo, tzid: str, *, simdi: datetime | None = None) -> dict:
+    """Görev listesi: `today` (yerel gün) + sıralı `tasks`.
+
+    "Bugün" istemcinin değil uygulamanın saat diliminde: ön yüz bilgisayarın
+    diliminde bir gün, sunucu tzid'inde başka bir gün görebilir.
+
+    Sıra: AÇIK görevler günü olana kadar gün+saat sırasıyla, günsüz olanlar
+    sonda eklenme sırasıyla; TAMAMLANANLAR en son, en yeni önce. Gruplama
+    (Bugün/Yaklaşan/Plansız/Tamamlanan) istemcide: başlıklar dile bağlı.
+    """
+    simdi = simdi or datetime.now(UTC)
+    bugun = simdi.astimezone(get_tz(tzid)).date()
+
+    gorevler = repo.list_tasks()
+    bagli = [g.event_id for g in gorevler if g.event_id is not None]
+    slotlar = repo.task_slots(bagli)
+    takvim_idleri = {e_id: e.calendar_id for e_id, e in repo.get_events(bagli).items()}
+    tum_hatirlaticilar = repo.all_reminders()
+
+    ozetler = [
+        gorev_sozluk(
+            g,
+            slotlar.get(g.event_id) if g.event_id is not None else None,
+            takvim_idleri.get(g.event_id) if g.event_id is not None else None,
+            tzid,
+            tum_hatirlaticilar.get(g.event_id) if g.event_id is not None else None,
+        )
+        for g in gorevler
+    ]
+
+    def acik_sirasi(o: dict) -> tuple:
+        return (o["day"] is None, o["day"] or "", o["startMin"] if o["startMin"] is not None else 1 << 20, o["id"])
+
+    acik = sorted((o for o in ozetler if not o["done"]), key=acik_sirasi)
+    bitmis = sorted((o for o in ozetler if o["done"]), key=lambda o: o["doneAt"], reverse=True)
+    return {"today": bugun.isoformat(), "tasks": acik + bitmis}

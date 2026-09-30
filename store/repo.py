@@ -1128,6 +1128,32 @@ class Repo:
         )
         return {r["id"]: _row_to_event(r) for r in rows}
 
+    def task_slots(self, event_ids: list[int]) -> dict[int, tuple[datetime, datetime]]:
+        """Blokların GEÇERLİ saatleri (başlangıç, bitiş), event_id'ye göre.
+
+        `events.start_utc` yetmez: ızgarada bir bloğu sürüklemek (ya da Düzenle
+        panelinden saatini değiştirmek) tekrarsız etkinlikte de etkinlik satırını
+        değil bir override kaydını yazıyor (`move_occurrence`). Görev listesi
+        satırdaki eski saati gösterseydi, sürüklenmiş bir blok için yanlış
+        saati söylerdi. Tekrarsız etkinliğin tek örneğinin override anahtarı
+        etkinliğin kendi başlangıcı.
+        """
+        etkinlikler = self.get_events(list(event_ids))
+        override_ler = self._overrides_for_events(list(etkinlikler))
+        sonuc: dict[int, tuple[datetime, datetime]] = {}
+        for event_id, event in etkinlikler.items():
+            bas, bit = event.start_utc, event.end_utc
+            for ov in override_ler.get(event_id, []):
+                if (
+                    ov.original_start_utc == event.start_utc
+                    and not ov.cancelled
+                    and ov.new_start_utc is not None
+                ):
+                    bas = ov.new_start_utc
+                    bit = ov.new_end_utc or (ov.new_start_utc + event.duration)
+            sonuc[event_id] = (bas, bit)
+        return sonuc
+
     def update_task(self, task: Task) -> None:
         """Başlık ve notu günceller; bağlı blok varsa onunki de aynı olur.
 
@@ -1214,6 +1240,11 @@ class Repo:
                 mevcut = self.get_event(task.event_id)
                 if mevcut is None:  # FK SET NULL varken olmamalı; yine de sessiz kalma
                     raise LookupError(f"Görevin bloğu bulunamadı: id={task.event_id}")
+                # Sürüklemeden kalan override yeni saati ezmesin: satır artık
+                # tek doğruluk kaynağı, eski anahtara bağlı kayıt hayalet olurdu.
+                self.conn.execute(
+                    "DELETE FROM event_overrides WHERE event_id = ?", (task.event_id,)
+                )
                 _event_guncelle(
                     self.conn,
                     replace(

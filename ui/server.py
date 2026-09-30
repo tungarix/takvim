@@ -22,14 +22,20 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from core import UTC, Event, from_wall_clock, parse_iso
+from core import UTC, Event, Task, from_wall_clock, parse_iso
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
 
 from . import otomatik
 from .ayarlar import DILLER, VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
-from .presenter import day_payload, month_payload, week_payload
+from .presenter import (
+    day_payload,
+    gorev_payload,
+    gorev_sozluk,
+    month_payload,
+    week_payload,
+)
 from .surum import SURUM
 
 __all__ = ["serve", "make_server"]
@@ -78,6 +84,12 @@ def _hata_esle(mesaj: str) -> tuple[str | None, dict | None]:
         return mesaj.split()[0] + "_bulunamadi", None
     if mesaj == "Boş metin ayrıştırılamaz":
         return "metin_bos", None
+    if mesaj.startswith("Görev bulunamadı: id="):
+        return "gorev_bulunamadi", {"id": mesaj.rsplit("=", 1)[-1]}
+    if mesaj == "görev bulunamadı":
+        return "gorev_bulunamadi", None
+    if mesaj.startswith("görev bloğu tekrarlı ya da tüm gün olamaz"):
+        return "gorev_blogu_tekrarli", None
     if mesaj == "çok kurallı seriler bölünemez":
         return "seri_bolunemez_cok_kuralli", None
     if mesaj == "tekrarsız seri bölünemez":
@@ -551,6 +563,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_ayar_durumu(self._db_yolu))
                 return
 
+            if yol == "/api/tasks":
+                self._json(gorev_payload(self.repo, self.tzid))
+                return
+
             if yol.startswith("/api/"):
                 self._hata("bulunamadı", 404, "bulunamadi")
                 return
@@ -580,6 +596,10 @@ class _Handler(BaseHTTPRequestHandler):
 
             if parcalar == ["api", "calendars"]:
                 self._takvim_olustur()
+                return
+
+            if parcalar == ["api", "tasks"]:
+                self._gorev_olustur()
                 return
 
             if parcalar == ["api", "occurrences", "cancel"]:
@@ -662,6 +682,9 @@ class _Handler(BaseHTTPRequestHandler):
             if len(parcalar) == 3 and parcalar[:2] == ["api", "calendars"]:
                 self._takvim_guncelle(int(parcalar[2]))
                 return
+            if len(parcalar) == 3 and parcalar[:2] == ["api", "tasks"]:
+                self._gorev_guncelle(int(parcalar[2]))
+                return
             self._hata("bulunamadı", 404, "bulunamadi")
         except (ValueError, KeyError) as exc:
             self._yakala(exc)
@@ -697,6 +720,15 @@ class _Handler(BaseHTTPRequestHandler):
                 self._yakala(exc, 404)
             return
 
+        if len(parcalar) == 3 and parcalar[:2] == ["api", "tasks"]:
+            try:
+                self._gorev_sil(int(parcalar[2]))
+            except ValueError as exc:
+                self._yakala(exc)
+            except LookupError as exc:
+                self._yakala(exc, 404)
+            return
+
         if len(parcalar) == 3 and parcalar[:2] == ["api", "events"]:
             try:
                 event_id = int(parcalar[2])
@@ -716,6 +748,184 @@ class _Handler(BaseHTTPRequestHandler):
         self._hata("bulunamadı", 404)
 
     # -- işlem gövdeleri ----------------------------------------------------
+
+    def _hedef_takvim_id(self, govde: dict) -> int:
+        """Yeni kaydın yazılacağı takvim: istekte verilen, yoksa GÖRÜNÜR ilki.
+
+        Varsayılan takvim GÖRÜNÜR olanlardan seçiliyor. `list_calendars()`
+        gizlileri de veriyor ve ada göre sıralı: gizli bir takvim alfabede
+        başa düşerse kayıt oraya yazılıyor, "Eklendi" bildirimi çıkıyor ve
+        ekranda hiçbir şey belirmiyordu. Tam da README §8'in "sessizce yanlış
+        yere kaydedilen randevu" dediği hata sınıfı. Etkinlik ve görev bloğu
+        aynı kuralı paylaşıyor.
+        """
+        takvimler = self.repo.list_calendars()
+        if not takvimler:
+            raise _KodluHata("takvim_gerekli", "önce bir takvim oluşturulmalı")
+        gorunurler = [c for c in takvimler if c.visible]
+        return int(govde.get("calendarId") or (gorunurler or takvimler)[0].id)
+
+    # -- görevler -----------------------------------------------------------
+
+    def _plan_coz(self, govde: dict) -> tuple:
+        """Gövdedeki planı DOĞRULAYIP ayrıştırır; hiçbir şey yazmaz.
+
+        `("yok",)`, `("gun", tarih)` ya da `("saat", başlangıç_utc, bitiş_utc,
+        takvim_id)`. Yazmadan ÖNCE çözülüyor: görev eklenip plan sonradan
+        reddedilirse geriye plansız, kullanıcının hiç istemediği bir görev kalırdı.
+        """
+        plan = govde.get("plan") or "yok"
+        if plan not in ("yok", "gun", "saat"):
+            raise _KodluHata(
+                "bilinmeyen_plan", f"bilinmeyen plan: {plan}", {"plan": str(plan)}
+            )
+        if plan == "yok":
+            return ("yok",)
+        gun = date.fromisoformat(govde["date"])
+        if plan == "gun":
+            return ("gun", gun)
+        dakika, bitis = _saat_araligi(govde)
+        takvim_id = self._hedef_takvim_id(govde)
+        if self.repo.get_calendar(takvim_id) is None:
+            raise LookupError("takvim bulunamadı")
+        gun_basi = datetime(gun.year, gun.month, gun.day)
+        return (
+            "saat",
+            from_wall_clock(gun_basi + timedelta(minutes=dakika), self.tzid),
+            from_wall_clock(gun_basi + timedelta(minutes=bitis), self.tzid),
+            takvim_id,
+        )
+
+    def _hatirlatici_coz(self, govde: dict, saat_planli: bool) -> list[int]:
+        """`reminderMinutes` (sayı ya da liste) → doğrulanmış dakika listesi.
+
+        Hatırlatıcı bloğa bağlanıyor; blok yoksa (gün planlı/plansız görev)
+        bildirilecek bir an da yok. Sessizce yutmak yerine hata: kullanıcı
+        hatırlatıcı kurduğunu sanıp hiç bildirim almazdı.
+        """
+        ham = govde.get("reminderMinutes")
+        if ham is None:
+            return []
+        dakikalar = [int(d) for d in (ham if isinstance(ham, list) else [ham])]
+        if any(d < 0 for d in dakikalar):
+            raise _KodluHata("hatirlatici_negatif", "minutes_before negatif olamaz")
+        if dakikalar and not saat_planli:
+            raise _KodluHata(
+                "gorev_hatirlatici_saat_ister",
+                "hatırlatıcı için görevin belirli saatleri olmalı",
+            )
+        return dakikalar
+
+    def _plan_uygula(self, gorev: Task, plan: tuple) -> Task:
+        """`_plan_coz` sonucunu göreve yazar."""
+        if gorev.id is None:
+            raise ValueError("kaydedilmiş bir görev bekler")
+        if plan[0] == "yok":
+            return self.repo.clear_task_plan(gorev.id) if gorev.plan != "yok" else gorev
+        if plan[0] == "gun":
+            return self.repo.plan_task_day(gorev.id, plan[1])
+        return self.repo.plan_task_slot(gorev.id, plan[1], plan[2], plan[3], self.tzid)
+
+    def _gorev_yaniti(self, gorev: Task) -> dict:
+        """Tek görevin API gövdesi (liste ile aynı biçim)."""
+        slot = takvim_id = hatirlaticilar = None
+        if gorev.event_id is not None:
+            slot = self.repo.task_slots([gorev.event_id]).get(gorev.event_id)
+            blok = self.repo.get_event(gorev.event_id)
+            takvim_id = blok.calendar_id if blok is not None else None
+            hatirlaticilar = self.repo.list_reminders(gorev.event_id)
+        return gorev_sozluk(gorev, slot, takvim_id, self.tzid, hatirlaticilar)
+
+    def _gorev_olustur(self) -> None:
+        """POST /api/tasks — görev ekler (isteğe bağlı planıyla birlikte).
+
+        Gövde: `title`, `notes`?, `done`?, `plan` (`yok`/`gun`/`saat`, varsayılan
+        `yok`), `date` (gun/saat için), `minutes`+`endMinutes` (saat için, gün
+        başından dakika), `calendarId`? ve `reminderMinutes`? (saat için).
+        Silmenin "Geri al"ı aynı gövdeyle görevi yeniden kuruyor.
+        """
+        govde = self._govde()
+        baslik = (govde.get("title") or "").strip()
+        if not baslik:
+            raise _KodluHata("baslik_bos", "başlık boş")
+        plan = self._plan_coz(govde)
+        dakikalar = self._hatirlatici_coz(govde, plan[0] == "saat")
+
+        gorev = self.repo.add_task(
+            Task(
+                id=None,
+                uid=new_uid(),
+                title=baslik,
+                notes=govde.get("notes"),
+                done_at=datetime.now(UTC) if govde.get("done") else None,
+            )
+        )
+        try:
+            gorev = self._plan_uygula(gorev, plan)
+            for dakika in dakikalar:
+                if gorev.event_id is not None:
+                    self.repo.add_reminder(gorev.event_id, dakika)
+        except Exception:
+            # Yarım görev bırakma: plan yazılamadıysa görev de olmamış olsun.
+            if gorev.id is not None:
+                self.repo.delete_task(gorev.id)
+            raise
+        self._json({"task": self._gorev_yaniti(gorev)}, 201)
+
+    def _gorev_guncelle(self, task_id: int) -> None:
+        """PATCH /api/tasks/<id> — verilen alanları günceller.
+
+        `title`/`notes`, `done`, `plan` (+ `date`/`minutes`/`endMinutes`/
+        `calendarId`) ve `reminderMinutes` birbirinden bağımsız; gövdede
+        olmayan alana dokunulmaz. Tek uç: kutuyu işaretlemek, gün değiştirmek
+        ve yeniden adlandırmak aynı çağrı.
+        """
+        gorev = self.repo.get_task(task_id)
+        if gorev is None:
+            raise LookupError("görev bulunamadı")
+        govde = self._govde()
+
+        # Önce HEPSİNİ doğrula, sonra yaz: yarım uygulanmış bir güncelleme
+        # (başlık değişti ama plan reddedildi) kullanıcıya "olmadı" derken
+        # yarısını yapmış olurdu.
+        baslik = gorev.title
+        if "title" in govde:
+            baslik = (govde["title"] or "").strip()
+            if not baslik:
+                raise _KodluHata("baslik_bos", "başlık boş")
+        plan = self._plan_coz(govde) if "plan" in govde else None
+        son_plan_saat = (plan[0] == "saat") if plan is not None else gorev.plan == "saat"
+        dakikalar = self._hatirlatici_coz(govde, son_plan_saat)
+
+        if "title" in govde or "notes" in govde:
+            self.repo.update_task(
+                replace(gorev, title=baslik, notes=govde.get("notes", gorev.notes))
+            )
+        if "done" in govde:
+            self.repo.set_task_done(task_id, bool(govde["done"]))
+        if plan is not None:
+            self._plan_uygula(gorev, plan)
+        son = self.repo.get_task(task_id)
+        if son is None:  # az önce vardı; tek thread'li sunucuda olmamalı, sessiz kalma
+            raise LookupError("görev bulunamadı")
+        if son.event_id is not None:
+            for dakika in dakikalar:
+                self.repo.add_reminder(son.event_id, dakika)
+        self._json({"task": self._gorev_yaniti(son)})
+
+    def _gorev_sil(self, task_id: int) -> None:
+        """DELETE /api/tasks/<id> — görevi ve bloğunu siler.
+
+        Silmeden ÖNCEKİ özeti (`task`) döndürüyor: "Geri al" aynı gövdeyi
+        `POST /api/tasks`'a göndererek görevi (bloğuyla) yeniden kuruyor;
+        sunucuda ayrı bir geri alma durumu tutulmuyor.
+        """
+        gorev = self.repo.get_task(task_id)
+        if gorev is None:
+            raise LookupError("görev bulunamadı")
+        ozet = self._gorev_yaniti(gorev)
+        self.repo.delete_task(task_id)
+        self._json({"deleted": task_id, "task": ozet})
 
     def _etkinlik_onizle(self) -> None:
         """POST /api/events/parse {"text"} — DB'YE DOKUNMADAN ayrıştırır.
@@ -760,19 +970,10 @@ class _Handler(BaseHTTPRequestHandler):
         """
         govde = self._govde()
 
-        takvimler = self.repo.list_calendars()
-        if not takvimler:
-            raise _KodluHata("takvim_gerekli", "önce bir takvim oluşturulmalı")
-        # Varsayılan takvim GÖRÜNÜR olanlardan seçiliyor. `list_calendars()`
-        # gizlileri de veriyor ve ada göre sıralı: gizli bir takvim alfabede
-        # başa düşerse etkinlik oraya yazılıyor, "Eklendi" bildirimi çıkıyor ve
-        # ekranda hiçbir şey belirmiyordu. Tam da README §8'in "sessizce yanlış
-        # yere kaydedilen randevu" dediği hata sınıfı.
-        gorunurler = [c for c in takvimler if c.visible]
-        takvim_id = govde.get("calendarId") or (gorunurler or takvimler)[0].id
+        takvim_id = self._hedef_takvim_id(govde)
 
         if govde.get("date") is not None:
-            self._etkinlik_olustur_acik(govde, int(takvim_id))
+            self._etkinlik_olustur_acik(govde, takvim_id)
             return
 
         metin = (govde.get("text") or "").strip()
@@ -784,7 +985,7 @@ class _Handler(BaseHTTPRequestHandler):
             Event(
                 id=None,
                 uid=new_uid(),
-                calendar_id=int(takvim_id),
+                calendar_id=takvim_id,
                 title=cozum.title,
                 start_utc=cozum.start_utc,
                 end_utc=cozum.end_utc,
@@ -824,22 +1025,7 @@ class _Handler(BaseHTTPRequestHandler):
             raise _KodluHata("baslik_bos", "başlık boş")
 
         hedef_gun = date.fromisoformat(govde["date"])
-        dakika = int(govde["minutes"])
-        if not 0 <= dakika < 24 * 60:
-            raise _KodluHata(
-                "minutes_aralik", f"minutes gün içinde olmalı: {dakika}",
-                {"dakika": dakika},
-            )
-
-        # Varsayılan süre bir saat. Gece yarısını aşabilir (23:30'a tıklanırsa),
-        # bu yüzden üst sınır 24 saat değil.
-        bitis = int(govde.get("endMinutes") or dakika + 60)
-        if bitis <= dakika:
-            raise _KodluHata(
-                "endminutes_sira", "endMinutes, minutes'tan büyük olmalı"
-            )
-        if bitis > 48 * 60:
-            raise _KodluHata("endminutes_asim", "endMinutes iki günü aşamaz")
+        dakika, bitis = _saat_araligi(govde)
 
         # Tekrar KAPALI bir kümeden geliyor, serbest RRULE metni değil: arayüz
         # bir açılır liste gösteriyor ve kullanıcının RFC 5545 öğrenmesi
@@ -1102,6 +1288,27 @@ class _Handler(BaseHTTPRequestHandler):
         gorunur = bool(self._govde().get("visible", True))
         self.repo.update_calendar(replace(takvim, visible=gorunur))
         self._json({"id": takvim_id, "visible": gorunur})
+
+
+def _saat_araligi(govde: dict) -> tuple[int, int]:
+    """`minutes` + isteğe bağlı `endMinutes` → (başlangıç, bitiş), gün başından dakika.
+
+    Varsayılan süre bir saat. Bitiş gece yarısını aşabilir (23:30'a tıklanırsa),
+    bu yüzden üst sınır 24 saat değil 48. Etkinlik oluşturma ve görev planı
+    aynı kuralı paylaşıyor.
+    """
+    dakika = int(govde["minutes"])
+    if not 0 <= dakika < 24 * 60:
+        raise _KodluHata(
+            "minutes_aralik", f"minutes gün içinde olmalı: {dakika}",
+            {"dakika": dakika},
+        )
+    bitis = int(govde.get("endMinutes") or dakika + 60)
+    if bitis <= dakika:
+        raise _KodluHata("endminutes_sira", "endMinutes, minutes'tan büyük olmalı")
+    if bitis > 48 * 60:
+        raise _KodluHata("endminutes_asim", "endMinutes iki günü aşamaz")
+    return dakika, bitis
 
 
 def _tasima(kayit) -> dict:

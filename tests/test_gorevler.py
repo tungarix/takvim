@@ -363,3 +363,46 @@ def test_get_events_toplu(repo, kisisel):
                                    uid=new_uid(), calendar_id=kisisel.id))
     assert list(repo.get_events([e1.id, 9999])) == [e1.id]
     assert repo.get_events([]) == {}
+
+# ---------------------------------------------------------------------------
+# Blok saati: sürükleme override yazar, liste geçerli saati göstermeli
+# ---------------------------------------------------------------------------
+
+def test_task_slots_baslangicta_etkinlik_saatidir(repo, kisisel):
+    t = repo.add_task(_gorev())
+    t = repo.plan_task_slot(t.id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 15, 30), kisisel.id, IST)
+
+    assert repo.task_slots([t.event_id]) == {t.event_id: (ist(2026, 10, 1, 14), ist(2026, 10, 1, 15, 30))}
+    assert repo.task_slots([]) == {}
+
+
+def test_surukleyince_task_slots_yeni_saati_verir(repo, kisisel):
+    """Izgarada blok sürüklenince YALNIZCA override yazılıyor; listedeki saat eski kalmamalı."""
+    t = repo.add_task(_gorev())
+    t = repo.plan_task_slot(t.id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 15), kisisel.id, IST)
+
+    repo.move_occurrence(t.event_id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 16), ist(2026, 10, 1, 17, 30))
+
+    assert repo.task_slots([t.event_id])[t.event_id] == (ist(2026, 10, 1, 16), ist(2026, 10, 1, 17, 30))
+    assert repo.get_event(t.event_id).start_utc == ist(2026, 10, 1, 14), "etkinlik satırı değişmez"
+
+
+def test_yalniz_baslangic_tasininca_sure_korunur(repo, kisisel):
+    t = repo.add_task(_gorev())
+    t = repo.plan_task_slot(t.id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 15, 30), kisisel.id, IST)
+
+    repo.move_occurrence(t.event_id, ist(2026, 10, 1, 14), ist(2026, 10, 2, 9))
+
+    assert repo.task_slots([t.event_id])[t.event_id] == (ist(2026, 10, 2, 9), ist(2026, 10, 2, 10, 30))
+
+
+def test_yeniden_planlama_surukleme_override_ini_temizler(repo, kisisel):
+    """Sürüklenmiş bloğu listeden yeniden planlayınca eski override yeni saati ezmemeli."""
+    t = repo.add_task(_gorev())
+    t = repo.plan_task_slot(t.id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 15), kisisel.id, IST)
+    repo.move_occurrence(t.event_id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 16), ist(2026, 10, 1, 17))
+
+    repo.plan_task_slot(t.id, ist(2026, 10, 1, 14), ist(2026, 10, 1, 15), kisisel.id, IST)
+
+    assert repo.list_overrides(t.event_id) == []
+    assert repo.task_slots([t.event_id])[t.event_id] == (ist(2026, 10, 1, 14), ist(2026, 10, 1, 15))
