@@ -57,8 +57,12 @@ Kodu değiştirdikten sonra `.exe` ESKİ KALIR; yeniden derlemeden
 **Resmi sürüm akışı artık `v*` etiketi + `.github/workflows/release.yml`
 üzerinden gidiyor:** sürümü `ui/surum.py`'de yükselt (TEK kaynak:
 `pyproject.toml` onu okuyor, Ayarlar kutusu onu gösteriyor; `test_surum.py`
-kurulu paketle karşılaştırıyor) → etiket at (`git tag vX.Y.Z && git push origin vX.Y.Z`)
-→ workflow testleri çalıştırıp `.exe`'yi derler, SHA256 + build provenance
+kurulu paketle karşılaştırıyor) → **güvenlik incelemesi:** önceki etiketten bu
+yana olan farkı incele (`/security-review`), sonucu `guvenlik/incelemeler/vX.Y.Z.md`
+olarak yaz ve commit et (sıra ve biçim: `guvenlik/incelemeler/README.md`) → etiket at
+(`git tag vX.Y.Z && git push origin vX.Y.Z`) → workflow önce güvenlik kapısını
+(`scripts/guvenlik_kapisi.py`) çalıştırır: kayıt yoksa, sonuç `geçti` değilse ya da
+incelemeden sonra kod değiştiyse sürüm durur → testleri çalıştırıp `.exe`'yi derler, SHA256 + build provenance
 attestation üretir → taslak (draft) bir release açar (exe + `SHA256SUMS.txt`
 ekli) → notları elle yaz → yayımla. `workflow_dispatch` ile de tetiklenebilir,
 o zaman release AÇMAZ, yalnızca artifact yükler (deneme/doğrulama içindir).

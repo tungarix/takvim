@@ -7,6 +7,12 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Güvenlik
+- **Sürüm güvenlik kapısı**: her sürümden önce önceki sürümden bu yana değişen kod
+  güvenlik açısından incelenip `guvenlik/incelemeler/vX.Y.Z.md`'ye yazılıyor.
+  `release.yml` bu kayıt yoksa, sonucu `geçti` değilse ya da incelemeden sonra kod
+  değiştiyse `.exe`'yi derlemeden durur (`scripts/guvenlik_kapisi.py`, 9 test).
+
 ## [1.5.0] - 2026-09-30
 
 ### Eklendi

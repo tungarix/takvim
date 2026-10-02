@@ -20,10 +20,19 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # Güvenlik kapısı önceki etiketi ve incelenen commit'i görmeli.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+
+      # Etiketli sürümde, o sürümün güvenlik incelemesi kayıtlı ve güncel değilse
+      # derleme başlamaz. Biçim: guvenlik/incelemeler/README.md
+      - name: Güvenlik kapısı
+        if: startsWith(github.ref, 'refs/tags/')
+        run: python scripts/guvenlik_kapisi.py "${{ github.ref_name }}"
 
       - name: Bağımlılıkları kur
         run: python -m pip install -e ".[dev,build]"
