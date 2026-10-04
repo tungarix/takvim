@@ -7,6 +7,7 @@ davranışı regresyona karşı kilitliyor. Denetim raporu ve ölçümler sohbet
 
 from __future__ import annotations
 
+import json
 import socket
 import threading
 import urllib.error
@@ -19,9 +20,9 @@ from core.models import Event
 from core.recurrence import _MAKS_ORNEK, expand, series_end
 from ics.importer import parse_ics
 from store import Repo
-from tests.helpers import IST, ist
+from tests.helpers import IST, ist, make_event
 from ui.__main__ import _ag_erisimi_dogrula, _loopback_mi
-from ui.server import make_server
+from ui.server import STATIC, host_gecerli_mi, make_server
 
 # --------------------------------------------------------------- TKV-API-001
 
@@ -193,7 +194,7 @@ def test_negatif_content_length_aninda_400_doner(sunucu):
     kanıtlandı. Artık hemen 400 dönüyor, bağlantı asılı kalmıyor."""
     yanit = _ham_istek(
         sunucu,
-        "POST /api/import HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+        f"POST /api/import HTTP/1.1\r\nHost: 127.0.0.1:{sunucu}\r\n"
         "Content-Type: text/calendar\r\nContent-Length: -1\r\n\r\n",
     )
     assert b" 400 " in yanit
@@ -202,7 +203,7 @@ def test_negatif_content_length_aninda_400_doner(sunucu):
 def test_sayisal_olmayan_content_length_reddedilir(sunucu):
     yanit = _ham_istek(
         sunucu,
-        "POST /api/import HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+        f"POST /api/import HTTP/1.1\r\nHost: 127.0.0.1:{sunucu}\r\n"
         "Content-Type: text/calendar\r\nContent-Length: muz\r\n\r\n",
     )
     assert b" 400 " in yanit
@@ -213,7 +214,7 @@ def test_asiri_buyuk_content_length_reddedilir(sunucu):
     çalışmaya devam ediyor mu diye regresyon."""
     yanit = _ham_istek(
         sunucu,
-        "POST /api/import HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+        f"POST /api/import HTTP/1.1\r\nHost: 127.0.0.1:{sunucu}\r\n"
         f"Content-Type: text/calendar\r\nContent-Length: {9 * 1024 * 1024}\r\n\r\n",
     )
     assert b" 400 " in yanit
@@ -243,3 +244,253 @@ def test_normal_json_govdesi_hala_calisiyor(sunucu):
     )
     with urllib.request.urlopen(req, timeout=10) as yanit:
         assert yanit.status == 201
+
+
+# ------------------------------------------------- Host denetimi (DNS rebinding)
+
+_GIZLI_BASLIK = "GIZLI-TOPLANTI"
+
+
+@pytest.fixture
+def dolu_sunucu(repo, sunucu):
+    """`sunucu` + içinde tanınabilir bir etkinlik olan depo: `(port, depo, id)`.
+
+    Sızıntıyı ölçmek için: yanıt gövdesinde bu başlığın OLMAMASI gerekiyor.
+    """
+    takvim_id = repo.list_calendars()[0].id
+    kayit = repo.add_event(
+        make_event(
+            ist(2026, 1, 5, 9, 0), ist(2026, 1, 5, 10, 0),
+            event_id=None, uid="gizli-1", title=_GIZLI_BASLIK, calendar_id=takvim_id,
+        )
+    )
+    return sunucu, repo, kayit.id
+
+
+def _istek(port: int, yol: str, *, host: str | None = None, yontem: str = "GET",
+           govde: dict | None = None) -> tuple[int, bytes]:
+    """Gerçek bir HTTP isteği; `host` verilirse Host başlığı ONUNLA değişir.
+
+    DNS rebinding'de tarayıcı bağlantıyı 127.0.0.1'e kurar ama `Host`ta
+    saldırganın alan adını taşır; burada da aynısı: soket yine 127.0.0.1'e,
+    başlık başka. 4xx/5xx istisna FIRLATMAZ, testler durum kodunu ölçüyor.
+    """
+    basliklar = {}
+    if host is not None:
+        basliklar["Host"] = host
+    veri = None
+    if govde is not None:
+        veri = json.dumps(govde).encode("utf-8")
+        basliklar["Content-Type"] = "application/json"
+    istek = urllib.request.Request(
+        f"http://127.0.0.1:{port}{yol}", method=yontem, data=veri, headers=basliklar
+    )
+    try:
+        with urllib.request.urlopen(istek, timeout=10) as yanit:
+            return yanit.status, yanit.read()
+    except urllib.error.HTTPError as hata:
+        try:
+            return hata.code, hata.read()
+        finally:
+            hata.close()
+
+
+@pytest.mark.parametrize(
+    "yol",
+    [
+        "/api/export",
+        "/api/week?date=2026-01-05",
+        "/api/search?q=GIZLI",
+        "/api/calendars",
+        "/",
+    ],
+)
+def test_okuma_ucu_kotu_host_ile_403_ve_veri_sizmaz(dolu_sunucu, yol):
+    """Saldırgan alan adı 127.0.0.1'e çözülünce tarayıcı sayfayı bizimle
+    same-origin sayar; `Origin` denetimi okuma isteklerine bakmadığı için
+    `GET /api/export` tüm takvimi veriyordu. `/` de listede: saldırgan
+    sayfayı da statik yoldan yükler."""
+    port, _, _ = dolu_sunucu
+    durum, govde = _istek(port, yol, host=f"kotu.example:{port}")
+    assert durum == 403
+    assert _GIZLI_BASLIK.encode() not in govde
+
+
+@pytest.mark.parametrize("host_adi", ["127.0.0.1", "localhost", "LOCALHOST", "[::1]"])
+@pytest.mark.parametrize("yol", ["/api/export", "/api/week?date=2026-01-05"])
+def test_okuma_ucu_gecerli_host_ile_200(dolu_sunucu, host_adi, yol):
+    """Meşru yol: pywebview/tarayıcı 127.0.0.1:PORT (ya da localhost) ile
+    gelir. Etkinliğin gövdede OLMASI da şart: yukarıdaki "sızmaz" testleri
+    sunucu hiç veri üretmiyorsa boşuna geçerdi."""
+    port, _, _ = dolu_sunucu
+    durum, govde = _istek(port, yol, host=f"{host_adi}:{port}")
+    assert durum == 200
+    assert _GIZLI_BASLIK.encode() in govde
+
+
+def test_kotu_host_yaniti_hata_kodu_tasir(dolu_sunucu):
+    """`error` eski sözleşmedeki Türkçe metin; ön yüz çeviriyi `error_code`
+    ile yapıyor (`kaynak_guvensiz` ile aynı desen)."""
+    port, _, _ = dolu_sunucu
+    durum, govde = _istek(port, "/api/calendars", host=f"kotu.example:{port}")
+    veri = json.loads(govde)
+    assert durum == 403
+    assert veri["error_code"] == "host_guvensiz"
+    assert isinstance(veri["error"], str)
+
+
+@pytest.mark.parametrize(
+    ("yontem", "yol", "govde"),
+    [
+        ("POST", "/api/events", {"title": "SIZDI", "date": "2026-01-06", "minutes": 600}),
+        ("PATCH", "/api/events/{id}", {"title": "DEGISTI"}),
+        ("DELETE", "/api/events/{id}", None),
+    ],
+)
+def test_yazan_istek_kotu_host_ile_403_ve_veri_degismez(dolu_sunucu, yontem, yol, govde):
+    """Başlıkları bilerek eksik bırakıyoruz (`Origin`/`Sec-Fetch-Site` yok):
+    `_kaynak_guvenli` bu isteği geçirirdi, yani 403'ün tek sebebi `Host`."""
+    port, repo, etkinlik_id = dolu_sunucu
+    once = repo.list_events()
+    durum, _ = _istek(
+        port, yol.format(id=etkinlik_id), host=f"kotu.example:{port}",
+        yontem=yontem, govde=govde,
+    )
+    assert durum == 403
+    assert repo.list_events() == once
+
+
+@pytest.mark.parametrize(
+    "ek_baslik",
+    [
+        "Host: kotu.example:{port}",  # host_guvensiz
+        "Host: 127.0.0.1:{port}\r\nOrigin: http://kotu.example",  # kaynak_guvensiz
+    ],
+)
+def test_reddedilen_istegin_govdesi_gec_gelse_de_403_okunur(dolu_sunucu, ek_baslik):
+    """Başlıklar ve gövde AYRI ulaşınca reddedilen istek yine 403 almalı.
+
+    `http.client` ve tarayıcılar başlıkları gövdeden ayrı gönderebilir. Sunucu
+    başlıklara bakıp hemen 403 yazıp bağlantıyı kapatırsa gövde kapanmış
+    bağlantıya ulaşır, TCP sıfırlaması yanıtı da ezer ve istemci 403 yerine
+    `ConnectionAbortedError` görürdü (ölçüldü: 20/20; tam test takımında
+    `urllib` testleri kararsız düşüyordu). Burada boşluk kasten 150 ms.
+    """
+    import time
+
+    port, _, etkinlik_id = dolu_sunucu
+    govde = b'{"title": "x"}' * 40
+    baslik = (
+        f"PATCH /api/events/{etkinlik_id} HTTP/1.1\r\n"
+        + ek_baslik.format(port=port)
+        + "\r\nContent-Type: application/json\r\n"
+        + f"Content-Length: {len(govde)}\r\n\r\n"
+    ).encode("ascii")
+    with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+        s.sendall(baslik)
+        time.sleep(0.15)
+        s.sendall(govde)
+        yanit = b""
+        while parca := s.recv(4096):
+            yanit += parca
+    assert b" 403 " in yanit.split(b"\r\n")[0], yanit[:80]
+
+
+def test_yazan_istek_gecerli_host_ile_calisir(dolu_sunucu):
+    """Olumlu kontrol: aynı POST doğru `Host` ile kaydediyor (yukarıdaki
+    "veri değişmedi" testi sunucu hiç yazmıyorsa boşuna geçerdi)."""
+    port, repo, _ = dolu_sunucu
+    once = len(repo.list_events())
+    durum, _ = _istek(
+        port, "/api/events", host=f"127.0.0.1:{port}", yontem="POST",
+        govde={"title": "Gercek", "date": "2026-01-06", "minutes": 600},
+    )
+    assert durum == 201
+    assert len(repo.list_events()) == once + 1
+
+
+def test_yanlis_portlu_host_reddedilir(dolu_sunucu):
+    """`bos_port_bul` istenenden farklı port seçebiliyor: geçerli olan
+    GERÇEK port, başka bir loopback portu değil (başka bir yerel servisin
+    alan adı yönlendirmesiyle gelen istek de aynı yoldan gelir)."""
+    port, _, _ = dolu_sunucu
+    assert _istek(port, "/api/calendars", host="127.0.0.1:1")[0] == 403
+    assert _istek(port, "/api/calendars", host=f"127.0.0.1:{port + 1}")[0] == 403
+
+
+def test_portsuz_host_reddedilir(dolu_sunucu):
+    """Tarayıcı varsayılan olmayan porta giderken `Host`a portu da yazar;
+    portsuz `127.0.0.1` bu sunucuya değil 80. porta gidiş demektir."""
+    port, _, _ = dolu_sunucu
+    assert _istek(port, "/api/calendars", host="127.0.0.1")[0] == 403
+
+
+def test_host_basligi_hic_yoksa_gecer(sunucu):
+    """HTTP/1.0 istemcisi `Host` göndermeyebilir (komut satırı araçları,
+    betikler); tarayıcı her zaman gönderir. `Origin` politikasıyla aynı
+    gerekçe: başlık yoksa saldırı yüzeyi (tarayıcı) da yok."""
+    yanit = _ham_istek(sunucu, "GET /api/calendars HTTP/1.0\r\n\r\n")
+    assert b" 200 " in yanit
+
+
+@pytest.mark.parametrize(
+    ("host_basligi", "bagli_host", "port", "beklenen"),
+    [
+        # loopback'e bağlı sunucu: yalnızca üç yazım, GERÇEK portla
+        ("127.0.0.1:8765", "127.0.0.1", 8765, True),
+        ("localhost:8765", "127.0.0.1", 8765, True),
+        ("[::1]:8765", "127.0.0.1", 8765, True),
+        ("[::1]:8765", "::1", 8765, True),
+        ("localhost:8765", "localhost", 8765, True),
+        # büyük/küçük harf duyarsız
+        ("LOCALHOST:8765", "127.0.0.1", 8765, True),
+        ("LocalHost:8765", "localhost", 8765, True),
+        # başlık hiç yok: geç
+        (None, "127.0.0.1", 8765, True),
+        (None, "::1", 8765, True),
+        # saldırganın alan adı
+        ("kotu.example:8765", "127.0.0.1", 8765, False),
+        ("127.0.0.1.kotu.example:8765", "127.0.0.1", 8765, False),
+        ("localhost.kotu.example:8765", "127.0.0.1", 8765, False),
+        ("127.0.0.1:8765, kotu.example", "127.0.0.1", 8765, False),
+        # yanlış / eksik / bozuk port
+        ("127.0.0.1:1", "127.0.0.1", 8765, False),
+        ("127.0.0.1:8766", "127.0.0.1", 8765, False),
+        ("127.0.0.1:08765", "127.0.0.1", 8765, False),
+        ("127.0.0.1", "127.0.0.1", 8765, False),
+        ("localhost", "127.0.0.1", 8765, False),
+        ("[::1]", "127.0.0.1", 8765, False),
+        ("127.0.0.1:", "127.0.0.1", 8765, False),
+        # köşeli parantezsiz IPv6 geçerli bir Host değil
+        ("::1:8765", "127.0.0.1", 8765, False),
+        # başlık var ama boş: "hiç yok"tan FARKLI, reddedilir
+        ("", "127.0.0.1", 8765, False),
+        # loopback DIŞI bağlı sunucu (--ag-erisimine-izin-ver): denetim atlanır
+        ("kotu.example:8765", "0.0.0.0", 8765, True),
+        ("192.168.1.5:8765", "192.168.1.5", 8765, True),
+        ("evim.lan", "192.168.1.5", 8765, True),
+        ("", "0.0.0.0", 8765, True),
+        (None, "0.0.0.0", 8765, True),
+    ],
+)
+def test_host_gecerli_mi_tablosu(host_basligi, bagli_host, port, beklenen):
+    assert host_gecerli_mi(host_basligi, bagli_host, port) is beklenen
+
+
+@pytest.mark.parametrize(
+    "bagli_host",
+    ["127.0.0.1", "::1", "localhost", "0.0.0.0", "192.168.1.5", "evim.lan"],
+)
+def test_host_denetimi_loopback_kumesi_main_ile_ayni(bagli_host):
+    """`ui/server.py` kümeyi `ui/__main__.py::_loopback_mi`den import
+    edemiyor (döngü); iki kopya ayrışırsa `--host` doğrulaması ile `Host`
+    denetimi farklı adreslere farklı davranırdı."""
+    denetleniyor = not host_gecerli_mi("kotu.example:1", bagli_host, 1)
+    assert denetleniyor == _loopback_mi(bagli_host)
+
+
+def test_host_guvensiz_kodu_iki_dilde_cevrili():
+    """Ön yüz hata metnini `hata_<kod>` anahtarından çeviriyor; anahtar
+    yoksa İngilizce kullanıcı Türkçe ham metni görürdü."""
+    metin = (STATIC / "i18n.js").read_text(encoding="utf-8")
+    assert metin.count("hata_host_guvensiz:") == 2  # TR + EN

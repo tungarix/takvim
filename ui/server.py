@@ -54,6 +54,41 @@ TEKRAR_SECENEKLERI = {
 }
 _MAKS_GOVDE = 8 * 1024 * 1024  # 8 MB: .ics içe aktarma için fazlasıyla yeterli
 
+# `ui/__main__.py::_loopback_mi` ile AYNI küme. Oradan import edemiyoruz
+# (`__main__` bu modülü import ediyor, döngü olur); biri değişirse ikisi de
+# değişmeli, `tests/test_guvenlik.py` ikisinin uyumunu sınıyor.
+_LOOPBACK_ADRESLERI = ("127.0.0.1", "::1", "localhost")
+
+
+def host_gecerli_mi(host_basligi: str | None, bagli_host: str, port: int) -> bool:
+    """`Host` başlığı bu sunucunun kendi adresi mi (DNS rebinding savunması).
+
+    Saldırgan bir sayfa alan adını 127.0.0.1'e çözdürürse tarayıcı o sayfayı
+    bizimle SAME-ORIGIN sayar: `Origin`/`Sec-Fetch-Site` denetimi (yalnızca
+    yazan istekler) hiç devreye girmez ve sayfa `GET /api/export` ile tüm
+    takvimi okuyabilir. Tarayıcı bu durumda yine de saldırganın alan adını
+    `Host`ta taşır (`kotu.example:PORT`); onu yalnızca bizim adreslerimiz
+    geçsin.
+
+    Sunucu loopback adrese bağlıysa yalnızca `127.0.0.1:PORT`, `localhost:PORT`
+    ve `[::1]:PORT` kabul edilir (büyük/küçük harf duyarsız). `port` GERÇEK
+    port olmalı (`server_address[1]`): `bos_port_bul` istenenden farklı bir
+    port seçmiş olabilir.
+
+    Başlık HİÇ YOKSA geçiyoruz: tarayıcılar her zaman gönderir, testler ve
+    komut satırı araçları göndermeyebilir (`Origin` politikasıyla aynı
+    gerekçe, saldırı yüzeyi tarayıcı). Loopback DIŞI bir adrese bağlıysak
+    (`--ag-erisimine-izin-ver`) denetim ATLANIR: `Host` o durumda ağdaki
+    herhangi bir ad ya da IP olabilir.
+    """
+    if bagli_host.lower() not in _LOOPBACK_ADRESLERI:
+        return True
+    if host_basligi is None:
+        return True
+    return host_basligi.lower() in (
+        f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}",
+    )
+
 
 class _KodluHata(ValueError):
     """Kod taşıyan istemci hatası.
@@ -255,6 +290,35 @@ class _Handler(BaseHTTPRequestHandler):
             return True
         host, port = self.server.server_address[0], self.server.server_address[1]
         return kaynak in (f"http://{host}:{port}", f"http://localhost:{port}")
+
+    def _guvensizi_reddet(self, mesaj: str, kod: str) -> None:
+        """Güvensiz bir isteği 403 ile reddeder; ÖNCE gövdeyi okuyup atar.
+
+        Başlıklara bakıp hemen yanıtlayıp bağlantıyı kapatmak YETMEZ: istemci
+        (`http.client`, tarayıcılar) başlıkları ve gövdeyi ayrı gönderebilir; gövde
+        kapanmış bağlantıya ulaşınca TCP sıfırlaması (RST) yanıtı da ezer ve istemci
+        403 yerine `ConnectionAbortedError` görür (Windows'ta ölçüldü: başlıklardan
+        sonra 150 ms bekleyip gövdeyi gönderen istemcide 20/20). Reddedilen isteğin
+        gövdesi de `_icerik_uzunlugu`nun sınırıyla (8 MB) okunup atılır; boyut
+        başlığı geçersizse okunacak bir şey yoktur ve doğrudan yanıtlanır.
+        """
+        try:
+            self.rfile.read(self._icerik_uzunlugu())
+        except (_KodluHata, OSError):
+            pass
+        self._hata(mesaj, 403, kod)
+
+    def _host_guvenli(self) -> bool:
+        """`Host` başlığını sunucunun gerçek adresine karşı sınar.
+
+        `_kaynak_guvenli` yalnızca yazan isteklere bakıyor; OKUMA istekleri
+        (`GET /api/export` tüm takvimi verir) DNS rebinding ile same-origin
+        gibi okunabilirdi. Bu denetim TÜM isteklerin en başında, statik
+        dosyalar dahil çalışıyor (saldırgan sayfayı da bu yoldan yükler).
+        Kural `host_gecerli_mi`de, burada yalnızca gerçek adres/port besleniyor.
+        """
+        adres = self.server.server_address
+        return host_gecerli_mi(self.headers.get("Host"), str(adres[0]), int(adres[1]))
 
     def _tarih(self, sorgu: dict) -> date:
         """`?date=` parametresini çözer; yoksa bugün."""
@@ -518,6 +582,9 @@ class _Handler(BaseHTTPRequestHandler):
         """Görünüm verileri, arama, dışa aktarma ve statik dosyalar."""
         # Yöntem adları stdlib'in (`BaseHTTPRequestHandler.do_GET` ...);
         # PEP8'e uydurulmamalı, yoksa yönlendirme çalışmaz.
+        if not self._host_guvenli():
+            self._guvensizi_reddet("Host başlığı bu sunucuya ait değil", "host_guvensiz")
+            return
         parsed = urlparse(self.path)
         sorgu = parse_qs(parsed.query)
         yol = parsed.path
@@ -583,8 +650,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Oluşturma, örnek düzeyi işlemler, görünürlük ve içe aktarma."""
+        if not self._host_guvenli():
+            self._guvensizi_reddet("Host başlığı bu sunucuya ait değil", "host_guvensiz")
+            return
         if not self._kaynak_guvenli():
-            self._hata("bu istek Takvim penceresinden gelmiyor", 403, "kaynak_guvensiz")
+            self._guvensizi_reddet("bu istek Takvim penceresinden gelmiyor", "kaynak_guvensiz")
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
@@ -674,8 +744,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_PATCH(self) -> None:
         """PATCH /api/events/<id> — başlık/konum/açıklama günceller."""
+        if not self._host_guvenli():
+            self._guvensizi_reddet("Host başlığı bu sunucuya ait değil", "host_guvensiz")
+            return
         if not self._kaynak_guvenli():
-            self._hata("bu istek Takvim penceresinden gelmiyor", 403, "kaynak_guvensiz")
+            self._guvensizi_reddet("bu istek Takvim penceresinden gelmiyor", "kaynak_guvensiz")
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
@@ -697,8 +770,11 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_DELETE(self) -> None:
         """DELETE /api/events/<id> — SERİNİN TAMAMINI siler."""
+        if not self._host_guvenli():
+            self._guvensizi_reddet("Host başlığı bu sunucuya ait değil", "host_guvensiz")
+            return
         if not self._kaynak_guvenli():
-            self._hata("bu istek Takvim penceresinden gelmiyor", 403, "kaynak_guvensiz")
+            self._guvensizi_reddet("bu istek Takvim penceresinden gelmiyor", "kaynak_guvensiz")
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
