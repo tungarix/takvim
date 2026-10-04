@@ -7,3 +7,7 @@ __pycache__/
 # PyInstaller çıktıları: takvim.spec kaynak, bunlar üretilen dosyalar
 build/
 dist/
+# Kaynaktan çalıştırınca (veri klasörü = proje kökü) oluşan çalışma dosyaları:
+# WebView2 profili (pencere) ve tek örnek kilidinin süreç numarası.
+webview/
+ornek.pid

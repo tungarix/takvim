@@ -550,6 +550,46 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     görevi "bir şey eklendi" sayar (perde ızgarayı örtüyor, ilk görev
     sürüklenemezdi). Görev bloğu Ctrl+C/X/D'de reddedilir (`panoyaKopyala` tek
     kapı; kopya görevsiz etkinlik olurdu). Görev listesi <1040 px'te gizli.
+
+### Yedekten dönüş, kaynak denetimi, hatırlatıcı (denetimden sonra)
+
+75. **Yedekten dönüşte şema GÜNCELLENİR** (`store/yedek.py::yedekten_don`,
+    `migrate(repo.conn)`). Yedek, kendinden sonra gelen bir migration'dan ÖNCEKİ
+    şemada olabilir (AGENTS 55: yedek migration'dan önce alınır); uygulama
+    yeniden başlamadan aynı bağlantıyla sürdüğü için güncellenmezse v1.5.0
+    öncesi bir yedeğe dönüş görev listesini ve hatırlatıcıları "no such table:
+    tasks" ile susturuyordu. Güncelleme başarısız olursa kenara alınan hâl geri
+    yazılır ve `RuntimeError` fırlar.
+76. **`PRAGMA quick_check` SONUCUNA bakılır, yalnızca istisnaya değil**
+    (`_bozukluk`). SQLite bozukluğun çoğunu istisnayla değil SATIR olarak
+    döndürür; yalnızca `try/except` ile bakan kod bozuk ama açılabilen bir
+    yedeği sağlam sayıp canlı verinin üzerine yazıyordu. Testte bozulma
+    kasten "çocuk sayfa numarasını kopyalama"yla yapılır: hücre işaretçilerini
+    bozmak SQLite içinde belirsiz davranışa yol açar (aynı dosya kimi
+    çalıştırmada istisna, kimisinde satır verir).
+77. **`Host` başlığı TÜM isteklerde denetlenir** (`ui/server.py::host_gecerli_mi`,
+    GET ve statik dosyalar dahil). `Origin`/`Sec-Fetch-Site` (kural 40) yalnızca
+    YAZAN isteklere bakar; DNS rebinding ile saldırgan bir sayfa alan adını
+    127.0.0.1'e çözdürüp `GET /api/export` ile tüm takvimi okuyabilirdi
+    (tarayıcı o durumda `Host: saldirgan.example:PORT` gönderir). Loopback'e
+    bağlıyken yalnızca `127.0.0.1:PORT`, `localhost:PORT`, `[::1]:PORT` (PORT =
+    GERÇEK port) geçer; başlık hiç yoksa geçer; `--ag-erisimine-izin-ver` ile
+    loopback DIŞI bağlıyken denetim atlanır. Yeni bir kaynak denetimi eklerken
+    `_loopback_mi` ile `_LOOPBACK_ADRESLERI`'nin uyumunu bozma (testi var).
+    Reddedilen isteğin gövdesi OKUNUP atılır (`_guvensizi_reddet`, `Host` ve
+    `kaynak_guvensiz` için ortak): başlıkları görüp hemen 403 yazıp kapatmak,
+    gövde ayrı/geç gelince TCP sıfırlamasıyla yanıtı ezer ve istemci 403 yerine
+    bağlantı hatası görür (ölçüldü: 20/20; tam takımda `urllib` testleri
+    kararsız düşüyordu). Reddeden yeni bir yol eklersen aynı yardımcıyı kullan.
+78. **Hatırlatıcı dili HER TURDA çözülür, tetiklenme kayıtları budanır.**
+    `run_forever`/`run_once` `dil`i metin ya da argümansız çağrılabilir olarak
+    alır (`_dil_coz`); uygulama içi thread ve `python -m remind` ayar dosyasını
+    okuyan çağrılabilir verir, böylece Ayarlar'dan dil değişince bildirim dili
+    hemen uyar (eskiden `.exe`'de hep Türkçeydi). `Repo.prune_fired` kaydı
+    YALNIZCA örneğin başlangıcı VE bitişi sınırdan eskiyse siler: yalnızca
+    başlangıca bakmak, 40 gün süren bir etkinliğin kaydını silip her gün aynı
+    bildirimi getirirdi. `run_forever` budamayı başta bir kez, sonra günde bir
+    yapar (`_temizlik`); hatası döngüyü öldürmez.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
