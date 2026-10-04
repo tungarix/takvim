@@ -33,6 +33,11 @@ def _dil_oku(db: str) -> str:
         ham = json.loads((Path(db).resolve().parent / "ayarlar.json").read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return "tr"
+    # Geçerli ama sözlük olmayan JSON (`[]`, `"en"`) `.get`te AttributeError
+    # verirdi; okuyucu artık her turda çalışıyor, tek bozuk dosya süreci
+    # öldürmemeli.
+    if not isinstance(ham, dict):
+        return "tr"
     return ham.get("dil") if ham.get("dil") in ("tr", "en") else "tr"
 
 
@@ -51,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     guvenli_konsol()
     args = ap.parse_args(argv)
 
+    # Başlangıç dili: `pick_notifier` (Tk düğmesi), `--test` ve `--once` için.
+    # Sürekli çalışan döngüye metin DEĞİL okuyucu veriliyor (aşağıda).
     dil = _dil_oku(args.db)
     notifier = pick_notifier(args.notifier, dil=dil)
 
@@ -71,7 +78,13 @@ def main(argv: list[str] | None = None) -> int:
             gonderilen = run_once(repo, args.tz, notifier, dil=dil)
             print(f"{len(gonderilen)} hatırlatıcı gönderildi.")
             return 0
-        run_forever(repo, args.tz, notifier, poll_seconds=args.poll, verbose=args.verbose, dil=dil)
+        # Dil her turda dosyadan tazelenir: süreç günlerce yaşıyor ve kullanıcı
+        # arayüzden dili değiştirebiliyor; başlangıçta bir kez okumak bildirimleri
+        # eski dilde bırakırdı.
+        run_forever(
+            repo, args.tz, notifier, poll_seconds=args.poll, verbose=args.verbose,
+            dil=lambda: _dil_oku(args.db),
+        )
     return 0
 
 

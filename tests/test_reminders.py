@@ -6,11 +6,23 @@ hatırlatıcı testinin "bazen geçen" hâli, hatırlatıcının kendisinden bet
 
 from __future__ import annotations
 
+import sqlite3
+from datetime import datetime, timedelta
+
 import pytest
 
-from core import Event, Occurrence, Reminder, due_reminders, fire_key, next_fire_time
-from remind.daemon import run_once
-from remind.notifier import ConsoleNotifier, pick_notifier
+from core import (
+    UTC,
+    Event,
+    Occurrence,
+    Reminder,
+    due_reminders,
+    fire_key,
+    next_fire_time,
+)
+from remind import daemon
+from remind.daemon import _dil_coz, _temizlik, _temizlik_vakti_mi, run_forever, run_once
+from remind.notifier import ConsoleNotifier, TkNotifier, pick_notifier
 from store import Repo, new_uid
 from tests.helpers import IST, ist
 
@@ -213,6 +225,203 @@ def test_prune_fired(repo, ders):
 
 
 # ---------------------------------------------------------------------------
+# Tetiklenme kayıtlarının budanması
+# ---------------------------------------------------------------------------
+
+def test_prune_fired_eski_kisa_ornegin_kaydi_silinir_yenisi_durur(repo, ders):
+    """30 günden eski kısa örneklerin kaydı gider; yeni olanlar kalır."""
+    event = _ekle(
+        repo, ders, "Ders", ist(2026, 8, 1, 10, 0), ist(2026, 8, 1, 11, 0),
+        rrule="FREQ=DAILY",
+    )
+    r = repo.add_reminder(event.id, 15)
+    for gun in (ist(2026, 8, 1, 10), ist(2026, 8, 15, 10),
+                ist(2026, 9, 10, 10), ist(2026, 9, 30, 10)):
+        repo.mark_fired(r.id, gun)
+    simdi = ist(2026, 10, 4, 12)
+
+    assert repo.prune_fired(simdi - timedelta(days=30)) == 2
+    assert repo.fired_keys() == {
+        (r.id, ist(2026, 9, 10, 10)),
+        (r.id, ist(2026, 9, 30, 10)),
+    }
+
+
+def test_prune_fired_bitisi_sinirdan_sonra_olan_ornek_durur(repo, ders):
+    """Başlangıcı eski ama bitişi sınırı aşan örneğin kaydı silinmez.
+
+    İki günlük etkinlik, sınır 4 Eylül 00:00: 23:30-00:30 örneği gece
+    yarısını aşıyor (hâlâ güncel), 22:30-23:30 örneği ondan önce bitiyor.
+    Yalnızca başlangıca bakan eski ölçüt ikisini de silerdi.
+    """
+    gece = _ekle(
+        repo, ders, "Gece", ist(2026, 8, 1, 23, 30), ist(2026, 8, 2, 0, 30),
+        rrule="FREQ=DAILY",
+    )
+    erken = _ekle(
+        repo, ders, "Erken", ist(2026, 8, 1, 22, 30), ist(2026, 8, 1, 23, 30),
+        rrule="FREQ=DAILY",
+    )
+    r_gece = repo.add_reminder(gece.id, 15)
+    r_erken = repo.add_reminder(erken.id, 15)
+    repo.mark_fired(r_gece.id, ist(2026, 9, 3, 23, 30))
+    repo.mark_fired(r_erken.id, ist(2026, 9, 3, 22, 30))
+
+    assert repo.prune_fired(ist(2026, 9, 4, 0, 0)) == 1
+    assert repo.fired_keys() == {(r_gece.id, ist(2026, 9, 3, 23, 30))}
+
+
+def test_prune_fired_suren_uzun_etkinligin_kaydi_silinmez(repo, ders):
+    """90 günlük etkinliğin 40 gün önce başlamış, hâlâ süren örneği korunur.
+
+    Yalnızca başlangıca bakan ölçüt bu kaydı silerdi; kayıt gidince örnek
+    "tetiklenmemiş" görünüp yeniden bildirilirdi.
+    """
+    simdi = ist(2026, 10, 4, 12)
+    baslangic = simdi - timedelta(days=40)
+    event = _ekle(repo, ders, "Staj", baslangic, baslangic + timedelta(days=90))
+    r = repo.add_reminder(event.id, 15)
+    repo.mark_fired(r.id, baslangic)
+
+    assert repo.prune_fired(simdi - timedelta(days=30)) == 0
+    assert (r.id, baslangic) in repo.fired_keys()
+
+
+def test_prune_fired_silinen_sayiyi_dondurur(repo, ders):
+    """Dönüş değeri silinen kayıt sayısı; silinecek yoksa 0."""
+    event = _ekle(
+        repo, ders, "Ders", ist(2026, 8, 1, 10, 0), ist(2026, 8, 1, 11, 0),
+        rrule="FREQ=DAILY",
+    )
+    r = repo.add_reminder(event.id, 15)
+    for gun in (1, 2, 3):
+        repo.mark_fired(r.id, ist(2026, 8, gun, 10))
+    repo.mark_fired(r.id, ist(2026, 9, 30, 10))
+    sinir = ist(2026, 9, 4)
+
+    assert repo.prune_fired(sinir) == 3
+    assert repo.prune_fired(sinir) == 0
+    assert len(repo.fired_keys()) == 1
+
+
+def test_budama_surerken_gunluk_tekrar_bildirimi_uretmez(repo, ders):
+    """Uzun etkinlikte budama + yeni tur, aynı bildirimi yeniden göstermez.
+
+    Gerçek senaryo: kayıt silinirse bir sonraki tur örneği "tetiklenmemiş"
+    görür, bildirir ve kaydı yeniden yazar; ertesi günkü budama onu yine
+    siler -- her gün tekrarlayan bildirim.
+    """
+    baslangic = ist(2026, 8, 25, 10, 0)
+    event = _ekle(repo, ders, "Staj", baslangic, baslangic + timedelta(days=90))
+    repo.add_reminder(event.id, 15)
+    notifier = YakalayanNotifier()
+
+    assert len(run_once(repo, IST, notifier, now=baslangic - timedelta(minutes=10))) == 1
+
+    simdi = baslangic + timedelta(days=40)
+    _temizlik(repo, simdi)
+
+    assert run_once(repo, IST, notifier, now=simdi) == []
+    assert len(notifier.gonderilen) == 1
+
+
+class _PatlayanRepo:
+    """Budaması her seferinde hata veren sahte depo (kilitli veritabanı)."""
+
+    def prune_fired(self, before):
+        raise sqlite3.OperationalError("database is locked")
+
+
+def test_temizlik_hatayi_yutar_ve_sifir_dondurur(capsys):
+    """Budama bir bakım işi: başarısız olması döngüyü öldürmemeli."""
+    assert _temizlik(_PatlayanRepo(), ist(2026, 10, 4)) == 0
+    assert "budanamadı" in capsys.readouterr().out
+
+
+def test_temizlik_otuz_gun_oncesini_sinir_alir_ve_sayiyi_dondurur():
+    """`_temizlik`, `prune_fired`'a `simdi - 30 gün`ü verir, sonucu iletir."""
+    cagrilar = []
+
+    class _Repo:
+        def prune_fired(self, before):
+            cagrilar.append(before)
+            return 7
+
+    simdi = ist(2026, 10, 4, 12)
+
+    assert _temizlik(_Repo(), simdi) == 7
+    assert cagrilar == [simdi - timedelta(days=30)]
+
+
+def test_temizlik_vakti_mi_ilk_seferde_ve_gunde_bir():
+    """Hiç yapılmadıysa hemen; sonra yalnızca 24 saat dolunca."""
+    gun = 24 * 3600
+
+    assert _temizlik_vakti_mi(None, 0.0) is True
+    assert _temizlik_vakti_mi(100.0, 100.0 + gun - 1) is False
+    assert _temizlik_vakti_mi(100.0, 100.0 + gun) is True
+
+
+class _SahteZaman:
+    """`remind.daemon.time` yerine geçer: gerçekten uyumaz, sahte saati ilerletir.
+
+    `sleep` her çağrıda `adim` saniye ilerletir ve `tur` kadar uyuduktan sonra
+    `KeyboardInterrupt` fırlatır; `run_forever`in beklediği tek çıkış bu.
+    `uykuda(n)` n'inci uykudan hemen önce çağrılır (turlar arası olay
+    yaratmak için).
+    """
+
+    def __init__(self, adim: float, tur: int, uykuda=None) -> None:
+        self.simdi = 1_000.0
+        self.adim = adim
+        self.tur = tur
+        self.uykuda = uykuda
+        self.uyku_sayisi = 0
+
+    def monotonic(self) -> float:
+        return self.simdi
+
+    def sleep(self, saniye: float) -> None:
+        self.uyku_sayisi += 1
+        if self.uykuda is not None:
+            self.uykuda(self.uyku_sayisi)
+        if self.uyku_sayisi >= self.tur:
+            raise KeyboardInterrupt
+        self.simdi += self.adim
+
+
+def test_run_forever_ilk_turda_ve_gunde_bir_budar(repo, monkeypatch):
+    """12 saatlik 3 turda iki budama: ilk tur ve 24. saat; 12. saatte yok."""
+    cagrilar = []
+    repo.prune_fired = lambda before: cagrilar.append(before) or 0
+    monkeypatch.setattr(daemon, "time", _SahteZaman(adim=12 * 3600, tur=3))
+
+    run_forever(repo, IST, YakalayanNotifier())
+
+    assert len(cagrilar) == 2
+    simdi = datetime.now(UTC)
+    assert all(abs((simdi - timedelta(days=30)) - c) < timedelta(minutes=5) for c in cagrilar)
+
+
+def test_run_forever_budama_patlarsa_dongu_surer_ve_her_turda_denenmez(repo, monkeypatch):
+    """Budama hatası döngüyü öldürmez ve dakikada bir aynı hata basılmaz."""
+    cagrilar = []
+
+    def patlayan(before):
+        cagrilar.append(before)
+        raise sqlite3.OperationalError("database is locked")
+
+    repo.prune_fired = patlayan
+    sahte = _SahteZaman(adim=60, tur=3)
+    monkeypatch.setattr(daemon, "time", sahte)
+
+    run_forever(repo, IST, YakalayanNotifier())
+
+    assert sahte.uyku_sayisi == 3, "üç tur da dönmeli"
+    assert len(cagrilar) == 1, "başarısız budama bir sonraki 24 saate kadar tekrarlanmaz"
+
+
+# ---------------------------------------------------------------------------
 # Arka plan turu
 # ---------------------------------------------------------------------------
 
@@ -399,3 +608,156 @@ def test_bayat_anlik_goruntude_de_mukerrer_bildirim_yok(repo, ders):
     run_once(repo, IST, notifier, now=ist(2026, 9, 14, 9, 51))
 
     assert len(notifier.gonderilen) == 1, "ikinci tur mark_fired ile durdurulmalı"
+
+
+# ---------------------------------------------------------------------------
+# Bildirim dili: metin ya da her turda çözülen çağrılabilir
+# ---------------------------------------------------------------------------
+
+def _bir_vadesi_gelen(repo, ders, baslik="Algoritma"):
+    """14 Eylül 10:00 etkinliği + 15 dk hatırlatıcı; 09:50'de vadesi gelir."""
+    event = _ekle(repo, ders, baslik, ist(2026, 9, 14, 10, 0), ist(2026, 9, 14, 11, 0))
+    repo.add_reminder(event.id, 15)
+    return event
+
+
+@pytest.mark.parametrize(
+    ("kaynak", "beklenen"),
+    [
+        ("en", "en"),
+        ("tr", "tr"),
+        ("de", "tr"),  # tanınmayan değer sessizce Türkçe
+        (None, "tr"),
+        (lambda: "en", "en"),
+        (lambda: "tr", "tr"),
+        (lambda: "fr", "tr"),
+        (lambda: None, "tr"),
+    ],
+)
+def test_dil_coz_metin_ve_cagrilabilir(kaynak, beklenen):
+    """Metin de çağrılabilir de çözülüyor; geçersiz değer Türkçeye düşüyor."""
+    assert _dil_coz(kaynak) == beklenen
+
+
+def test_dil_coz_cagrilabilir_patlarsa_turkce():
+    """Ayar okuma hatası bildirimi engellemez: Türkçe varsayılan."""
+
+    def patlayan():
+        raise PermissionError("ayarlar.json kilitli")
+
+    assert _dil_coz(patlayan) == "tr"
+
+
+def test_run_once_dil_metni_hala_calisir(repo, ders):
+    """Eski imza: `dil="en"` metni bildirimi İngilizce kurar."""
+    _bir_vadesi_gelen(repo, ders)
+    notifier = YakalayanNotifier()
+
+    run_once(repo, IST, notifier, now=ist(2026, 9, 14, 9, 50), dil="en")
+
+    assert "in 15 minutes" in notifier.gonderilen[0][1]
+
+
+def test_run_once_dil_cagrilabilirini_her_turda_yeniden_cozer(repo, ders):
+    """Çağrılabilir her turda sorulur: ilk bildirim "tr", sonraki "en"."""
+    secili = ["tr"]
+    notifier = YakalayanNotifier()
+
+    _bir_vadesi_gelen(repo, ders, "Birinci")
+    run_once(repo, IST, notifier, now=ist(2026, 9, 14, 9, 50), dil=lambda: secili[0])
+    # Kullanıcı turlar arasında dili değiştiriyor, ikinci bir etkinlik de vadesine geliyor.
+    secili[0] = "en"
+    _bir_vadesi_gelen(repo, ders, "İkinci")
+    run_once(repo, IST, notifier, now=ist(2026, 9, 14, 9, 51), dil=lambda: secili[0])
+
+    assert [b for b, _ in notifier.gonderilen] == ["Birinci", "İkinci"]
+    assert "15 dakika içinde" in notifier.gonderilen[0][1]
+    assert "in 15 minutes" in notifier.gonderilen[1][1]
+
+
+def test_run_once_dil_cagrilabilir_patlarsa_turkce_bildirir(repo, ders):
+    """Dil okunamasa da bildirim kaybolmaz ve tur patlamaz."""
+    _bir_vadesi_gelen(repo, ders)
+    notifier = YakalayanNotifier()
+
+    def patlayan():
+        raise OSError("disk okunamadı")
+
+    gonderilen = run_once(
+        repo, IST, notifier, now=ist(2026, 9, 14, 9, 50), dil=patlayan
+    )
+
+    assert len(gonderilen) == 1
+    assert "15 dakika içinde" in notifier.gonderilen[0][1]
+
+
+def test_run_once_bildirim_arka_ucuna_dili_bildirir(repo, ders):
+    """`dil_ayarla`sı olan arka uca çözülen dil verilir (Tk düğmesi için)."""
+
+    class _DilliNotifier(YakalayanNotifier):
+        def __init__(self) -> None:
+            super().__init__()
+            self.diller: list[str] = []
+
+        def dil_ayarla(self, dil: str) -> None:
+            self.diller.append(dil)
+
+    _bir_vadesi_gelen(repo, ders)
+    notifier = _DilliNotifier()
+
+    run_once(repo, IST, notifier, now=ist(2026, 9, 14, 9, 50), dil=lambda: "en")
+
+    assert notifier.diller == ["en"]
+
+
+def test_tk_notifier_dil_ayarla_ve_run_once_ile_guncellenir(repo, ders):
+    """Gerçek `TkNotifier`ın düğme dili tur başında güncellenir.
+
+    Pencere açmamak için `notify` sahte; ölçülen yalnızca `dil` alanı.
+    """
+
+    class _PencereAcmayanTk(TkNotifier):
+        def notify(self, title: str, body: str) -> bool:
+            return True
+
+    tk = _PencereAcmayanTk(dil="tr")
+    tk.dil_ayarla("en")
+    assert tk.dil == "en"
+
+    _bir_vadesi_gelen(repo, ders)
+    tk2 = _PencereAcmayanTk(dil="tr")
+    run_once(repo, IST, tk2, now=ist(2026, 9, 14, 9, 50), dil=lambda: "en")
+
+    assert tk2.dil == "en"
+
+
+def test_run_forever_dil_cagrilabilirini_her_turda_cozer(repo, ders, monkeypatch):
+    """Uygulama açıkken dil değişirse ikinci turun bildirimi yeni dilde olur.
+
+    Gerçek hata: paketlenmiş `.exe`de hatırlatıcı thread'i `run_forever`a dil
+    VERMİYORDU, bildirimler Ayarlar'daki dile bakmadan hep Türkçeydi.
+    """
+    simdi = datetime.now(UTC).replace(microsecond=0)
+
+    def etkinlik(baslik):
+        e = _ekle(
+            repo, ders, baslik, simdi + timedelta(minutes=10), simdi + timedelta(minutes=70)
+        )
+        repo.add_reminder(e.id, 15)
+
+    etkinlik("Birinci")
+    secili = ["tr"]
+    notifier = YakalayanNotifier()
+
+    def uykuda(sayi):
+        if sayi == 1:
+            secili[0] = "en"  # kullanıcı Ayarlar'dan dili değiştirdi
+            etkinlik("İkinci")
+
+    monkeypatch.setattr(daemon, "time", _SahteZaman(adim=60, tur=2, uykuda=uykuda))
+
+    run_forever(repo, IST, notifier, dil=lambda: secili[0])
+
+    assert [b for b, _ in notifier.gonderilen] == ["Birinci", "İkinci"]
+    assert "15 dakika içinde" in notifier.gonderilen[0][1]
+    assert "in 15 minutes" in notifier.gonderilen[1][1]

@@ -29,6 +29,7 @@ import sys
 import threading
 import traceback
 import webbrowser
+from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
@@ -79,6 +80,33 @@ def veri_dizini(db: str) -> Path:
     return Path(db).resolve().parent
 
 
+def _dil_okuyucu(db: str) -> Callable[[], str]:
+    """Her çağrıda arayüz dilini `ayarlar.json`dan okuyan işlev döndürür.
+
+    Hatırlatıcı thread'i uygulama açık kaldığı sürece yaşıyor; dil bir kez
+    okunsaydı kullanıcı Ayarlar'dan İngilizceyi seçse de bildirimler Türkçe
+    kalırdı (paketlenmiş `.exe` hep `--reminder` ile açılıyor). Okuma
+    `ui.ayarlar` üzerinden: bozuk/eksik dosyada ve geçersiz değerde zaten
+    `"tr"` dönüyor. Bellek DB'sinde ayar klasörü yok, `veri_dizini` gerçek
+    kullanıcı klasörünü gösterirdi: sabit `"tr"`.
+    """
+    if db == ":memory:":
+        return lambda: "tr"
+    yol = ayar_dosyasi(veri_dizini(db))
+
+    def oku() -> str:
+        try:
+            dil = ayar_oku(yol).get("dil", "tr")
+        except (OSError, ValueError):
+            # `ayar_oku` bozuk JSON'u yakalıyor ama geçersiz UTF-8 baytlarını
+            # (`UnicodeDecodeError`) yakalamıyor; dil okunamadı diye
+            # hatırlatıcı turu patlamasın.
+            return "tr"
+        return dil if dil in ("tr", "en") else "tr"
+
+    return oku
+
+
 def _hatirlatici_baslat(db: str, tzid: str) -> threading.Thread:
     """Hatırlatıcıyı arka plan thread'inde başlatır.
 
@@ -88,16 +116,23 @@ def _hatirlatici_baslat(db: str, tzid: str) -> threading.Thread:
     sorunsuz; mükerrer bildirimi zaten `reminder_fired` UNIQUE kısıtı
     engelliyor.
 
+    Dil bir kez okunup verilmiyor, OKUYUCU veriliyor (`_dil_okuyucu`): bildirim
+    dili her turda ayar dosyasından tazelenir. Başlangıç dili yalnızca
+    `pick_notifier`ın (Tk düğmesi) ilk değeri için kullanılıyor.
+
     Hatırlatıcı çökerse UYGULAMA ÇÖKMEZ: thread kendi hatasını yutup bildirir.
     Takvimi hiç görememek, hatırlatıcıyı kaybetmekten kötüdür.
     """
+    dil_oku = _dil_okuyucu(db)
 
     def calis() -> None:
         try:
             from remind import pick_notifier, run_forever
 
             with Repo.open(db) as kendi_repo:
-                run_forever(kendi_repo, tzid, pick_notifier())
+                run_forever(
+                    kendi_repo, tzid, pick_notifier(dil=dil_oku()), dil=dil_oku
+                )
         except Exception:
             print("Hatırlatıcı durdu (takvim çalışmaya devam ediyor):", flush=True)
             traceback.print_exc()

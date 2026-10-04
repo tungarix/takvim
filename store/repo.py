@@ -1361,14 +1361,40 @@ class Repo:
         return cur.rowcount > 0
 
     def prune_fired(self, before: datetime) -> int:
-        """Verilen andan eski tetiklenme kayıtlarını siler; silinen sayıyı döndürür.
+        """Eski tetiklenme kayıtlarını siler; silinen sayıyı döndürür.
 
         Tablo sonsuza kadar büyümesin diye; tetiklenmiş bir örneğin kaydı
-        örnek geçtikten sonra bir işe yaramıyor.
+        örnek geçtikten sonra bir işe yaramıyor. Ama yalnızca örneğin BAŞLANGICI
+        VE BİTİŞİ `before`'dan eskiyse siliniyor: başlangıca bakmak tek başına
+        yetmez. 40 gün süren bir etkinliğin 40 gün önce başlamış örneği hâlâ
+        sürüyor ve `due_reminders` onu hâlâ güncel sayıyor (AGENTS 22); kaydı
+        silinirse bir sonraki turda "tetiklenmemiş" görünüp yeniden bildirilir,
+        yeniden yazılan kayıt bir sonraki budamada yine silinir -- yani her gün
+        aynı bildirim gelirdi.
+
+        Örneğin süresi, etkinliğin `end_utc - start_utc` farkı. Override ile
+        uzatılmış ya da kısaltılmış bir örnekte bu YAKLAŞIKTIR (override'ın
+        kendi süresi okunmuyor); budama bilerek tutucu bir ölçüt, bu yüzden
+        kabul edilebilir.
+
+        Süre hesabı tam saniye üzerinden (`strftime('%s')`): zaman alanları
+        sabit genişlikte UTC metni (AGENTS 8) ve SQLite bu biçimi okuyor,
+        `julianday` ise kesirli gün olduğu için sınırda saniyenin binde
+        birlerinde yuvarlama hatası veriyor.
         """
+        sinir = _to_db(before)
         cur = self.conn.execute(
-            "DELETE FROM reminder_fired WHERE occurrence_start_utc < ?",
-            (_to_db(before),),
+            "DELETE FROM reminder_fired "
+            "WHERE occurrence_start_utc < ? "
+            "AND EXISTS ("
+            "  SELECT 1 FROM reminders r JOIN events e ON e.id = r.event_id "
+            "  WHERE r.id = reminder_fired.reminder_id "
+            "  AND CAST(strftime('%s', reminder_fired.occurrence_start_utc) AS INTEGER) "
+            "      + CAST(strftime('%s', e.end_utc) AS INTEGER) "
+            "      - CAST(strftime('%s', e.start_utc) AS INTEGER) "
+            "      < CAST(strftime('%s', ?) AS INTEGER)"
+            ")",
+            (sinir, sinir),
         )
         return cur.rowcount
 

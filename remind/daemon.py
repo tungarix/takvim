@@ -12,6 +12,7 @@ işaretlemek.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 
 from core import UTC, due_reminders, next_fire_time, to_local
@@ -24,6 +25,32 @@ __all__ = ["run_once", "run_forever", "bildirim_metni"]
 # En uzun hatırlatıcı kadar + bir gün pay: tüm gün etkinliklerinin başlangıcı
 # yerel gece yarısı olduğu için "1 gün önce" hatırlatıcısı geriye taşar.
 _PAY = timedelta(days=1)
+
+# `reminder_fired` tablosu için budama: kayıtlar 30 günden eskiyse (ve örnek
+# de bitmişse, bkz. `Repo.prune_fired`) silinir. Her turda değil günde bir:
+# tablo yavaş büyüyor, budamanın dakikada bir koşmasına gerek yok.
+_KAYIT_OMRU = timedelta(days=30)
+_TEMIZLIK_ARALIGI = 24 * 3600  # saniye, `time.monotonic` ile ölçülür
+
+# Dil ya sabit bir metin ("tr"/"en") ya da her turda sorulan, argümansız bir
+# çağrılabilir: uygulama açıkken kullanıcı Ayarlar'dan dili değiştirince
+# bildirim dili de hemen uysun diye (bkz. `_dil_coz`).
+DilKaynagi = str | Callable[[], str]
+
+
+def _dil_coz(dil: DilKaynagi) -> str:
+    """Dil kaynağını `"tr"` ya da `"en"`e çözer; hata ve geçersiz değerde `"tr"`.
+
+    Çağrılabilir `ayarlar.json` okuyabilir ve o dosya elle bozulmuş, kilitli ya
+    da yazılırken yarım olabilir. Dil okunamadı diye hatırlatıcı turunun
+    patlaması kabul edilemez: bildirim hiç gelmemektense Türkçe (varsayılan dil)
+    gelmesi yeğdir.
+    """
+    try:
+        sonuc = dil() if callable(dil) else dil
+    except Exception:
+        return "tr"
+    return sonuc if sonuc in ("tr", "en") else "tr"
 
 
 def bildirim_metni(due, tzid: str, *, dil: str = "tr") -> tuple[str, str]:
@@ -79,13 +106,17 @@ def run_once(
     *,
     now: datetime | None = None,
     include_hidden: bool = False,
-    dil: str = "tr",
+    dil: DilKaynagi = "tr",
 ) -> list:
     """Bir tur: vadesi geleni bul, işaretle, bildir. Gönderilenleri döndürür.
 
     `include_hidden=False`: gizlenen takvimin hatırlatıcıları da susar. Bir
     takvimi gizlemek "bunu şu an görmek istemiyorum" demektir; gürültüsünü
     sürdürmek bu niyetle çelişirdi.
+
+    `dil` metin ya da argümansız çağrılabilir. Çağrılabilir her turda yeniden
+    çözülüyor (yalnızca gösterilecek bir şey varsa: ayar dosyasını boşuna her
+    dakika okumayalım), böylece dil değişikliği hemen bildirime yansır.
 
     İşaretleme bildirimden ÖNCE yapılıyor. Ters sırada olsaydı bildirim
     gösterilip süreç çökerse aynı hatırlatıcı bir dahaki turda yeniden
@@ -112,14 +143,48 @@ def run_once(
     )
 
     gonderilen = []
+    if not vadesi_gelen:
+        return gonderilen
+
+    dil_kodu = _dil_coz(dil)
+    # Bildirim arka ucunun kendi yazıları da olabilir (Tk düğmesi). `notify`
+    # imzasına dil eklemek her arka ucu ve her sahte arka ucu kırardı; bu
+    # yüzden isteğe bağlı bir `dil_ayarla` yöntemi: olan çağrılır, olmayan atlanır.
+    dil_ayarla = getattr(notifier, "dil_ayarla", None)
+    if callable(dil_ayarla):
+        dil_ayarla(dil_kodu)
+
     for due in vadesi_gelen:
         if not repo.mark_fired(due.reminder_id, due.occurrence.start_utc):
             continue  # başka bir süreç önce davrandı
-        baslik, govde = bildirim_metni(due, tzid, dil=dil)
+        baslik, govde = bildirim_metni(due, tzid, dil=dil_kodu)
         notifier.notify(baslik, govde)
         gonderilen.append(due)
 
     return gonderilen
+
+
+def _temizlik(repo, simdi: datetime) -> int:
+    """Eski tetiklenme kayıtlarını budar; silinen sayıyı döndürür, hatada 0.
+
+    Budama bir bakım işi: başarısız olması (başka süreç kilidi tutuyor, disk
+    dolu...) hatırlatıcı döngüsünü öldürmemeli. Bildirim görevi bakımdan önce
+    gelir; kayıtlar bir sonraki denemede yine budanır.
+    """
+    try:
+        return repo.prune_fired(simdi - _KAYIT_OMRU)
+    except Exception as hata:  # döngü tek bir hatayla ölmesin
+        print(f"  tetiklenme kayıtları budanamadı: {hata}")
+        return 0
+
+
+def _temizlik_vakti_mi(son: float | None, simdi: float) -> bool:
+    """Budama zamanı geldi mi: hiç yapılmadıysa ya da aralık dolduysa.
+
+    `son`/`simdi` `time.monotonic` değerleri: duvar saati değişse (saat dilimi,
+    elle ayar, uyku) aralık bozulmasın.
+    """
+    return son is None or simdi - son >= _TEMIZLIK_ARALIGI
 
 
 def run_forever(
@@ -129,7 +194,7 @@ def run_forever(
     *,
     poll_seconds: int = 60,
     verbose: bool = False,
-    dil: str = "tr",
+    dil: DilKaynagi = "tr",
 ) -> None:
     """Ctrl+C'ye kadar döner.
 
@@ -137,11 +202,24 @@ def run_forever(
     üst sınırını aşmıyor: veritabanı başka bir süreç (arayüz) tarafından
     değiştirilebildiği için sonsuza kadar uyumak yeni eklenen bir hatırlatıcıyı
     kaçırmak olurdu.
+
+    `dil` metin ya da argümansız çağrılabilir (bkz. `run_once`): uzun yaşayan
+    süreçte dil başlangıçta bir kez okunsaydı, kullanıcı uygulama açıkken
+    Ayarlar'dan dili değiştirince bildirimler eski dilde kalırdı.
+
+    Tetiklenme kayıtları döngü başlarken bir kez, sonra en fazla günde bir
+    budanır (`_temizlik`).
     """
     print(f"Hatırlatıcı çalışıyor ({type(notifier).__name__}). Durdurmak için Ctrl+C.")
+    son_temizlik: float | None = None
     try:
         while True:
             simdi = datetime.now(UTC)
+            if _temizlik_vakti_mi(son_temizlik, time.monotonic()):
+                _temizlik(repo, simdi)
+                # Başarısız olsa da zaman damgası ilerliyor: kilitli bir veritabanında
+                # her dakika aynı hatayı yazıp günlüğü doldurmayalım.
+                son_temizlik = time.monotonic()
             try:
                 gonderilen = run_once(repo, tzid, notifier, now=simdi, dil=dil)
                 if verbose and gonderilen:

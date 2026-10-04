@@ -131,6 +131,15 @@ class TkNotifier:
         # Tek düğmenin yazısı; başlık ("Takvim") ürün adı, çevrilmiyor.
         self.dil = dil
 
+    def dil_ayarla(self, dil: str) -> None:
+        """Düğme dilini günceller.
+
+        Hatırlatıcı süreci uzun yaşıyor ve arayüz dili uygulama açıkken
+        değişebiliyor; `daemon.run_once` her turda çağırıyor. `notify`
+        imzası değişmesin diye dil ayrı bir yöntemle geliyor.
+        """
+        self.dil = dil
+
     def available(self) -> bool:
         """tkinter kurulu ve bir ekran var mı."""
         try:
