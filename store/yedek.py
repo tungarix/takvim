@@ -24,6 +24,8 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
+from .migrator import migrate
+
 __all__ = [
     "ONCEKI_SAKLANAN",
     "SAKLANAN",
@@ -195,10 +197,9 @@ def yedekten_don(
     except sqlite3.Error as hata:
         raise RuntimeError(f"Yedek açılamadı ({kaynak.name}): {hata}") from hata
     try:
-        try:
-            kaynaga_baglanti.execute("PRAGMA quick_check").fetchone()
-        except sqlite3.Error as hata:
-            raise RuntimeError(f"Yedek bozuk ({kaynak.name}): {hata}") from hata
+        sorun = _bozukluk(kaynaga_baglanti)
+        if sorun is not None:
+            raise RuntimeError(f"Yedek bozuk ({kaynak.name}): {sorun}")
 
         kenara: Path | None = None
         if db.exists():
@@ -234,11 +235,20 @@ def yedekten_don(
                 f"Yedek klasörü: {klasor}"
             ) from hata
 
-        try:
-            repo.conn.execute("PRAGMA quick_check").fetchone()
-        except sqlite3.Error as hata:
-            # Geri yazma yarım kaldıysa kenaradaki sağlam hâli geri koymayı
-            # dene; olmazsa yine de sessiz kalma.
+        sorun = _bozukluk(repo.conn)
+        if sorun is None:
+            # Yedek, ondan SONRA gelen bir migration'dan önceki şemada olabilir
+            # (yedek migration'dan önce alınıyor, AGENTS 55). Uygulama yeniden
+            # başlamadan aynı bağlantıyla çalışmaya devam ettiği için şemayı
+            # burada güncellemezsek ör. v1.5.0 öncesi bir yedeğe dönünce görev
+            # listesi ve hatırlatıcılar "no such table: tasks" ile susar.
+            try:
+                migrate(repo.conn)
+            except Exception as hata:
+                sorun = f"şema güncellenemedi: {hata}"
+        if sorun is not None:
+            # Geri yazma yarım kaldıysa ya da şema güncellenemediyse kenaradaki
+            # sağlam hâli geri koymayı dene; olmazsa yine de sessiz kalma.
             if kenara is not None and kenara.exists():
                 try:
                     geri_baglanti = sqlite3.connect(str(kenara))
@@ -249,9 +259,30 @@ def yedekten_don(
                 except (sqlite3.Error, OSError):
                     pass
             raise RuntimeError(
-                f"Yedekten dönülen veritabanı bozuk: {hata}. "
+                f"Yedekten dönülen veritabanı kullanılamıyor: {sorun}. "
                 f"Yedek klasörü: {klasor}"
-            ) from hata
+            )
         return repo
     finally:
         kaynaga_baglanti.close()
+
+
+def _bozukluk(baglanti: sqlite3.Connection) -> str | None:
+    """`PRAGMA quick_check` sorun bulursa ilk satırını, sağlamsa None döndürür.
+
+    Yalnızca istisnayı yakalamak YETMEZ: bozuk ama açılabilen bir dosyada
+    SQLite hata fırlatmıyor, sorunu SATIR olarak döndürüyor ("Tree 2 page 5
+    cell 0: Offset ... out of range"). Sonuca bakmayan kontrol böyle bir
+    yedeği sağlam sayıp canlı verinin üzerine yazıyordu.
+    """
+    try:
+        satirlar = baglanti.execute("PRAGMA quick_check").fetchall()
+    except sqlite3.Error as hata:
+        return str(hata)
+    if [tuple(s) for s in satirlar] == [("ok",)]:
+        return None
+    # İlk satır "*** in database main ***" başlığıyla başlayabiliyor; kullanıcıya
+    # gösterilecek olan altındaki ilk gerçek sorun.
+    metin = "\n".join(str(s[0]) for s in satirlar)
+    sorunlar = [s for s in metin.splitlines() if s.strip() and not s.startswith("***")]
+    return sorunlar[0] if sorunlar else "bilinmeyen sonuç"

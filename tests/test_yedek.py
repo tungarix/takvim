@@ -7,12 +7,14 @@ yine de açılıyor mu.
 
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from datetime import date, datetime
 
 import pytest
 
 from store import Repo, yedek_al, yedek_klasoru, yedekten_don
+from store.migrator import available, current_version, migrate
 from store.yedek import ONCEKI_SAKLANAN, SAKLANAN, onceki_dosyalari, yedek_dosyalari
 
 
@@ -152,6 +154,105 @@ def test_yedekten_don_bellekte_reddedilir():
     with Repo.open(":memory:") as repo:
         with pytest.raises(ValueError):
             yedekten_don(repo, ":memory:", "takvim-2026-09-13.db")
+
+
+def _eski_semali_yedek(tmp_path, son_surum: int):
+    """Yalnızca `son_surum`'e kadarki migration'larla kurulmuş bir yedek dosyası.
+
+    Gerçek senaryo: v1.5.0'a geçen kullanıcının yedek klasöründe görevler
+    tablosu (005) gelmeden önce alınmış yedekler duruyor.
+    """
+    eski_dizin = tmp_path / "eski-migrationlar"
+    eski_dizin.mkdir()
+    for surum, yol in available():
+        if surum <= son_surum:
+            shutil.copy(yol, eski_dizin / yol.name)
+    klasor = yedek_klasoru(tmp_path)
+    klasor.mkdir(parents=True, exist_ok=True)
+    baglanti = sqlite3.connect(klasor / "takvim-2026-09-13.db")
+    try:
+        migrate(baglanti, eski_dizin)
+        baglanti.execute(
+            "INSERT INTO calendars (name, color, visible, created_at)"
+            " VALUES ('Eski', '#3b82f6', 1, '2026-09-13T08:00:00Z')"
+        )
+        baglanti.commit()
+    finally:
+        baglanti.close()
+
+
+def test_eski_semali_yedege_donunce_sema_guncellenir(tmp_path):
+    """Migration'dan önceki bir yedeğe dönmek uygulamayı yarım bırakmamalı.
+
+    Eskiden şema güncellenmiyordu: görev listesi ve hatırlatıcılar uygulama
+    yeniden başlayana kadar "no such table: tasks" ile susuyordu.
+    """
+    db = tmp_path / "takvim.db"
+    _eski_semali_yedek(tmp_path, son_surum=4)
+    with _depo(db) as repo:
+        repo = yedekten_don(repo, str(db), "takvim-2026-09-13.db")
+        assert current_version(repo.conn) == available()[-1][0]
+        assert [c.name for c in repo.list_calendars()] == ["Eski"]
+        assert repo.list_tasks() == []
+        assert repo.all_reminders(exclude_done_tasks=True) == {}
+        repo.close()
+
+
+def test_bozuk_ama_acilabilen_yedek_reddedilir(tmp_path):
+    """SQLite her bozukluğu istisnayla bildirmiyor; sonuç satırına bakılmalı.
+
+    Ağaç yapısı tutarsız (iki hücre aynı çocuk sayfaya bakıyor) bir dosyada
+    `quick_check` hata FIRLATMADAN sorunu satır olarak döndürüyor. Eski kod
+    yalnızca istisnaya baktığı için böyle bir yedeği sağlam sayıp canlı verinin
+    üzerine yazıyordu.
+    """
+    db = tmp_path / "takvim.db"
+    klasor = yedek_klasoru(tmp_path)
+    klasor.mkdir(parents=True)
+    yol = klasor / "takvim-2026-09-13.db"
+
+    # Yedek dosyası sıfırdan, SABİT içerikle kuruluyor ve yapısı kasten bozuluyor.
+    # Hücre işaretçilerini ya da sayfa başlığını bozmak KULLANILMADI: işaretçiler
+    # SQLite içinde belirsiz davranışa yol açıyor (aynı dosya kimi çalıştırmada
+    # istisna, kimisinde satır veriyor); çocuk sayfa numarasını kopyalamak her
+    # seferinde aynı satırı üretiyor.
+    baglanti = sqlite3.connect(yol)
+    baglanti.execute("PRAGMA page_size = 4096")
+    baglanti.execute("CREATE TABLE dolgu (a INTEGER PRIMARY KEY, b TEXT)")
+    baglanti.executemany(
+        "INSERT INTO dolgu (b) VALUES (?)", [("x" * 200,) for _ in range(500)]
+    )
+    baglanti.commit()
+    baglanti.close()
+
+    sayfa = 4096
+    veri = bytearray(yol.read_bytes())
+    ara = next(i for i in range(1, len(veri) // sayfa) if veri[i * sayfa] == 0x05)
+    hucre_sayisi = int.from_bytes(veri[ara * sayfa + 3 : ara * sayfa + 5], "big")
+    assert hucre_sayisi >= 2, "ara sayfada en az iki hücre olmalı"
+    ilk, ikinci = (
+        ara * sayfa + int.from_bytes(veri[ara * sayfa + 12 + 2 * k : ara * sayfa + 14 + 2 * k], "big")
+        for k in (0, 1)
+    )
+    veri[ikinci : ikinci + 4] = veri[ilk : ilk + 4]  # ikinci hücre de ilk çocuğa baksın
+    yol.write_bytes(bytes(veri))
+
+    # Önkoşul: bozukluk istisna DEĞİL satır olarak geliyor; öyle değilse bu test
+    # eski kodu ayırt edemez.
+    kontrol = sqlite3.connect(yol)
+    try:
+        satirlar = kontrol.execute("PRAGMA quick_check").fetchall()
+    finally:
+        kontrol.close()
+    assert satirlar != [("ok",)]
+
+    with _depo(db) as repo:
+        repo.add_calendar("Ders", "#e0524a")
+        with pytest.raises(RuntimeError, match="bozuk"):
+            yedekten_don(repo, str(db), yol.name)
+        # Reddedilen dönüş canlı veriye dokunmadı.
+        assert sorted(c.name for c in repo.list_calendars()) == ["Ders", "Kişisel"]
+        repo.close()
 
 
 def test_yedekten_don_ikinci_baglanti_acikken_calir(tmp_path):
