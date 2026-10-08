@@ -29,7 +29,10 @@ from .migrator import migrate
 __all__ = [
     "ONCEKI_SAKLANAN",
     "SAKLANAN",
+    "bozuk_veritabanini_degistir",
     "onceki_dosyalari",
+    "son_saglam_yedek",
+    "veritabani_bozuklugu",
     "yedek_al",
     "yedek_dosyalari",
     "yedek_klasoru",
@@ -72,6 +75,12 @@ def yedek_al(baglanti: sqlite3.Connection, veri_dizini: str | Path, *, bugun: da
     `bugun` dışarıdan veriliyor: testler tarihi ilerletebilsin diye.
     """
     try:
+        # Bozuk veritabanının yedeği ALINMAZ. Günde tek dosya olduğu için bozuk
+        # kopya o sabah alınmış sağlam yedeğin ÜZERİNE yazılıyordu, budama da
+        # birkaç gün sonra eski sağlamları siliyordu: bozukluğu fark eden
+        # kullanıcı dönebileceği hiçbir yedek bulamazdı. Paketli exe'de ölçüldü.
+        if _bozukluk(baglanti) is not None:
+            return None
         klasor = yedek_klasoru(veri_dizini)
         klasor.mkdir(parents=True, exist_ok=True)
         hedef = klasor / f"takvim-{bugun.isoformat()}.db"
@@ -279,6 +288,11 @@ def _bozukluk(baglanti: sqlite3.Connection) -> str | None:
         satirlar = baglanti.execute("PRAGMA quick_check").fetchall()
     except sqlite3.Error as hata:
         return str(hata)
+    return _denetim_sonucu(satirlar)
+
+
+def _denetim_sonucu(satirlar: list) -> str | None:
+    """`quick_check` satırlarından ilk gerçek sorunu çıkarır; sağlamsa None."""
     if [tuple(s) for s in satirlar] == [("ok",)]:
         return None
     # İlk satır "*** in database main ***" başlığıyla başlayabiliyor; kullanıcıya
@@ -286,3 +300,94 @@ def _bozukluk(baglanti: sqlite3.Connection) -> str | None:
     metin = "\n".join(str(s[0]) for s in satirlar)
     sorunlar = [s for s in metin.splitlines() if s.strip() and not s.startswith("***")]
     return sorunlar[0] if sorunlar else "bilinmeyen sonuç"
+
+
+def veritabani_bozuklugu(yol: str | Path, *, bekleme: float = 5.0) -> str | None:
+    """Dosya bozuksa sorunun ilk satırını, sağlamsa ya da yoksa None döndürür.
+
+    Uygulama açılmadan ÖNCE, salt okunur bir bağlantıyla bakılıyor: bozuk dosyaya
+    migration ya da yedek yazmadan karar verilsin diye.
+
+    Kilit bozukluk SAYILMAZ (`OperationalError`, ör. "database is locked"):
+    arka plan kopyası o an yazıyor olabilir, sağlam bir dosyayı "bozuk" deyip
+    kenara almak verinin yarısını yedekte bırakmak olurdu. O durumda karar
+    normal açılışa kalır. Veritabanı olmayan dosya ("file is not a database")
+    ve bozuk sayfa ise `DatabaseError`'dur ya da satır olarak döner.
+    """
+    yol = Path(yol)
+    try:
+        if not yol.is_file() or yol.stat().st_size == 0:
+            return None
+    except OSError:
+        return None
+    try:
+        baglanti = sqlite3.connect(f"{yol.resolve().as_uri()}?mode=ro", uri=True, timeout=bekleme)
+    except sqlite3.Error:
+        return None
+    try:
+        satirlar = baglanti.execute("PRAGMA quick_check").fetchall()
+    except sqlite3.OperationalError:
+        return None
+    except sqlite3.DatabaseError as hata:
+        return str(hata)
+    finally:
+        baglanti.close()
+    return _denetim_sonucu(satirlar)
+
+
+def son_saglam_yedek(klasor: str | Path) -> Path | None:
+    """En YENİ sağlam günlük yedek; hiçbiri sağlam değilse None.
+
+    Bozukluk ortaya çıkmadan önceki birkaç gün de bozuk kopya yedeklenmiş
+    olabilir (bu koruma eklenmeden önceki sürümler bunu yapıyordu), bu yüzden
+    en yeniye körü körüne güvenilmiyor; her aday tek tek denetleniyor.
+    """
+    for aday in sorted(yedek_dosyalari(klasor), key=lambda p: p.name, reverse=True):
+        if veritabani_bozuklugu(aday) is None:
+            return aday
+    return None
+
+
+def bozuk_veritabanini_degistir(db: str | Path, yedek: str | Path, *, simdi: datetime) -> Path:
+    """Bozuk dosyayı SİLMEDEN kenara alır, yerine yedeğin kopyasını koyar.
+
+    Kenara alınan dosyanın yolunu döndürür (`bozuk-takvim-<zaman>.db`, aynı
+    klasörde): içinde yedekten sonra girilmiş veri olabilir ve ileride
+    kurtarılmak istenebilir; silmek geri alınamaz.
+
+    Sıra bilinçli: önce yedek GEÇİCİ ada kopyalanır ve sağlam olduğu yeniden
+    doğrulanır, ancak sonra bozuk dosyaya dokunulur. Kopyalama yarıda kalırsa
+    ortada yine bozuk ama yerinde duran bir dosya olur, hiç dosya değil.
+    Bozuk dosyanın `-journal`/`-wal`/`-shm` eşleri de taşınır: yerinde kalan
+    sıcak bir günlük, yeni dosyaya "geri alma" diye uygulanıp onu bozardı.
+    """
+    db = Path(db)
+    yedek = Path(yedek)
+    gecici = db.with_name(f"{db.name}.kurtarma-{os.getpid()}")
+    kaynak = sqlite3.connect(f"{yedek.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        hedef = sqlite3.connect(gecici)
+        try:
+            kaynak.backup(hedef)
+        finally:
+            hedef.close()
+    finally:
+        kaynak.close()
+
+    sorun = veritabani_bozuklugu(gecici)
+    if sorun is not None:
+        try:
+            gecici.unlink()
+        except OSError:
+            pass
+        raise RuntimeError(f"Yedek kopyalanırken bozuldu ({yedek.name}): {sorun}")
+
+    on_ek = f"bozuk-{db.stem}-{simdi:%Y%m%d-%H%M%S}"
+    kenara = db.with_name(f"{on_ek}{db.suffix}")
+    db.replace(kenara)
+    for es in ("-journal", "-wal", "-shm"):
+        eski = db.with_name(db.name + es)
+        if eski.exists():
+            eski.replace(kenara.with_name(kenara.name + es))
+    gecici.replace(db)
+    return kenara

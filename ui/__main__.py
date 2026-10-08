@@ -30,7 +30,7 @@ import threading
 import traceback
 import webbrowser
 from collections.abc import Callable
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from core.console import guvenli_konsol
@@ -38,6 +38,7 @@ from store import Repo, yedek_al, yedek_klasoru
 
 from .ayarlar import ayar_dosyasi, ayar_oku
 from .demo import TZID, seed
+from .kurtarma import KurtarmaReddedildi, bozuksa_kurtar, tk_bilgi, tk_evet_hayir
 from .pencere import BASLIK, pencere_ac
 from .server import bos_port_bul, make_server, serve
 from .tek_ornek import kilit_adi, kilit_al, pencereyi_one_al, pid_oku, pid_yaz
@@ -294,6 +295,27 @@ def _calistir(args) -> int:
             pencereyi_one_al(BASLIK, pid=pid_oku(veri_dizini(args.db)))
             return 0
         pid_yaz(veri_dizini(args.db))
+
+    # Bozukluk, depo AÇILMADAN önce denetleniyor: açılış migration çalıştırıyor
+    # ve hemen ardından yedek alıyor; ikisi de bozuk dosyaya dokunmamalı.
+    # Soru yalnızca pencereli açılışta soruluyor: `--no-browser` arka plan
+    # kopyasıdır (otomatik başlatma), kullanıcı karşısında olmayabilir.
+    if args.db != ":memory:":
+        etkilesimli = not args.no_browser
+        try:
+            kenara = bozuksa_kurtar(
+                args.db,
+                veri_dizini=veri_dizini(args.db),
+                dil=_dil_okuyucu(args.db)(),
+                sor=tk_evet_hayir if etkilesimli else None,
+                bildir=tk_bilgi if etkilesimli else None,
+                simdi=datetime.now(),
+            )
+        except KurtarmaReddedildi as hata:
+            print(hata, flush=True)
+            return 1
+        if kenara is not None:
+            print(f"Bozuk veritabanı kenara alındı, yedeğe dönüldü: {kenara}", flush=True)
 
     # Sunucu yalnızca `--no-browser`da ana thread'de çalışıyor; pencereli
     # çalıştırmada arka plan thread'ine geçiyor ve bağlantı burada kurulduğu

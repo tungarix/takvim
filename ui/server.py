@@ -26,6 +26,7 @@ from core import UTC, Event, Task, from_wall_clock, parse_iso, parse_task_add, t
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
+from store.yedek import veritabani_bozuklugu
 
 from . import otomatik
 from .ayarlar import DILLER, VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
@@ -510,6 +511,17 @@ class _Handler(BaseHTTPRequestHandler):
         """
         dizin = self._yedek_veri_dizini()
         alinan = yedek_al(self.repo.conn, dizin, bugun=date.today())
+        if alinan is None and veritabani_bozuklugu(str(self._db_yolu)) is not None:
+            # `yedek_al` bozuk veritabanından bilerek yedek almıyor (sağlam
+            # yedeklerin üstüne yazmasın diye); "disk sorunu" demek yanıltırdı.
+            self._hata(
+                "veritabanı bozuk görünüyor; sağlam yedekler korunsun diye yeni yedek "
+                "alınmadı. Takvim'i kapatıp yeniden aç: açılışta son sağlam yedeğe "
+                "dönmeyi önerecek.",
+                500,
+                "veritabani_bozuk",
+            )
+            return
         if alinan is None:
             self._hata(
                 "yedek alınamadı (disk/izin sorunu olabilir)", 500, "yedek_alinamadi"
