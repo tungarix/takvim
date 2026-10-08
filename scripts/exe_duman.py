@@ -224,7 +224,22 @@ def calistir(exe: Path, etiket: str) -> list[str]:
     return hatalar
 
 
+def _konsolu_hazirla() -> None:
+    """Çıktıyı UTF-8'e sabitler; yazılamayan karakter hata değil `?` olur.
+
+    GitHub'ın Windows runner'ında konsol cp1252: Türkçe "ı" yazdırılırken
+    `UnicodeEncodeError` betiği çökertiyordu (v1.6.0'ın ilk denemesi). Exe
+    sağlamken sürümü durduran şey testin kendi çıktısı olmamalı.
+    """
+    for akis in (sys.stdout, sys.stderr):
+        try:
+            akis.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _konsolu_hazirla()
     ayristirici = argparse.ArgumentParser(description="Takvim.exe duman testi")
     ayristirici.add_argument("--exe", type=Path, default=KOK / "dist" / "Takvim.exe")
     ayristirici.add_argument("--etiket", default=os.environ.get("ETIKET", ""))

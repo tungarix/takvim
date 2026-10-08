@@ -61,6 +61,29 @@ def test_gercek_veri_izi_dosya_degisince_degisir(tmp_path, monkeypatch):
     assert once[0] is True and exe_duman.gercek_veri_izi() != once
 
 
+def test_cp1252_konsolda_turkce_cikti_cokertmez(tmp_path):
+    """CI'ın konsolu cp1252; betik "ı" yazdırırken çöküyordu (v1.6.0 ilk deneme).
+
+    Olmayan exe ile çalıştırılıyor: çıktıda "bulunamadı" geçiyor ve süreç
+    traceback'le değil, kendi hata koduyla (1) bitmeli.
+    """
+    import os
+    import subprocess
+    import sys
+
+    ortam = {**os.environ, "PYTHONIOENCODING": "cp1252", "ETIKET": ""}
+    sonuc = subprocess.run(
+        [sys.executable, str(KOK / "scripts" / "exe_duman.py"), "--exe", str(tmp_path / "yok.exe")],
+        capture_output=True,
+        env=ortam,
+        check=False,
+    )
+    cikti = sonuc.stdout.decode("utf-8", "replace") + sonuc.stderr.decode("utf-8", "replace")
+    assert "Traceback" not in cikti
+    assert sonuc.returncode == 1
+    assert "exe bulunamadı" in cikti
+
+
 def test_olmayan_exe_hata_dondurur(tmp_path):
     hatalar = exe_duman.calistir(tmp_path / "yok.exe", "")
     assert any("exe bulunamadı" in h for h in hatalar)
