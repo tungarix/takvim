@@ -7,11 +7,45 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Bozuk veritabanından kurtarma**: açılışta veritabanı bozuk çıkarsa Takvim en son
+  sağlam yedeği bulup "bu yedeğe dönülsün mü?" diye soruyor. Evet: bozuk dosya
+  silinmeden `bozuk-takvim-<zaman>.db` adıyla aynı klasörde kenara alınıyor, yerine
+  yedek konuyor. Hayır: hiçbir dosyaya dokunulmuyor. Eskiden yalnızca ham bir hata
+  metni çıkıyordu ve kurtarmak için dosyaları elle değiştirmek gerekiyordu.
+- **Arama görevleri de buluyor** (başlık ve not; tamamlananlar dahil). Tarihli
+  göreve tıklamak o güne götürüyor, plansız görevin formunu açıyor.
+- **Ayarlar kutusu günlük dosyasının yerini gösteriyor** (`takvim.log`; hata
+  bildirim formu bu dosyayı istiyor).
+
+### Düzeltildi
+- **Bozuk veritabanı sağlam yedeğin üstüne yazılıyordu**: bozuk ama açılabilen bir
+  veritabanıyla uygulama hiçbir şey demeden açılıyor, günlük yedek o sabahın sağlam
+  yedeğini bozuk kopyayla eziyordu; birkaç gün sürse eski sağlam yedekler de
+  budanırdı. Artık bozuk veritabanından yedek alınmıyor ("Şimdi yedekle" de bunu
+  açıkça söylüyor).
+- Saat planlı bir görev aramada hem görev hem etkinlik olarak iki kez çıkmıyor.
+- **Yedekten dönüşte şema güncelleniyor**: v1.5.0 öncesi bir yedeğe dönünce görev
+  listesi ve hatırlatıcılar susuyordu. Bozuk ama açılabilen bir yedek artık
+  reddediliyor (`quick_check` sonucuna bakılıyor, yalnızca hataya değil).
+- **Hatırlatıcı dili** Ayarlar'dan değişince bildirimlere hemen yansıyor (`.exe`de hep
+  Türkçe kalıyordu); eski tetiklenme kayıtları budanıyor.
+
 ### Güvenlik
+- **`Host` başlığı denetimi** (DNS rebinding): başka bir sitenin, alan adını
+  127.0.0.1'e çözdürüp takvimin tamamını okuyabilmesi kapatıldı.
 - **Sürüm güvenlik kapısı**: her sürümden önce önceki sürümden bu yana değişen kod
   güvenlik açısından incelenip `guvenlik/incelemeler/vX.Y.Z.md`'ye yazılıyor.
   `release.yml` bu kayıt yoksa, sonucu `geçti` değilse ya da incelemeden sonra kod
   değiştiyse `.exe`'yi derlemeden durur (`scripts/guvenlik_kapisi.py`, 9 test).
+
+### Altyapı
+- **Release, derlenen `.exe`'yi çalıştırıp sınıyor** (`scripts/exe_duman.py`):
+  etiket ile `ui/surum.py` aynı mı, exe o sürümü mü bildiriyor, arayüz dosyaları
+  pakette mi, şema güncel mi, açılış yedeği alınıyor mu, etkinlik/görev yazılıp
+  `.ics`'e çıkıyor mu, gerçek veritabanına dokunuluyor mu. Başarısızsa SHA256 ve
+  attestation üretilmeden durur.
+- Test sayısı 623 → 775.
 
 ## [1.5.0] - 2026-09-30
 

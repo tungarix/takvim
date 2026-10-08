@@ -24,7 +24,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**623 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**775 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -62,7 +62,7 @@ yana olan farkı incele (`/security-review`), sonucu `guvenlik/incelemeler/vX.Y.
 olarak yaz ve commit et (sıra ve biçim: `guvenlik/incelemeler/README.md`) → etiket at
 (`git tag vX.Y.Z && git push origin vX.Y.Z`) → workflow önce güvenlik kapısını
 (`scripts/guvenlik_kapisi.py`) çalıştırır: kayıt yoksa, sonuç `geçti` değilse ya da
-incelemeden sonra kod değiştiyse sürüm durur → testleri çalıştırıp `.exe`'yi derler, SHA256 + build provenance
+incelemeden sonra kod değiştiyse sürüm durur → testleri çalıştırıp `.exe`'yi derler, exe'yi duman testinden geçirir (`scripts/exe_duman.py`, kural 82), SHA256 + build provenance
 attestation üretir → taslak (draft) bir release açar (exe + `SHA256SUMS.txt`
 ekli) → notları elle yaz → yayımla. `workflow_dispatch` ile de tetiklenebilir,
 o zaman release AÇMAZ, yalnızca artifact yükler (deneme/doğrulama içindir).
@@ -590,6 +590,49 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     başlangıca bakmak, 40 gün süren bir etkinliğin kaydını silip her gün aynı
     bildirimi getirirdi. `run_forever` budamayı başta bir kez, sonra günde bir
     yapar (`_temizlik`); hatası döngüyü öldürmez.
+
+### Bozuk veritabanı, arama, sürüm duman testi
+
+79. **`yedek_al` bozuk veritabanından yedek ALMAZ** (`_bozukluk` en başta).
+    Günde tek dosya olduğu için bozuk kopya o sabahın SAĞLAM yedeğinin üstüne
+    yazılıyordu, budama da birkaç gün içinde eski sağlamları siliyordu. Paketli
+    exe'de ölçüldü: bozuk ama açılabilen dosyayla uygulama hiçbir şey demeden
+    açılıp bugünkü yedeği bozuyordu. "Şimdi yedekle" bu durumda "disk sorunu"
+    değil `veritabani_bozuk` kodunu döndürür.
+80. **Açılışta bozukluk `Repo.open`'DAN ÖNCE, salt okunur denetlenir**
+    (`ui/kurtarma.py::bozuksa_kurtar`): açılış migration çalıştırıp hemen yedek
+    alıyor, ikisi de bozuk dosyaya dokunmamalı. Kurallar, hepsinin testi
+    (`tests/test_bozuk_veritabani.py`) mutasyonla doğrulandı:
+    - **Kilit bozukluk SAYILMAZ** (`OperationalError` → None). Arka plan kopyası
+      yazarken sağlam dosyayı kenara almak verinin yarısını yedekte bırakırdı.
+    - **Soru yalnızca pencereli açılışta.** `--no-browser` (otomatik başlatma)
+      kullanıcının karşısında olmayabilir: hiçbir şeye dokunmadan, kısayoldan
+      açmasını söyleyen bir hatayla durur.
+    - **Bozuk dosya SİLİNMEZ**, `bozuk-takvim-<zaman>.db` olarak kenara alınır
+      (yedekten sonra girilmiş veri içinde olabilir). `-journal`/`-wal`/`-shm`
+      eşleri de taşınır: yerinde kalan sıcak günlük yeni dosyaya "geri alma"
+      diye uygulanıp onu bozardı.
+    - **Yedek önce geçici ada kopyalanıp yeniden doğrulanır**, bozuğa ancak
+      sonra dokunulur. En yeni yedeğe körü körüne güvenilmez
+      (`son_saglam_yedek` her adayı denetler): bu koruma gelmeden önceki
+      sürümler bozuk kopyayı yedeklemiş olabilir.
+    - Diyaloglar tkinter (`takvim.spec` hiddenimports; pencere henüz yok,
+      WebView2'ye dayanılamaz). Testlerde `sor`/`bildir` dışarıdan veriliyor.
+81. **Arama görevleri de döndürür** (`/api/search` → `tasks`, `Repo.search_tasks`,
+    `_arama_anahtari` ile aynı katlama). `results` (etkinlikler) eski sözleşme,
+    değişmedi. Saat planlı görevin BLOĞU etkinlik sonuçlarından ayıklanır, yoksa
+    aynı şey iki kez listelenirdi. Ön yüz bugünün görevine "Bugün" etiketini
+    KENDİSİ ekler: `gorevMeta` bugünü yazmıyor (listede grup başlığı var), aramada
+    boş kalıp "Plansız" sanılıyordu (önizlemede elle görüldü, testi var).
+82. **Release, derlenen exe'yi `scripts/exe_duman.py` ile çalıştırır**, SHA256 ve
+    attestation'dan ÖNCE: bozuk exe'ye özet üretilmesin. Geçici bir veritabanıyla
+    açıp sürümü (etiket = `ui/surum.py` = exe'nin bildirdiği), paketlenmiş arayüz
+    dosyalarını, şemayı, açılış yedeğini, yazma + `.ics` dışa aktarmayı ve
+    gerçek `%LOCALAPPDATA%\Takvim\takvim.db`'ye dokunulmadığını sınar. Tek
+    dosyalık exe önyükleyici + asıl süreç: kapatırken `taskkill /T` (yalnızca
+    önyükleyiciyi öldürmek portu açık bırakır). Ayarlar kutusundaki günlük yolu
+    (`ui/server.py::gunluk_yolu`) `takvim_app._gunluk_yolu` ile aynı olmalı (testi
+    var); oradan import edilmiyor, çünkü `takvim_app` günlüğü `ui`'den önce bağlıyor.
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
