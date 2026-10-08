@@ -7,6 +7,8 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.6.0] - 2026-10-08
+
 ### Eklendi
 - **Bozuk veritabanından kurtarma**: açılışta veritabanı bozuk çıkarsa Takvim en son
   sağlam yedeği bulup "bu yedeğe dönülsün mü?" diye soruyor. Evet: bozuk dosya

@@ -48,7 +48,7 @@ they were built locally, before this workflow existed.
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1.5.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
+**Durum:** v1.6.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
 `Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 ---
@@ -708,6 +708,21 @@ v1 sonrası eklenenler (kapsamı büyütmeden, konfor + güvenlik):
 
 Hâlâ bilinçli olarak yapılmayanlar: kendi sağ tık menüsü, bildirimde kendi
 uygulama adı (PowerShell AUMID'i ödünç alınıyor; kaydı sistem değişikliği).
+
+### v1.6.0: Güvenilirlik
+
+Yeni kapsam değil, var olanı sağlamlaştırma:
+
+- **Bozuk veritabanı:** bozuk ama açılabilen bir dosyada günlük yedek o sabahın
+  sağlam yedeğini eziyordu (paketli exe'de ölçüldü). Artık bozuk veritabanından
+  yedek alınmıyor; açılışta "son sağlam yedeğe dönülsün mü?" soruluyor, bozuk
+  dosya silinmeden kenara alınıyor (AGENTS 79-80).
+- **Arama görevleri de buluyor**; saat planlı görev iki kez listelenmiyor.
+- **Ayarlar günlük dosyasının yerini gösteriyor** (hata bildirim formu istiyor).
+- **Release derlenen exe'yi çalıştırıp sınıyor** (`scripts/exe_duman.py`) ve
+  güvenlik incelemesi kaydı olmadan derlemiyor (`guvenlik/incelemeler/`).
+- Yedekten dönüşte şema güncelleniyor, `Host` başlığı denetleniyor (DNS
+  rebinding), hatırlatıcı dili Ayarlar'dan hemen değişiyor (AGENTS 75-78).
 
 ### v1.5.0: Görevler
 
