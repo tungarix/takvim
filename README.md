@@ -21,7 +21,7 @@ no sign-up, no sync.
 - **"Windows protected your PC" warning:** the `.exe` isn't code-signed, so SmartScreen warns on first run. Click **More info**, then **Run anyway** — it only appears once.
 - **Interface language:** the UI is fully Turkish or fully English, switched from **⚙ Settings → Language** (saved, page reloads). Default is Turkish.
 - **Tasks:** a to-do list in the sidebar. Plan a task for a day (no time) or for specific hours; a timed task becomes a block on the calendar grid. Drag a task from the list onto the grid, check it off in the list or on its block. The quick-add box also takes a `görev:` prefix (Turkish, like the rest of quick add). Tasks are exported and imported as `.ics` VTODO.
-- **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept.
+- **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept. If the file ever gets damaged, Takvim offers on startup to go back to the latest healthy backup (the damaged file is set aside, not deleted).
 - **Known limitation:** the quick-add box always expects a Turkish sentence (e.g. "yarın 14:00 diş hekimi"), even in English mode — its parser only understands Turkish grammar; the placeholder text shows the expected format.
 - **License:** [MIT](LICENSE).
 - **Found a bug or have a suggestion?** Please open an [issue](https://github.com/tungarix/takvim/issues).
@@ -244,8 +244,11 @@ olmayabileceği (Program Files) için orada değil.
 
 **Yedek kendiliğinden alınıyor:** her açılışta veritabanının gerçek bir kopyası
 `%LOCALAPPDATA%\Takvim\yedek\takvim-YYYY-AA-GG.db` olarak yazılıyor ve son 7 gün
-saklanıyor. Bir şey ters giderse uygulamayı kapat, bozulan `takvim.db` dosyasını
-bir kenara al, yedeklerden birini `takvim.db` adıyla kopyala.
+saklanıyor. Veritabanı bozuksa yedek alınmıyor (sağlam yedeklerin üstüne
+yazılmasın diye). Takvim açılırken bozukluğu fark ederse en son sağlam yedeğe
+dönmeyi önerir: bozuk dosya silinmez, aynı klasörde `bozuk-takvim-<zaman>.db`
+olarak kenara alınır. Belirli bir güne dönmek istersen kenar çubuğundaki **Yedekler**
+penceresini kullan.
 
 **Dışa aktar** bir yedek DEĞİL, dışa aktarmadır: ürettiği `.ics` başka takvim
 uygulamalarında açılır ama hatırlatıcıları ve hangi etkinliğin hangi takvime ait
