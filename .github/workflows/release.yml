@@ -43,6 +43,15 @@ jobs:
       - name: .exe derle
         run: python -m PyInstaller takvim.spec --noconfirm --clean
 
+      # Testler kaynağı sınıyor, kullanıcıya giden ise exe. Paketlemede unutulan
+      # bir veri dosyası (AGENTS 27) ya da yükseltilmeyen sürüm numarası ancak
+      # exe çalışınca görünür. Bozuk exe'ye özet/attestation üretilmesin diye
+      # bu adım onlardan ÖNCE. Etiket yalnızca etiketli çalıştırmada verilir.
+      - name: .exe duman testi
+        env:
+          ETIKET: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: python scripts/exe_duman.py --exe dist/Takvim.exe
+
       - name: SHA256 hesapla
         shell: pwsh
         run: |
