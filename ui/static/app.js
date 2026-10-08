@@ -2183,8 +2183,9 @@ async function aramaYap(anahtar) {
   }
   try {
     const sonuc = await istek(`/api/search?q=${encodeURIComponent(anahtar)}`);
+    const gorevler = sonuc.tasks || [];
     liste.innerHTML = "";
-    if (!sonuc.results.length) {
+    if (!sonuc.results.length && !gorevler.length) {
       liste.innerHTML = `<li class="arama-bos">${kacir(t("sonuc_yok"))}</li>`;
     }
     sonuc.results.forEach((ev) => {
@@ -2206,6 +2207,32 @@ async function aramaYap(anahtar) {
         durum.anchor = new Intl.DateTimeFormat("en-CA", { timeZone: ev.tzid })
           .format(new Date(ev.startUtc));
         yukle();
+      };
+      li.appendChild(dugme);
+      liste.appendChild(li);
+    });
+    // Görevler etkinliklerden sonra; tarih metni görev listesindekiyle aynı
+    // yardımcıdan (gorevMeta), iki yerde ayrı biçim olmasın.
+    const bugun = durum.gorevler ? durum.gorevler.today : bugunISO();
+    gorevler.forEach((g) => {
+      const takvim = g.calendarId ? durum.veri.calendars.find((c) => c.id === g.calendarId) : null;
+      const li = document.createElement("li");
+      const dugme = document.createElement("button");
+      dugme.type = "button";
+      dugme.className = "arama-satir arama-gorev" + (g.done ? " bitti" : "");
+      dugme.style.borderLeftColor = takvim ? takvim.color : "#6b7280";
+      dugme.innerHTML =
+        `<div>${g.done ? "☑" : "☐"} ${kacir(g.title)}</div>` +
+        `<div class="a-tarih">${kacir(gorevMeta(g, bugun) || t("g_plansiz"))}</div>`;
+      // Tarihli görevde o güne git (etkinlik sonucuyla aynı); plansız görevin
+      // gidilecek günü yok, formu açılır.
+      dugme.onclick = () => {
+        if (g.day) {
+          durum.anchor = g.day;
+          yukle();
+        } else {
+          gorevFormuAc(g);
+        }
       };
       li.appendChild(dugme);
       liste.appendChild(li);

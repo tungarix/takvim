@@ -763,6 +763,8 @@ html, body {
 }
 .arama-satir:hover { background: var(--yuzey-2); }
 .arama-satir .a-tarih { font-size: 11px; color: var(--metin-silik); }
+/* Tamamlanmış görev aramada da listedeki gibi soluk ve çizili. */
+.arama-gorev.bitti > div:first-child { text-decoration: line-through; color: var(--metin-silik); }
 .arama-bos { font-size: 12px; color: var(--metin-silik); padding: 4px 8px; }
 
 kbd {

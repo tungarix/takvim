@@ -618,7 +618,15 @@ class _Handler(BaseHTTPRequestHandler):
             if yol == "/api/search":
                 anahtar = (sorgu.get("q") or [""])[0]
                 bulunan = self.repo.search_events(anahtar)
-                self._json({"query": anahtar, "results": [_event_ozet(e) for e in bulunan]})
+                # Saat planlı görevin bloğu da bir etkinlik ve adı görevle aynı
+                # (AGENTS 69): ayıklanmazsa aynı şey iki kez listelenirdi. Görev
+                # olarak gösteriliyor, çünkü onay kutusu ve plan bilgisi orada.
+                bloklar = self.repo.tasks_by_event([e.id for e in bulunan if e.id is not None])
+                self._json({
+                    "query": anahtar,
+                    "results": [_event_ozet(e) for e in bulunan if e.id not in bloklar],
+                    "tasks": [self._gorev_yaniti(g) for g in self.repo.search_tasks(anahtar)],
+                })
                 return
 
             if yol == "/api/export":

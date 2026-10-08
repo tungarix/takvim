@@ -1099,6 +1099,25 @@ class Repo:
         row = self.conn.execute("SELECT * FROM tasks WHERE uid = ?", (uid,)).fetchone()
         return _row_to_task(row) if row else None
 
+    def search_tasks(self, sorgu: str, *, limit: int = 50) -> list[Task]:
+        """Başlığında ya da notunda geçen görevler, eklenme sırasıyla.
+
+        `search_events` ile AYNI hoşgörülü eşleştirme (`_arama_anahtari`, AGENTS
+        20): "ALGORITMA" yazan "Algoritma ödevi" görevini de bulmalı. Tamamlanmış
+        görevler de dahil; "geçen hafta o raporu bitirmiş miydim" de bir arama.
+        """
+        anahtar = _arama_anahtari(sorgu).strip()
+        if not anahtar:
+            return []
+        bulunan: list[Task] = []
+        for gorev in self.list_tasks():
+            havuz = " ".join(p for p in (gorev.title, gorev.notes) if p)
+            if anahtar in _arama_anahtari(havuz):
+                bulunan.append(gorev)
+                if len(bulunan) >= limit:
+                    break
+        return bulunan
+
     def list_tasks(self) -> list[Task]:
         """Tüm görevler, eklenme sırasıyla. Sıralama/gruplama arayüzün işi."""
         rows = self.conn.execute("SELECT * FROM tasks ORDER BY id")

@@ -806,3 +806,43 @@ def test_gorev_blogu_kopyalanamaz(page, sunucu):
 
     assert page.locator(".blok.gorev-blok").count() == 1, "kesme bloğu silmemeli"
     assert page.evaluate("fetch('/api/tasks').then(r => r.json())")["tasks"][0]["plan"] == "saat"
+
+
+def test_arama_plansiz_gorevi_bulur_ve_formunu_acar(page, sunucu):
+    """Arama görevleri de bulur; plansız görevin gidilecek günü yok, formu açılır."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-hizli-girdi")
+    page.fill("#gorev-hizli-girdi", "Kira dekontu")
+    page.press("#gorev-hizli-girdi", "Enter")
+    page.wait_for_selector(".gorev-satir:has-text('Kira dekontu')")
+
+    page.click("#arama-ac-dugme")
+    page.fill("#arama", "kira")
+    sonuc = page.locator(".arama-gorev:has-text('Kira dekontu')")
+    sonuc.wait_for()
+    assert "Plansız" in sonuc.inner_text()
+
+    sonuc.click()
+    page.wait_for_selector("#modal-baslik:not(:has-text('Yeni görev'))")
+    assert page.locator("#modal-alanlar label", has_text="Başlık").locator("input").input_value() == "Kira dekontu"
+
+
+def test_arama_tarihli_gorevde_o_gune_gider(page, sunucu):
+    """Gün planlı görevin sonucu, etkinlik sonucu gibi o tarihe götürür."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    hedef = page.evaluate("tarihKaydir(durum.anchor, 21)")  # üç hafta sonrası
+    page.click("#gorev-ekle")
+    alan = lambda ad: page.locator("#modal-alanlar label", has_text=ad)
+    alan("Başlık").locator("input").fill("Vize kaydı")
+    alan("Ne zaman?").locator("select").select_option("gun")
+    alan("Tarih").locator("input").fill(hedef)
+    page.click("#modal-tamam")
+    page.wait_for_selector("#perde", state="hidden")
+
+    page.click("#arama-ac-dugme")
+    page.fill("#arama", "vize")
+    sonuc = page.locator(".arama-gorev:has-text('Vize kaydı')")
+    sonuc.wait_for()
+    sonuc.click()
+    page.wait_for_function(f"durum.anchor === '{hedef}'")
