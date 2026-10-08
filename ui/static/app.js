@@ -2221,9 +2221,16 @@ async function aramaYap(anahtar) {
       dugme.type = "button";
       dugme.className = "arama-satir arama-gorev" + (g.done ? " bitti" : "");
       dugme.style.borderLeftColor = takvim ? takvim.color : "#6b7280";
+      // gorevMeta bugünün tarihini yazmıyor (listede "Bugün" grup başlığı var);
+      // aramada başlık yok, "Bugün"ü burada eklemezsek boş kalıp "Plansız"
+      // sanılıyordu.
+      const meta = gorevMeta(g, bugun);
+      const yer = !g.day ? t("g_plansiz")
+        : g.day === bugun ? [t("g_bugun"), meta].filter(Boolean).join(" · ")
+        : meta;
       dugme.innerHTML =
         `<div>${g.done ? "☑" : "☐"} ${kacir(g.title)}</div>` +
-        `<div class="a-tarih">${kacir(gorevMeta(g, bugun) || t("g_plansiz"))}</div>`;
+        `<div class="a-tarih">${kacir(yer)}</div>`;
       // Tarihli görevde o güne git (etkinlik sonucuyla aynı); plansız görevin
       // gidilecek günü yok, formu açılır.
       dugme.onclick = () => {
@@ -2374,8 +2381,11 @@ async function ayarlariAc() {
   }
   // Ürün adı + sürüm dile göre değişmiyor (i18n.js: ürün adı kapsam dışı).
   const surum = mevcut.surum ? `\n\nTakvim v${mevcut.surum}` : "";
+  // Hata bildirim formu günlük dosyasını istiyor; yeri burada görünmezse
+  // kullanıcı onu bulamıyordu. Yalnızca dosya varsa (paketli exe) geliyor.
+  const gunluk = mevcut.gunluk ? `\n${t("gunluk_yeri", { yol: mevcut.gunluk })}` : "";
   const s = await modalForm(t("ayarlar_baslik"),
-    t("ayarlar_metin") + surum,
+    t("ayarlar_metin") + surum + gunluk,
     [
       {
         ad: "tepsi",

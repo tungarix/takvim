@@ -846,3 +846,21 @@ def test_arama_tarihli_gorevde_o_gune_gider(page, sunucu):
     sonuc.wait_for()
     sonuc.click()
     page.wait_for_function(f"durum.anchor === '{hedef}'")
+
+
+def test_arama_bugune_planli_gorevi_plansiz_gostermez(page, sunucu):
+    """Liste "Bugün" başlığıyla gösteriyor; aramada başlık yok, etiketi kendisi taşımalı."""
+    page.goto(sunucu)
+    page.wait_for_selector("#gorev-ekle")
+    bugun = page.evaluate("fetch('/api/tasks').then(r => r.json()).then(v => v.today)")
+    page.evaluate(
+        "g => fetch('/api/tasks', {method: 'POST', headers: {'Content-Type': 'application/json'},"
+        " body: JSON.stringify(g)})",
+        {"title": "Fatura öde", "plan": "gun", "date": bugun},
+    )
+    page.click("#arama-ac-dugme")
+    page.fill("#arama", "fatura")
+    sonuc = page.locator(".arama-gorev:has-text('Fatura öde')")
+    sonuc.wait_for()
+    metin = sonuc.inner_text()
+    assert "Bugün" in metin and "Plansız" not in metin

@@ -1566,8 +1566,22 @@ def _ayar_durumu(db_yolu) -> dict:
         oto_gercek = bool(otomatik.kurulu_mu())
     except OSError:
         oto_gercek = False
+    # Günlük yalnızca paketli exe'de yazılıyor; geliştirirken dosya yok ve
+    # olmayan bir yolu göstermek kullanıcıyı boş yere aratırdı.
+    gunluk = gunluk_yolu()
     return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil,
-            "surum": SURUM}
+            "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
+
+
+def gunluk_yolu() -> Path:
+    """Paketli exe'nin günlük dosyası.
+
+    `takvim_app._gunluk_yolu` ile AYNI yer (testi var). Oradan import
+    edilmiyor: `takvim_app` günlüğü `ui`'yi import etmeden ÖNCE bağlıyor ki
+    `ui` açılırken çıkan hata da dosyaya düşsün. Hata bildirim formu bu dosyayı
+    istiyor; kullanıcı yerini Ayarlar kutusunda görsün diye burada.
+    """
+    return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Takvim" / "takvim.log"
 
 
 def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,
