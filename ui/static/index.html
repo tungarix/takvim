@@ -87,6 +87,11 @@
 
     <div id="arama-bolum" class="arama-bolum" hidden>
       <h2 class="kenar-baslik"><span class="kb-metin" data-i18n="arama_sonuclari">Arama sonuçları</span></h2>
+      <div class="arama-filtre" id="arama-filtre" role="group" aria-label="Görev durumu filtresi" data-i18n-aria="arama_gorev_filtre_aria">
+        <button type="button" class="arama-filtre-dugme" data-gorev="hepsi" aria-pressed="true" data-i18n="arama_gorev_hepsi">Tüm görevler</button>
+        <button type="button" class="arama-filtre-dugme" data-gorev="acik" aria-pressed="false" data-i18n="arama_gorev_acik">Açık</button>
+        <button type="button" class="arama-filtre-dugme" data-gorev="biten" aria-pressed="false" data-i18n="g_tamamlanan">Tamamlanan</button>
+      </div>
       <ul id="arama-listesi" class="arama-listesi"></ul>
     </div>
 

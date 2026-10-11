@@ -766,6 +766,19 @@ html, body {
 /* Tamamlanmış görev aramada da listedeki gibi soluk ve çizili. */
 .arama-gorev.bitti > div:first-child { text-decoration: line-through; color: var(--metin-silik); }
 .arama-bos { font-size: 12px; color: var(--metin-silik); padding: 4px 8px; }
+/* Görev durumu filtresi: küçük kenarlıklı düğmeler, basılı olan vurgu renginde. */
+.arama-filtre { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+.arama-filtre-dugme {
+  font: inherit;
+  font-size: 12px;
+  color: var(--metin-silik);
+  background: none;
+  border: 1px solid var(--metin-silik);
+  border-radius: var(--yaricap);
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.arama-filtre-dugme[aria-pressed="true"] { border-color: var(--vurgu); color: inherit; }
 
 kbd {
   background: var(--yuzey-2);

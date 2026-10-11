@@ -484,6 +484,9 @@ def _event_guncelle(conn: sqlite3.Connection, event: Event) -> None:
         raise LookupError(f"Etkinlik bulunamadı: id={event.id}")
 
 
+_GOREV_DURUMLARI = ("hepsi", "acik", "biten")
+
+
 class Repo:
     """Takvim veritabanı üzerinde CRUD ve aralık sorgusu."""
     def __init__(self, conn: sqlite3.Connection) -> None:
@@ -1099,18 +1102,26 @@ class Repo:
         row = self.conn.execute("SELECT * FROM tasks WHERE uid = ?", (uid,)).fetchone()
         return _row_to_task(row) if row else None
 
-    def search_tasks(self, sorgu: str, *, limit: int = 50) -> list[Task]:
+    def search_tasks(self, sorgu: str, *, limit: int = 50, durum: str = "hepsi") -> list[Task]:
         """Başlığında ya da notunda geçen görevler, eklenme sırasıyla.
 
         `search_events` ile AYNI hoşgörülü eşleştirme (`_arama_anahtari`, AGENTS
         20): "ALGORITMA" yazan "Algoritma ödevi" görevini de bulmalı. Tamamlanmış
         görevler de dahil; "geçen hafta o raporu bitirmiş miydim" de bir arama.
+        `durum` filtresi ("hepsi"/"acik"/"biten") eşleşmeden önce uygulanır.
         """
+        if durum not in _GOREV_DURUMLARI:
+            raise ValueError(f"bilinmeyen görev durumu: {durum!r}")
         anahtar = _arama_anahtari(sorgu).strip()
         if not anahtar:
             return []
         bulunan: list[Task] = []
         for gorev in self.list_tasks():
+            bitti = gorev.done_at is not None
+            if durum == "acik" and bitti:
+                continue
+            if durum == "biten" and not bitti:
+                continue
             havuz = " ".join(p for p in (gorev.title, gorev.notes) if p)
             if anahtar in _arama_anahtari(havuz):
                 bulunan.append(gorev)

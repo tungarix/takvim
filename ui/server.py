@@ -617,6 +617,9 @@ class _Handler(BaseHTTPRequestHandler):
 
             if yol == "/api/search":
                 anahtar = (sorgu.get("q") or [""])[0]
+                gorev_durum = (sorgu.get("gorev") or ["hepsi"])[0]
+                if gorev_durum not in ("hepsi", "acik", "biten"):
+                    gorev_durum = "hepsi"
                 bulunan = self.repo.search_events(anahtar)
                 # Saat planlı görevin bloğu da bir etkinlik ve adı görevle aynı
                 # (AGENTS 69): ayıklanmazsa aynı şey iki kez listelenirdi. Görev
@@ -625,7 +628,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json({
                     "query": anahtar,
                     "results": [_event_ozet(e) for e in bulunan if e.id not in bloklar],
-                    "tasks": [self._gorev_yaniti(g) for g in self.repo.search_tasks(anahtar)],
+                    "tasks": [self._gorev_yaniti(g) for g in self.repo.search_tasks(anahtar, durum=gorev_durum)],
                 })
                 return
 

@@ -2168,6 +2168,7 @@ async function cakismaOnayiVeKaydet(onizleme, cakisma, girdi) {
 /* ---------- arama ---------- */
 
 let aramaZaman = null;
+let aramaGorevFiltre = "hepsi";
 el("arama").oninput = (e) => {
   const anahtar = e.target.value.trim();
   clearTimeout(aramaZaman);
@@ -2182,7 +2183,7 @@ async function aramaYap(anahtar) {
     return;
   }
   try {
-    const sonuc = await istek(`/api/search?q=${encodeURIComponent(anahtar)}`);
+    const sonuc = await istek(`/api/search?q=${encodeURIComponent(anahtar)}&gorev=${aramaGorevFiltre}`);
     const gorevler = sonuc.tasks || [];
     liste.innerHTML = "";
     if (!sonuc.results.length && !gorevler.length) {
@@ -2249,6 +2250,16 @@ async function aramaYap(anahtar) {
     bildir(hata.message, true);
   }
 }
+
+document.querySelectorAll(".arama-filtre-dugme").forEach((dugme) => {
+  dugme.onclick = () => {
+    aramaGorevFiltre = dugme.dataset.gorev;
+    document.querySelectorAll(".arama-filtre-dugme").forEach((d) => {
+      d.setAttribute("aria-pressed", String(d === dugme));
+    });
+    aramaYap(el("arama").value.trim());
+  };
+});
 
 /* ---------- gezinme ---------- */
 
