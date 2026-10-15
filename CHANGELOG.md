@@ -7,6 +7,14 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.7.0] - 2026-10-15
+
+### Eklendi
+- **Aramada görev durum filtresi**: arama sonuçlarının altında "Tüm görevler / Açık /
+  Tamamlanan" düğmeleri var; yalnızca görev sonuçlarını süzer, etkinlik sonuçları
+  değişmez. Sunucu tarafı `GET /api/search?q=...&gorev=hepsi|acik|biten`; bilinmeyen
+  değer sessizce `hepsi` sayılır. Türkçe ve İngilizce metinler eklendi.
+
 ## [1.6.0] - 2026-10-08
 
 ### Eklendi
