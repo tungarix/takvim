@@ -27,7 +27,7 @@ def seed(repo: Repo, anchor: date | None = None) -> None:
     anchor = anchor or date.today()
     pazartesi = anchor - timedelta(days=anchor.weekday())
 
-    ders = repo.add_calendar("Ders", "#e0524a")
+    ders = repo.add_calendar("Ders", "#a78bfa")  # vurgu (#ff563c) ile karışmasın diye kırmızı değil
     kisisel = repo.add_calendar("Kişisel", "#3b82f6")
     aktenak = repo.add_calendar("Aktenak", "#10b981")
     repo.add_calendar("Arşiv", "#6b7280", visible=False)

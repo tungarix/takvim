@@ -10,9 +10,9 @@
 
 <header class="ust-cubuk">
   <nav class="gezinme">
-    <button id="onceki" class="ikon-dugme" title="Önceki (←)" aria-label="Önceki" data-i18n-title="onceki_title" data-i18n-aria="onceki">‹</button>
+    <button id="onceki" class="ikon-dugme" title="Önceki (←)" aria-label="Önceki" data-i18n-title="onceki_title" data-i18n-aria="onceki"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
     <button id="bugun" class="dugme" data-i18n="bugun">Bugün</button>
-    <button id="sonraki" class="ikon-dugme" title="Sonraki (→)" aria-label="Sonraki" data-i18n-title="sonraki_title" data-i18n-aria="sonraki">›</button>
+    <button id="sonraki" class="ikon-dugme" title="Sonraki (→)" aria-label="Sonraki" data-i18n-title="sonraki_title" data-i18n-aria="sonraki"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
   </nav>
 
   <h1 id="baslik" class="hafta-etiketi">—</h1>
@@ -25,16 +25,16 @@
     <input id="hizli-girdi" class="hizli-girdi" type="text"
            placeholder="Hızlı ekle: yarın 14:00 diş hekimi" aria-label="Hızlı ekleme"
            data-i18n-ph="hizli_ph" data-i18n-aria="hizli_aria">
-    <button type="submit" class="hizli-dugme" title="Ekle" aria-label="Ekle" data-i18n-title="ekle_title" data-i18n-aria="ekle_title">+</button>
+    <button type="submit" class="hizli-dugme" title="Ekle" aria-label="Ekle" data-i18n-title="ekle_title" data-i18n-aria="ekle_title"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
   </form>
   <!-- < 1040px: kutu sığmıyor, düğme bir soru kutusu açıyor (app.js). -->
   <!-- `hidden` YOK: [hidden]{display:none!important} (bkz. style.css) medya
        sorgusunun display:inline-flex'ini ezerdi. Varsayılan gizlilik CSS'te. -->
   <button type="button" id="hizli-ac-dugme" class="ikon-dugme" title="Yeni etkinlik ekle"
-          aria-label="Yeni etkinlik ekle" data-i18n-title="yeni_etkinlik_ekle" data-i18n-aria="yeni_etkinlik_ekle">+</button>
+          aria-label="Yeni etkinlik ekle" data-i18n-title="yeni_etkinlik_ekle" data-i18n-aria="yeni_etkinlik_ekle"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
 
   <button type="button" id="arama-ac-dugme" class="ikon-dugme" title="Ara (üstten şerit açılır)"
-          aria-label="Ara" data-i18n-title="ara_title" data-i18n-aria="ara_aria">⌕</button>
+          aria-label="Ara" data-i18n-title="ara_title" data-i18n-aria="ara_aria"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></button>
 
   <div class="gorunum-anahtari" role="group" aria-label="Görünüm" data-i18n-aria="gorunum_aria">
     <button class="gorunum-dugme" data-gorunum="day" data-i18n="gun">Gün</button>
@@ -60,8 +60,8 @@
       <div class="mt-baslik">
         <span id="mt-ay-adi" class="mt-ay-adi"></span>
         <div class="mt-nav">
-          <button type="button" id="mt-onceki" class="mt-ok" aria-label="Önceki ay" data-i18n-aria="onceki_ay">‹</button>
-          <button type="button" id="mt-sonraki" class="mt-ok" aria-label="Sonraki ay" data-i18n-aria="sonraki_ay">›</button>
+          <button type="button" id="mt-onceki" class="mt-ok" aria-label="Önceki ay" data-i18n-aria="onceki_ay"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <button type="button" id="mt-sonraki" class="mt-ok" aria-label="Sonraki ay" data-i18n-aria="sonraki_ay"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
         </div>
       </div>
       <div class="mt-gunler" id="mt-gunler"></div>
@@ -69,14 +69,14 @@
 
     <h2 class="kenar-baslik">
       <span class="kb-metin" data-i18n="takvimler">Takvimler</span>
-      <button type="button" id="takvim-ekle" class="kenar-ekle" title="Yeni takvim" data-i18n-title="yeni_takvim_title">+</button>
+      <button type="button" id="takvim-ekle" class="kenar-ekle" title="Yeni takvim" data-i18n-title="yeni_takvim_title"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
     </h2>
     <ul id="takvim-listesi" class="takvim-listesi"></ul>
 
     <div id="gorev-bolum" class="gorev-bolum">
       <h2 class="kenar-baslik" id="gorev-baslik">
         <span class="kb-metin" data-i18n="gorevler">Görevler</span>
-        <button type="button" id="gorev-ekle" class="kenar-ekle" title="Yeni görev" data-i18n-title="yeni_gorev_title">+</button>
+        <button type="button" id="gorev-ekle" class="kenar-ekle" title="Yeni görev" data-i18n-title="yeni_gorev_title"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
       </h2>
       <form id="gorev-hizli-form" class="gorev-hizli" autocomplete="off">
         <input id="gorev-hizli-girdi" type="text" placeholder="Görev ekle…" aria-label="Görev ekle"
@@ -108,17 +108,17 @@
 
     <div class="kenar-eylemler">
       <button type="button" id="ice-aktar" class="kenar-eylem" title=".ics dosyasından içe aktar (önizlemeli)" data-i18n-title="ice_aktar_title">
-        <span class="ke-ikon">⇩</span><span class="ke-metin" data-i18n="ice_aktar_btn">İçe aktar</span>
+        <span class="ke-ikon"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg></span><span class="ke-metin" data-i18n="ice_aktar_btn">İçe aktar</span>
       </button>
       <input type="file" id="ice-aktar-dosya" accept=".ics,text/calendar" hidden>
       <button type="button" id="disa-aktar" class="kenar-eylem" title="Tüm takvimi .ics olarak indir" data-i18n-title="disa_aktar_title">
-        <span class="ke-ikon">⇧</span><span class="ke-metin" data-i18n="disa_aktar_btn">Dışa aktar</span>
+        <span class="ke-ikon"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></span><span class="ke-metin" data-i18n="disa_aktar_btn">Dışa aktar</span>
       </button>
       <button type="button" id="yedekler" class="kenar-eylem" title="Otomatik yedekleri listele ve geri yükle" data-i18n-title="yedekler_title">
-        <span class="ke-ikon">↺</span><span class="ke-metin" data-i18n="yedekler_btn">Yedekler</span>
+        <span class="ke-ikon"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></span><span class="ke-metin" data-i18n="yedekler_btn">Yedekler</span>
       </button>
       <button type="button" id="ayarlar" class="kenar-eylem" title="Ayarlar" data-i18n-title="ayarlar_title">
-        <span class="ke-ikon">⚙</span><span class="ke-metin" data-i18n="ayarlar_btn">Ayarlar</span>
+        <span class="ke-ikon"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></span><span class="ke-metin" data-i18n="ayarlar_btn">Ayarlar</span>
       </button>
     </div>
 
@@ -176,7 +176,7 @@
   </main>
 
   <aside class="panel" id="panel" hidden>
-    <button class="panel-kapat" id="panel-kapat" aria-label="Kapat" data-i18n-aria="panel_kapat">×</button>
+    <button class="panel-kapat" id="panel-kapat" aria-label="Kapat" data-i18n-aria="panel_kapat"><svg class="ikon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     <div class="panel-icerik" id="panel-icerik"></div>
     <div class="panel-islemler" id="panel-islemler"></div>
   </aside>

@@ -43,8 +43,8 @@
   --bosluk-6: 32px;
   --bosluk-7: 48px;
 
-  --dugme-yukseklik: 32px;
-  --girdi-yukseklik: 32px;
+  --dugme-yukseklik: 36px;
+  --girdi-yukseklik: 36px;
   --yaricap: 6px;
 
   --saat-genislik: 64px;
@@ -141,7 +141,7 @@ html, body {
   font-size: 13px;
   cursor: pointer;
 }
-.ikon-dugme { width: var(--dugme-yukseklik); padding: 0; font-size: 16px; line-height: 1; }
+.ikon-dugme { width: var(--dugme-yukseklik); padding: 0; font-size: 13px; line-height: 1; }
 .dugme:hover, .ikon-dugme:hover { background: var(--yuzey-3); border-color: var(--cizgi); }
 .dugme:active, .ikon-dugme:active { transform: translateY(1px); }
 
@@ -150,7 +150,7 @@ html, body {
    başlığı gerekirse '…' ile kısalır, asla sarmaz"). */
 .hafta-etiketi {
   margin: 0;
-  font-size: 15px;
+  font-size: 20px;
   font-weight: 550;
   white-space: nowrap;
   overflow: hidden;
@@ -185,7 +185,7 @@ html, body {
   gap: var(--bosluk-2);
   font-weight: 650;
   letter-spacing: .2px;
-  font-size: 15px;
+  font-size: 13px;
   flex: none;
 }
 .km-ikon {
@@ -209,7 +209,7 @@ html, body {
   margin-bottom: var(--bosluk-2);
 }
 .mt-ay-adi {
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
   text-transform: capitalize;
 }
@@ -232,7 +232,7 @@ html, body {
   gap: 1px;
 }
 .mt-gun-adi {
-  font-size: 9px;
+  font-size: 11px;
   text-align: center;
   color: var(--metin-silik);
   text-transform: uppercase;
@@ -275,7 +275,7 @@ html, body {
   user-select: none;
 }
 .takvim-satir:hover { background: var(--yuzey-2); }
-.takvim-satir.gizli { opacity: .42; }
+.takvim-satir.gizli .takvim-ad { color: var(--metin-silik); }
 
 .renk-kutu {
   width: 11px; height: 11px;
@@ -306,11 +306,15 @@ html, body {
 .takvim-dugme:hover { opacity: 1; background: var(--yuzey-2); color: var(--metin); }
 
 .kenar-baslik { display: flex; align-items: center; justify-content: space-between; }
+/* Başlık kendi listesine (4px) gruplar arasından (16px gap + 8px) daha yakın: yakınlık kuralı. */
+.kenar > .kenar-baslik { margin: var(--bosluk-2) 0 calc(var(--bosluk-1) - var(--bosluk-4)); }
+/* Tek ikon seti (Lucide çizgileri, inline SVG): Unicode karakterler yazı tipine göre farklı çiziliyordu. */
+.ikon-svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
 .kenar-ekle {
   background: none;
   border: none;
   color: var(--metin-soluk);
-  font-size: 16px;
+  font-size: 13px;
   line-height: 1;
   padding: 0 4px;
   border-radius: var(--yaricap);
@@ -318,7 +322,7 @@ html, body {
 }
 .kenar-ekle:hover { background: var(--yuzey-2); color: var(--metin); }
 
-.ipucu { margin: 0; font-size: 12px; color: var(--metin-silik); line-height: 1.5; flex: none; }
+.ipucu { margin: 0; font-size: 11px; color: var(--metin-silik); line-height: 1.5; flex: none; }
 
 /* Takvimler/arama/ipucu ile alttaki eylemler arasındaki boşluğu dolduruyor;
    sonuç: İçe aktar/Dışa aktar/Yedekler/Ayarlar + saat dilimi HER ZAMAN
@@ -347,13 +351,13 @@ html, body {
   cursor: pointer;
 }
 .kenar-eylem:hover { background: var(--yuzey-2); color: var(--metin); }
-.ke-ikon { flex: none; width: 16px; text-align: center; font-size: 14px; }
+.ke-ikon { flex: none; width: 16px; display: inline-flex; }
 .ke-metin { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .kenar-altbilgi {
   flex: none;
   padding-top: var(--bosluk-2);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--metin-silik);
 }
 .tz-kisa { display: none; } /* yalnızca ray modunda görünür */
@@ -432,7 +436,7 @@ html, body {
   border-left: 1px solid var(--cizgi-soluk);
 }
 .gun-basligi .ad { font-size: 11px; color: var(--metin-soluk); text-transform: uppercase; letter-spacing: .6px; }
-.gun-basligi .sayi { font-size: 19px; font-weight: 550; margin-top: 2px; }
+.gun-basligi .sayi { font-size: 20px; font-weight: 550; margin-top: 2px; }
 .gun-basligi.bugun .sayi {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: var(--yaricap);
@@ -441,11 +445,12 @@ html, body {
 .gun-basligi.bugun .ad { color: var(--vurgu); }
 
 .tumgun-etiket {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--metin-silik);
   text-transform: uppercase;
   letter-spacing: .5px;
-  padding: 6px;
+  padding: 6px 8px 6px 0;
+  white-space: nowrap;
   display: flex; align-items: center; justify-content: flex-end;
 }
 
@@ -459,7 +464,7 @@ html, body {
 }
 
 .tumgun-blok {
-  font-size: 12px;
+  font-size: 13px;
   padding: 3px 7px;
   border-radius: var(--yaricap);
   cursor: pointer;
@@ -518,7 +523,7 @@ html, body {
   overflow: hidden;
   cursor: pointer;
   border-left: 3px solid;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.3;
   transition: filter .12s;
 }
@@ -532,7 +537,7 @@ html, body {
   white-space: nowrap;
 }
 .blok .b-saat { font-size: 11px; opacity: .8; }
-.blok .b-rozet { font-size: 10px; opacity: .85; }
+.blok .b-rozet { font-size: 11px; opacity: .85; }
 /* Yalnızca FERAH yakınlaştırmada gösteriliyor (aşağıdaki [data-yogunluk]);
    markup'ta hep var ki JS her zoom adımında bloğu yeniden kurmasın. */
 .blok .b-konum { display: none; font-size: 11px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -582,17 +587,17 @@ html, body {
   background: none;
   border: none;
   color: var(--metin-silik);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
 }
 .panel-kapat:hover { color: var(--metin); }
 
-.p-baslik { font-size: 17px; font-weight: 600; margin: 4px 40px 14px 0; }
+.p-baslik { font-size: 20px; font-weight: 600; margin: 4px 40px 14px 0; }
 
 .p-satir { display: flex; gap: 10px; padding: 7px 0; border-top: 1px solid var(--cizgi-soluk); }
 .p-satir:first-of-type { border-top: none; }
-.p-etiket { width: 74px; flex: none; color: var(--metin-silik); font-size: 12px; padding-top: 1px; }
+.p-etiket { width: 74px; flex: none; color: var(--metin-silik); font-size: 11px; padding-top: 1px; }
 .p-deger { flex: 1; font-size: 13px; word-break: break-word; }
 
 .p-takvim { display: inline-flex; align-items: center; gap: 7px; }
@@ -620,7 +625,7 @@ html, body {
   border: 1px solid var(--cizgi);
   border-radius: var(--yaricap);
   padding: 5px 14px;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--metin-soluk);
 }
 
@@ -667,7 +672,7 @@ html, body {
   display: grid;
   gap: var(--bosluk-2);
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--metin-soluk);
 }
 .bd-eylemler { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--bosluk-2); }
@@ -733,7 +738,7 @@ html, body {
   border-radius: var(--yaricap);
   color: var(--metin);
   font: inherit;
-  font-size: 17px;
+  font-size: 13px;
   line-height: 1;
   cursor: pointer;
 }
@@ -765,12 +770,12 @@ html, body {
 .arama-satir .a-tarih { font-size: 11px; color: var(--metin-silik); }
 /* Tamamlanmış görev aramada da listedeki gibi soluk ve çizili. */
 .arama-gorev.bitti > div:first-child { text-decoration: line-through; color: var(--metin-silik); }
-.arama-bos { font-size: 12px; color: var(--metin-silik); padding: 4px 8px; }
+.arama-bos { font-size: 11px; color: var(--metin-silik); padding: 4px 8px; }
 /* Görev durumu filtresi: küçük kenarlıklı düğmeler, basılı olan vurgu renginde. */
 .arama-filtre { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
 .arama-filtre-dugme {
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--metin-silik);
   background: none;
   border: 1px solid var(--metin-silik);
@@ -834,7 +839,7 @@ kbd {
 .ay-hucre.disarida .ay-gun-no { color: var(--metin-silik); }
 .ay-hucre.bugun { background: var(--bugun); }
 
-.ay-gun-no { font-size: 12px; color: var(--metin-soluk); padding: 1px 3px; }
+.ay-gun-no { font-size: 11px; color: var(--metin-soluk); padding: 1px 3px; }
 .ay-hucre.bugun .ay-gun-no {
   align-self: flex-start;
   background: var(--vurgu);
@@ -927,7 +932,7 @@ kbd {
   border-radius: var(--yaricap);
   color: var(--vurgu-ink);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 10px;
   cursor: pointer;
 }
@@ -1000,7 +1005,7 @@ kbd {
   text-align: left;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   padding: 5px 8px;
   border-radius: var(--yaricap);
   border-left: 3px solid;
@@ -1017,7 +1022,7 @@ kbd {
   border-radius: var(--yaricap);
   color: var(--metin-soluk);
   font: inherit;
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px;
   cursor: pointer;
 }
@@ -1046,7 +1051,7 @@ kbd {
   padding: 20px;
   box-shadow: 0 18px 48px rgba(0, 0, 0, .6);
 }
-.modal-baslik { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.modal-baslik { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
 .modal-metin {
   margin: 0;
   font-size: 13px;
@@ -1057,7 +1062,7 @@ kbd {
 .modal-alanlar { display: grid; gap: 10px; margin-top: 14px; }
 .modal-alan { display: grid; gap: 4px; }
 .modal-alan.dar { grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
-.modal-etiket { font-size: 12px; color: var(--metin-soluk); }
+.modal-etiket { font-size: 11px; color: var(--metin-soluk); }
 .modal-alanlar textarea { resize: vertical; min-height: 46px; }
 .modal-alanlar select { appearance: auto; }
 /* Select SABİT yükseklik almıyor: 32px + 8px padding, 13px metnin satır
@@ -1093,7 +1098,7 @@ select.modal-girdi { height: auto; line-height: 1.5; }
    liste. Kutunun kendi kaydırma çubuğu yok -- 7 günlük pencere zaten ekrana
    sığıyor, sığmasa `.modal`in max-height'i yok, bilerek: bu proje ölçeğinde
    kendi scroll alanı açmak fazla mühendislik olurdu. */
-.yedek-yol { margin: 0 0 10px; font-size: 12px; color: var(--metin-silik); }
+.yedek-yol { margin: 0 0 10px; font-size: 11px; color: var(--metin-silik); }
 .yedek-liste { display: grid; gap: 6px; }
 .yedek-satir {
   display: flex;
@@ -1105,7 +1110,7 @@ select.modal-girdi { height: auto; line-height: 1.5; }
   border: 1px solid var(--cizgi);
   border-radius: var(--yaricap);
 }
-.yedek-bilgi { font-size: 12px; color: var(--metin-soluk); }
+.yedek-bilgi { font-size: 11px; color: var(--metin-soluk); }
 .yedek-satir .dugme { flex-shrink: 0; padding: 4px 10px; height: 28px; }
 
 /* ---------- görevler ---------- */
@@ -1182,7 +1187,7 @@ button.gorev-grup { cursor: pointer; }
 .gorev-meta { display: block; font-size: 11px; color: var(--metin-silik); }
 .gorev-satir.gecikmis .gorev-meta { color: var(--uyari-metin); }
 .gorev-satir.bitti .gorev-ad { color: var(--metin-silik); text-decoration: line-through; }
-.gorev-bos { margin: 2px 0 0; font-size: 12px; color: var(--metin-silik); line-height: 1.4; }
+.gorev-bos { margin: 2px 0 0; font-size: 11px; color: var(--metin-silik); line-height: 1.4; }
 
 /* Izgarada görev bloğu: sıradan bir etkinlik, yalnızca onay kutusu + soluk
    tamamlanma hâli ekleniyor. */

@@ -770,7 +770,8 @@ function zamanCiz(veri) {
 
   if (!durum.kaydirildi) {
     durum.kaydirildi = true;
-    el("izgara-kaydirma").scrollTop = (7 / 24) * 24 * durum.saatYukseklik;
+    // -12: 07:00 etiketi çizginin 7px üstüne taşıyor; tam görünsün diye biraz yukarıdan başla.
+    el("izgara-kaydirma").scrollTop = (7 / 24) * 24 * durum.saatYukseklik - 12;
   }
 }
 
