@@ -7,6 +7,19 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.7.2] - 2026-10-18
+
+### Değişti
+- **Tek ikon seti**: önceki/sonraki ok, arama ve ayarlar düğmeleri yazı tipinden gelen
+  karakterler yerine satır içi SVG ikon. Her Windows yazı tipinde aynı çiziliyor.
+- **Daha sade yazı ölçeği**: arayüzdeki 12 ayrı yazı boyutu üçe indi (11 / 13 / 20).
+  Hafta başlığı 15'ten 20 piksele çıktı.
+- Kenar çubuğunda "Takvimler" başlığı kendi listesine yaklaştı; gizlenen takvimin adı
+  soluk yazı yerine ikincil renkte, okunur kalıyor.
+- Açılışta saat sütunu 07:00 etiketi yarısı kesik görünmeyecek kadar yukarıdan başlıyor;
+  "TÜM GÜN" etiketi tek satırda kalıyor.
+- Düğme ve giriş alanları aynı yükseklikte (36 piksel).
+
 ## [1.7.1] - 2026-10-18
 
 ### Değişti
