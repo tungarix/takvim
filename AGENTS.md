@@ -718,8 +718,13 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 ## 7. Sıradaki görev
 
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
-+ v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
++ v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+v1.7.2'de bitenler (ayrıntı CHANGELOG.md'de):
+
+- **Tasarım geçişi**: tek ikon seti (satır içi SVG), üç yazı boyutu (11/13/20), kenar
+  çubuğu boşlukları; davranış değişmedi.
 
 v1.7.1'de bitenler (ayrıntı CHANGELOG.md'de):
 
