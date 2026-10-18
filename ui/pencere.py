@@ -331,8 +331,8 @@ def pencere_ac(
 
     `tepsi_istendi` her kapanışta çağrılıyor (sabit bayrak değil): kullanıcı
     ayarı ortadan değiştirirse yeniden başlatma gerekmez. True ise X pencereyi
-    GİZLİYOR ve tepsiye simge koyuyor; tepsi kurulamazsa normal kapanıyor
-    (kapanmayan pencere, tepsisiz kalmaktan kötü).
+    KAPATIYOR (WebView2 dahil) ve tepsiye simge koyuyor; simgeden açınca pencere
+    yeniden kuruluyor. Tepsi kurulamazsa normal kapanıyor.
 
     `ImportError`/`Exception` YUKARI aktarılıyor: geri düşüşe (tarayıcı) karar
     vermek çağıranın işi, bu fonksiyonun değil.
@@ -358,6 +358,19 @@ def pencere_ac(
     # kaydet" penceresi çıkıyor — masaüstü uygulamasından beklenen davranış.
     webview.settings["ALLOW_DOWNLOADS"] = True
 
+    # Tepsiye her inişte pencere ve WebView2 KAPANIYOR, geri gelince yeniden
+    # kuruluyor: gizli bir WebView2 ~170 MB tutuyordu (ölçüldü), tepside
+    # simge olarak bekleyen bir uygulama için fazla. Döngü pencere başına bir tur.
+    ilk_tepsi = True
+    while True:
+        tepsiye = _pencereyi_calistir(webview, url, veri_dizini, tepsi_istendi)
+        if not tepsiye or not _tepside_bekle(baloncuk=ilk_tepsi):
+            return
+        ilk_tepsi = False
+
+
+def _pencereyi_calistir(webview, url: str, veri_dizini: str | Path, tepsi_istendi) -> bool:
+    """Bir pencere açar, kapanana kadar bekler; kapanış tepsi içinse True."""
     yol = geometri_dosyasi(veri_dizini)
     g = ekrana_sigdir(geometri_oku(yol) or VARSAYILAN, sanal_ekran(), monitorde_mi)
 
@@ -380,16 +393,16 @@ def pencere_ac(
     # Pencere durumu olaylardan izleniyor: `state` özelliği yerine bunu
     # kullanıyoruz, çünkü kapanış anında büyütülmüş pencerenin ölçüsü ekran
     # boyutuna eşit çıkar ve bir dahaki açılışta pencere ekranı kaplar.
-    durum = {"buyutulmus": g.buyutulmus}
+    durum = {"buyutulmus": g.buyutulmus, "tepsiye": False}
     pencere.events.maximized += lambda: durum.__setitem__("buyutulmus", True)
     pencere.events.restored += lambda: durum.__setitem__("buyutulmus", False)
 
-    def kapanirken() -> bool | None:
-        """Kapanmadan önce geometriyi kaydeder.
+    def kapanirken() -> None:
+        """Kapanmadan önce geometriyi kaydeder, tepsi isteniyor mu bakar.
 
         `closing` olayı kilitli çalışıyor (senkron), yani pencere yok olmadan
-        önce ölçüleri okuyabiliyoruz. Normal kapanışta None dönüyoruz; tepsi
-        modunda pencereyi gizleyip `False` döndürüyoruz (kapanmayı İPTAL eder).
+        önce ölçüleri okuyabiliyoruz. Kapanış HİÇBİR durumda iptal edilmiyor:
+        tepsi modunda da pencere kapanıyor, simgeyi `_tepside_bekle` kuruyor.
         """
         try:
             if durum["buyutulmus"]:
@@ -402,53 +415,11 @@ def pencere_ac(
             geometri_yaz(yol, yeni)
         except Exception:  # kapanışı hiçbir şey engellemesin
             pass
-        if tepsi_istendi is not None and not gercek_kapanis["istendi"]:
+        if tepsi_istendi is not None:
             try:
-                isteniyor = bool(tepsi_istendi())
+                durum["tepsiye"] = bool(tepsi_istendi())
             except Exception:
-                isteniyor = False  # ayar okunamadı: güvenli tarafta kal
-            if isteniyor:
-                # Simge zaten kuruluysa YENİDEN KULLAN: `on_ac` (tepsiden
-                # "Aç"/çift tık) yalnızca pencereyi gösteriyor, simgeyi
-                # kaldırmıyor -- yani ikon, pencere geri gelince de tepside
-                # kalıyor. Buradaki koşul yokken her "tepsiye in -> geri aç ->
-                # tekrar tepsiye in" turu eskisini Dispose etmeden yeni bir
-                # NotifyIcon kuruyordu; tepside hayalet ikon biriktiriyordu.
-                if tutamac["tepsi"] is None:
-                    from .tepsi import Tepsi, simge_bul
-
-                    tepsi = Tepsi.kur(
-                        pencere.show, gercek_kapat, simge_yolu=simge_bul()
-                    )
-                    if tepsi is None:
-                        return None  # simge kurulamadı: normal kapan
-                    tutamac["tepsi"] = tepsi
-                try:
-                    pencere.hide()
-                except Exception:
-                    if tutamac["tepsi"] is not None:
-                        tutamac["tepsi"].kapat()
-                        tutamac["tepsi"] = None
-                    return None
-                return False
-        if tutamac["tepsi"] is not None:
-            tutamac["tepsi"].kapat()
-            tutamac["tepsi"] = None
-        return None
-
-    def gercek_kapat() -> None:
-        """Tepsi menüsünden "Kapat": bayrağı koyup pencereyi yıkıyor."""
-        gercek_kapanis["istendi"] = True
-        if tutamac["tepsi"] is not None:
-            tutamac["tepsi"].kapat()
-            tutamac["tepsi"] = None
-        try:
-            pencere.destroy()
-        except Exception:
-            pass
-
-    gercek_kapanis = {"istendi": False}
-    tutamac: dict = {"tepsi": None}
+                durum["tepsiye"] = False  # ayar okunamadı: güvenli tarafta kal
 
     pencere.events.closing += kapanirken
 
@@ -501,3 +472,64 @@ def pencere_ac(
         # Pencere görünmüştü; bu bir kapanış hatası. Kullanıcı uygulamayı
         # kapattı, geriye tarayıcı açmak yanlış olur — yalnızca günlüğe yaz.
         traceback.print_exc()
+        return False
+    return durum["tepsiye"]
+
+
+def _tepside_bekle(*, baloncuk: bool) -> bool:
+    """Pencere yokken simgeyle bekler: "Aç" ise True, "Kapat" ise False.
+
+    Bu sırada WebView2 YOK; süreçte yalnızca sunucu, hatırlatıcı ve simge var.
+    Mesaj döngüsünü burada `Application.Run()` pompalıyor (`webview.start()`
+    döndü). Simge kurulamazsa False: uygulama kapanır (kapanmayan pencere,
+    tepsisiz kalmaktan kötü; eski davranış da buydu).
+
+    Görünmez, "Takvim" başlıklı boş form ikinci örnek için: masaüstü kısayoluna
+    tekrar tıklanınca `tek_ornek.pencereyi_one_al` bu sürecin "Takvim"
+    penceresini arayıp gösteriyor. Pencere artık olmadığından bu form o isteği
+    karşılıyor; gösterilmeye ya da etkinleştirilmeye çalışıldığı an "Aç" sayılır.
+    Ekranın dışında, 1x1 ve görev çubuğunda yok: bir an görünse de fark edilmez.
+    """
+    import clr
+
+    clr.AddReference("System.Windows.Forms")
+    clr.AddReference("System.Drawing")
+    from System.Drawing import Point, Size
+    from System.Windows.Forms import (
+        Application,
+        Form,
+        FormBorderStyle,
+        FormStartPosition,
+    )
+
+    from .tepsi import Tepsi, simge_bul
+
+    sonuc = {"ac": False}
+
+    def bitir(ac: bool) -> None:
+        sonuc["ac"] = ac
+        Application.ExitThread()
+
+    form = Form()
+    form.Text = BASLIK
+    form.ShowInTaskbar = False
+    form.FormBorderStyle = getattr(FormBorderStyle, "None")  # `None` Python'da ayrılmış
+    form.StartPosition = FormStartPosition.Manual
+    form.Location = Point(-32000, -32000)
+    form.Size = Size(1, 1)
+    form.VisibleChanged += lambda *_: form.Visible and bitir(True)
+    form.Activated += lambda *_: bitir(True)
+    form.Handle  # tutamak şimdi oluşsun: gösterilmeden de pencere listesinde olsun
+
+    tepsi = Tepsi.kur(
+        lambda: bitir(True), lambda: bitir(False), simge_yolu=simge_bul(), baloncuk=baloncuk
+    )
+    if tepsi is None:
+        form.Dispose()
+        return False
+    try:
+        Application.Run()
+    finally:
+        tepsi.kapat()
+        form.Dispose()
+    return sonuc["ac"]

@@ -24,7 +24,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**786 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**787 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -392,9 +392,10 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     kopyası (otomatik başlatma) kilidi tutarsa kısayol tıklaması "zaten
     açık" deyip kapanır — öne alınacak pencere olmadığı hâlde. Arka plan
     kopyaları birbirini engellemez (`reminder_fired` UNIQUE + `bos_port_bul`).
-61. **Pencere arama gizli pencereyi de bulur.** Tepsideki pencere gizlidir;
-    yalnızca görünürleri listelemek ikinci tıkı boşa düşürür. Öne alırken
-    önce `SW_SHOW`, sonra `SW_RESTORE` (tek komut iki hâli kapsamıyor).
+61. **Pencere arama gizli pencereyi de bulur.** Tepsideyken uygulama penceresi
+    YOK; yerinde görünmez "Takvim" başlıklı boş bir form var (kural 83) ve
+    ikinci tık onu bulmalı: yalnızca görünürleri listelemek tıkı boşa düşürür.
+    Öne alırken önce `SW_SHOW`, sonra `SW_RESTORE` (tek komut iki hâli kapsamıyor).
 62. **Yedekten dönüş dosya DEĞİŞTİRMEZ, `backup` API'siyle yazar.** Açık
     bağlantı varken `replace` Windows kilidine takılıyor ve eski kod hatayı
     yutup "geri yüklendi" diyordu. Başarısızlık `RuntimeError`, sahte
@@ -633,6 +634,16 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     önyükleyiciyi öldürmek portu açık bırakır). Ayarlar kutusundaki günlük yolu
     (`ui/server.py::gunluk_yolu`) `takvim_app._gunluk_yolu` ile aynı olmalı (testi
     var); oradan import edilmiyor, çünkü `takvim_app` günlüğü `ui`'den önce bağlıyor.
+83. **Tepsiye inmek pencereyi GİZLEMEZ, KAPATIR** (`pencere_ac` döngüsü,
+    `_tepside_bekle`). Gizli bir WebView2 ~170 MB tutuyordu (ölçüldü: tepside toplam
+    241 → 72 MB); düşük bellek hedefi yalnızca 14 MB kazandırdı, `TrySuspendAsync`
+    gizli formda hata verdi. Pencere kapanınca `webview.start()` döner, simgeyi
+    `Application.Run()` pompalar; "Aç" döngüyü bitirir ve pencere yeniden
+    kurulur (pywebview aynı süreçte ikinci `start`'ı destekliyor, denendi).
+    `closing` kapanışı ASLA iptal etmez. İkinci kısayol tıkı için tepside görünmez
+    (ekran dışı, 1x1, görev çubuğunda yok) "Takvim" başlıklı bir form tutulur;
+    `pencereyi_one_al` onu gösterince `VisibleChanged`/`Activated` "Aç" sayılır.
+    "Arka planda çalışıyor" balonu yalnızca ilk inişte (`Tepsi.kur(baloncuk=)`).
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme

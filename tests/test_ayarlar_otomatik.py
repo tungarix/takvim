@@ -224,6 +224,14 @@ def test_tepsi_stok_ikonla_da_kurulur():
     assert arka.simgeler[0].Icon == ("stok",)
 
 
+def test_tepsi_baloncuksuz_kurulur():
+    """Simge her tepsiye inişte yeniden kuruluyor; balon yalnızca ilk seferde."""
+    arka = _SahteArkaUc()
+    assert Tepsi.kur(lambda: None, lambda: None, arka_uc=arka, baloncuk=False) is not None
+    assert arka.simgeler[0].balon is None
+    assert arka.simgeler[0].Visible is True
+
+
 def test_tepsi_basarisizsa_none():
     """Arka uç patlarsa None (uygulama tepsisiz devam eder)."""
 

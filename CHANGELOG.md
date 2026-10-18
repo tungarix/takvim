@@ -7,6 +7,13 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Değişti
+- **Tepside çok daha az bellek**: "kapatınca tepsiye küçült" açıkken pencere artık
+  gizlenmiyor, kapanıyor; arayüzü çizen WebView2 de onunla gidiyor ve simgeden
+  açınca yeniden kuruluyor. Tepsideyken toplam bellek ~241 MB'tan ~72 MB'a indi
+  (ölçüldü). Hatırlatıcılar etkilenmiyor. "Arka planda çalışıyor" balonu yalnızca
+  ilk inişte çıkıyor.
+
 ## [1.7.0] - 2026-10-15
 
 ### Eklendi

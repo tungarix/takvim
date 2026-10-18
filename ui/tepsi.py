@@ -1,16 +1,15 @@
 """Sistem tepsisi simgesi (Windows `NotifyIcon`, pythonnet üzerinden).
 
 Neden var: pencere kapanınca süreç bitiyor ve hatırlatıcı susuyor. Tepsi modu
-açıksa kapatma PENCEREYİ GİZLİYOR, süreci yaşatıyor; simgeye tıklayınca pencere
-geri geliyor. Varsayılan KAPALI (mevcut davranış korunuyor).
+açıksa kapatma pencereyi (ve WebView2'yi) KAPATIYOR ama süreci yaşatıyor; simgeye
+tıklayınca pencere yeniden kuruluyor (bkz. `pencere._tepside_bekle`). Varsayılan KAPALI (mevcut davranış korunuyor).
 
 Tasarım kararları:
 
 - Yeni bağımlılık YOK: `pythonnet` pywebview ile zaten geliyor. `pystray` +
   `Pillow` çekmek `.exe`'yi şişirirdi.
-- Ek thread YOK: simge GUI thread'inde kuruluyor (`pencere_ac` içinden) ve
-  mesaj döngüsünü `webview.start()` pompalıyor. Böylece `on_ac` içindeki
-  `window.show()` thread atlama sorunu çıkarmıyor.
+- Ek thread YOK: simge GUI thread'inde kuruluyor ve mesaj döngüsünü
+  `pencere._tepside_bekle` içindeki `Application.Run()` pompalıyor.
 - Kurulum BAŞARISIZ olursa `kur()` None dönüyor ve uygulama tepsisiz
   çalışmaya devam ediyor: tepsi konfor, kapanışın çalışması şart.
 """
@@ -65,12 +64,15 @@ class Tepsi:
         *,
         simge_yolu: str | None = None,
         arka_uc: Any | None = None,
+        baloncuk: bool = True,
     ) -> Tepsi | None:
         """Simgeyi kurar; kurulamazsa None.
 
         `arka_uc` testler için: `NotifyIcon`, `Icon`, `SystemIcons`,
         `ToolStripMenuItem` ve `ContextMenuStrip` üreten sahte nesne.
-        Üretimde None (gerçek WinForms).
+        Üretimde None (gerçek WinForms). `baloncuk=False`: "arka planda
+        çalışıyor" balonu gösterilmez (simge her tepsiye inişte yeniden
+        kuruluyor; balon yalnızca ilk seferde bilgi, sonra gürültü).
         """
         try:
             if arka_uc is None:
@@ -114,12 +116,13 @@ class Tepsi:
             simge.ContextMenuStrip = menu
             simge.DoubleClick += lambda *_: on_ac()
             simge.Visible = True
-            try:
-                simge.ShowBalloonTip(
-                    3000, _BASLIK, "Takvim arka planda çalışıyor.", 1  # info
-                )
-            except Exception:
-                pass  # baloncuk konfor; simge esas iş
+            if baloncuk:
+                try:
+                    simge.ShowBalloonTip(
+                        3000, _BASLIK, "Takvim arka planda çalışıyor.", 1  # info
+                    )
+                except Exception:
+                    pass  # baloncuk konfor; simge esas iş
             return cls(simge, on_ac, on_kapat)
         except Exception:
             return None
