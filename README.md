@@ -48,7 +48,7 @@ they were built locally, before this workflow existed.
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1.6.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
+**Durum:** v1.7.1. Masaüstündeki **Takvim** kısayolu tek dosyalık
 `Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 ---
