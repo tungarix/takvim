@@ -82,6 +82,12 @@ cd "C:\Users\Arda\Desktop\Aktenak\Projeler\takvim"; .\.venv\Scripts\python.exe -
 ```
 
 Sistem Python'unu değil **her zaman `.venv\Scripts\python.exe`** kullan.
+Özellikle `.exe` derlerken: sistem Python'unda `python-dateutil` yok, PyInstaller
+bunu hata vermeden atlar ve exe açılışta `No module named 'dateutil'` ile ölür
+(Ekim 2026'da yaşandı). `.venv` silinmişse önce
+`python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -e ".[dev,build]"`,
+sonra derle; `build\takvim\warn-takvim.txt` içinde "missing module named dateutil"
+satırı olmamalı, ardından `scripts\exe_duman.py --exe dist\Takvim.exe` çalıştır.
 
 ### Bağımlılıklar
 
