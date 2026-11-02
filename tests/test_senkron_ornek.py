@@ -34,7 +34,10 @@ def test_fixture_dosyalari_betigin_ciktisiyla_ayni(tmp_path):
     uretilen = uretici.uret(tmp_path)
 
     for yol in uretilen:
-        assert yol.read_bytes() == (DOCS / yol.name).read_bytes(), (
+        # git (autocrlf) Windows'ta çalışma kopyasını CRLF yapabiliyor: satır
+        # sonlarından bağımsız karşılaştır (splitlines CR/LF/CRLF'yi aynı sayar).
+        commitli = (DOCS / yol.name).read_bytes().splitlines()
+        assert yol.read_bytes().splitlines() == commitli, (
             f"{yol.name} güncel değil: scripts/senkron_ornek_uret.py'yi çalıştır"
         )
 
