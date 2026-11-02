@@ -35,12 +35,18 @@ def _to_utc_tuple(values: Iterable[datetime] | None, name: str) -> tuple[datetim
 
 @dataclass(frozen=True, slots=True)
 class Calendar:
-    """Renk ve görünürlük taşıyan takvim kabı (Ders, Kişisel, Aktenak...)."""
+    """Renk ve görünürlük taşıyan takvim kabı (Ders, Kişisel, Aktenak...).
+
+    `uid` cihazlar arası kimlik (senkron dosyasının birleştirme anahtarı); yerel
+    `id` cihazdan cihaza farklı. Henüz kaydedilmemiş takvimde `None`: uid'i
+    `Repo.add_calendar` üretiyor.
+    """
 
     id: int | None
     name: str
     color: str
     visible: bool = True
+    uid: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
