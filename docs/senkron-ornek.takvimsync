@@ -1,0 +1,252 @@
+{
+  "format": "takvim-sync",
+  "version": 1,
+  "created_at": "2026-11-02T10:00:00Z",
+  "device": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "name": "Ornek-PC",
+    "app": "desktop 1.8.0"
+  },
+  "calendars": [
+    {
+      "uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "name": "Kişisel",
+      "color": "#3b82f6",
+      "visible": true,
+      "updated_at": "2026-10-20T08:00:00Z"
+    },
+    {
+      "uid": "e7758967-d9ae-5e43-8396-90427f0176bd",
+      "name": "Ders",
+      "color": "#e0524a",
+      "visible": true,
+      "updated_at": "2026-10-20T08:00:00Z"
+    }
+  ],
+  "events": [
+    {
+      "uid": "02daa0ca-7bcc-5a7e-a42e-2d5f4acb0442@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "Sunum hazırla",
+      "description": "Slaytları bitir",
+      "location": null,
+      "start_utc": "2026-11-06T13:00:00Z",
+      "end_utc": "2026-11-06T14:30:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": false,
+      "rrule": null,
+      "rdate": [],
+      "exdate": [],
+      "reminders": [],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "1933b9a2-2b70-551e-b79c-5d9f440711cb@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "Haftalık toplantı",
+      "description": null,
+      "location": null,
+      "start_utc": "2026-11-02T07:00:00Z",
+      "end_utc": "2026-11-02T08:00:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": false,
+      "rrule": "FREQ=WEEKLY;BYDAY=MO",
+      "rdate": [],
+      "exdate": [
+        "2026-11-16T07:00:00Z"
+      ],
+      "reminders": [
+        10
+      ],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "1a4230b8-93d5-5f6d-89e7-90f61cc50b5a@takvim.local",
+      "calendar_uid": "e7758967-d9ae-5e43-8396-90427f0176bd",
+      "title": "Algoritmalar",
+      "description": null,
+      "location": "A101",
+      "start_utc": "2026-11-03T06:00:00Z",
+      "end_utc": "2026-11-03T07:30:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": false,
+      "rrule": "FREQ=WEEKLY;BYDAY=TU;UNTIL=20270112T000000Z",
+      "rdate": [],
+      "exdate": [],
+      "reminders": [
+        15
+      ],
+      "overrides": [
+        {
+          "original_start_utc": "2026-11-17T06:00:00Z",
+          "cancelled": true,
+          "new_start_utc": null,
+          "new_end_utc": null,
+          "new_title": null,
+          "new_location": null
+        },
+        {
+          "original_start_utc": "2026-11-24T06:00:00Z",
+          "cancelled": false,
+          "new_start_utc": "2026-11-26T08:00:00Z",
+          "new_end_utc": "2026-11-26T09:30:00Z",
+          "new_title": "Algoritmalar (telafi)",
+          "new_location": "B204"
+        }
+      ],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "209699ba-30ae-53fc-bf28-7f383b86c54e@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "Proje teslimi",
+      "description": null,
+      "location": null,
+      "start_utc": "2027-01-15T20:00:00Z",
+      "end_utc": "2027-01-15T22:00:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": false,
+      "rrule": null,
+      "rdate": [],
+      "exdate": [],
+      "reminders": [],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "59246283-7ec7-5fa9-85b4-7ac3c0f8d9d0@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "Tatil",
+      "description": null,
+      "location": null,
+      "start_utc": "2026-12-23T21:00:00Z",
+      "end_utc": "2026-12-26T21:00:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": true,
+      "rrule": null,
+      "rdate": [],
+      "exdate": [],
+      "reminders": [],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "a3cdd7bb-cc2a-51e5-a6b4-10a903df6fb1@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "Pencere dışı",
+      "description": null,
+      "location": null,
+      "start_utc": "2027-03-01T07:00:00Z",
+      "end_utc": "2027-03-01T08:00:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": false,
+      "rrule": null,
+      "rdate": [],
+      "exdate": [],
+      "reminders": [],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "a612f76c-bb96-5ef8-ba09-a1d3390004de@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "New York standup",
+      "description": null,
+      "location": null,
+      "start_utc": "2026-10-26T13:30:00Z",
+      "end_utc": "2026-10-26T14:00:00Z",
+      "tzid": "America/New_York",
+      "all_day": false,
+      "rrule": "FREQ=WEEKLY;BYDAY=MO,WE",
+      "rdate": [],
+      "exdate": [],
+      "reminders": [],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    },
+    {
+      "uid": "c11b8769-9afa-5168-ab98-b2dd0b070c0f@takvim.local",
+      "calendar_uid": "6bc0a504-9157-5d6b-8612-97fba7f3eae1",
+      "title": "Diş hekimi",
+      "description": "Kontrol randevusu",
+      "location": "Nişantaşı Klinik",
+      "start_utc": "2026-11-05T11:00:00Z",
+      "end_utc": "2026-11-05T12:00:00Z",
+      "tzid": "Europe/Istanbul",
+      "all_day": false,
+      "rrule": null,
+      "rdate": [],
+      "exdate": [],
+      "reminders": [
+        30,
+        1440
+      ],
+      "overrides": [],
+      "created_at": "2026-10-20T08:00:00Z",
+      "updated_at": "2026-10-25T09:30:00Z"
+    }
+  ],
+  "tasks": [
+    {
+      "uid": "29ad6e02-4f8c-5260-ae21-1f7994ffca48@takvim.local",
+      "title": "Faturayı öde",
+      "notes": null,
+      "plan_day": null,
+      "event_uid": null,
+      "done_at": "2026-10-27T18:00:00Z",
+      "created_at": "2026-10-21T08:00:00Z",
+      "updated_at": "2026-10-26T09:00:00Z"
+    },
+    {
+      "uid": "56285006-2a5f-5a25-8ef2-78f2e50450b0@takvim.local",
+      "title": "Rapor yaz",
+      "notes": "Taslak yeterli",
+      "plan_day": null,
+      "event_uid": null,
+      "done_at": null,
+      "created_at": "2026-10-21T08:00:00Z",
+      "updated_at": "2026-10-26T09:00:00Z"
+    },
+    {
+      "uid": "b3b31f4e-9de4-52ed-a0cc-1bc5afcdc446@takvim.local",
+      "title": "Market alışverişi",
+      "notes": null,
+      "plan_day": "2026-11-04",
+      "event_uid": null,
+      "done_at": null,
+      "created_at": "2026-10-21T08:00:00Z",
+      "updated_at": "2026-10-26T09:00:00Z"
+    },
+    {
+      "uid": "e3ba5047-e03f-5f38-848c-39829b70c1dd@takvim.local",
+      "title": "Sunum hazırla",
+      "notes": "Slaytları bitir",
+      "plan_day": null,
+      "event_uid": "02daa0ca-7bcc-5a7e-a42e-2d5f4acb0442@takvim.local",
+      "done_at": null,
+      "created_at": "2026-10-21T08:00:00Z",
+      "updated_at": "2026-10-26T09:00:00Z"
+    }
+  ],
+  "deleted": [
+    {
+      "kind": "event",
+      "uid": "011b1d3c-e9d0-549d-aa5e-01d5fc8b59ac@takvim.local",
+      "deleted_at": "2026-10-30T12:00:00Z"
+    },
+    {
+      "kind": "task",
+      "uid": "b7c0ccaf-4089-5494-8f7d-9a07629fda78@takvim.local",
+      "deleted_at": "2026-10-31T12:00:00Z"
+    }
+  ]
+}
