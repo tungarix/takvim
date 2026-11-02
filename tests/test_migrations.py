@@ -52,6 +52,14 @@ def _schema_of(conn: sqlite3.Connection) -> dict:
             "indexes": sorted(indexes),
             "foreign_keys": sorted(foreign_keys),
         }
+    # Tetikleyiciler (006): mezar taşı ve updated_at davranışı yalnızca burada
+    # yaşıyor; `schema.sql`'de eksik/farklı kalırsa yeni kurulan DB sessizce
+    # senkron kaydı tutmaz. ALTER onları değiştirmediği için metin kıyaslanabilir
+    # (yalnızca boşluk farkı yutuluyor).
+    schema["__tetikleyiciler__"] = sorted(
+        (r["name"], r["tbl_name"], " ".join(r["sql"].split()))
+        for r in conn.execute("SELECT name, tbl_name, sql FROM sqlite_master WHERE type = 'trigger'")
+    )
     return schema
 
 

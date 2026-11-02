@@ -145,6 +145,7 @@ def _row_to_calendar(row: sqlite3.Row) -> Calendar:
         name=row["name"],
         color=row["color"],
         visible=bool(row["visible"]),
+        uid=row["uid"],
     )
 
 
@@ -516,13 +517,17 @@ class Repo:
     # ----------------------------------------------------------------- takvim
 
     def add_calendar(self, name: str, color: str, visible: bool = True) -> Calendar:
-        """Yeni takvim ekler, id'si atanmış hâlini döndürür."""
+        """Yeni takvim ekler, id'si ve uid'i atanmış hâlini döndürür."""
+        simdi = _now_db()
+        uid = str(uuid.uuid4())
         cur = self.conn.execute(
-            "INSERT INTO calendars (name, color, visible, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (name, color, int(visible), _now_db()),
+            "INSERT INTO calendars (name, color, visible, created_at, uid, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (name, color, int(visible), simdi, uid, simdi),
         )
-        return Calendar(id=cur.lastrowid, name=name, color=color, visible=visible)
+        return Calendar(
+            id=cur.lastrowid, name=name, color=color, visible=visible, uid=uid
+        )
 
     def get_calendar(self, calendar_id: int) -> Calendar | None:
         """Tek takvimi getirir; yoksa None."""
@@ -755,12 +760,14 @@ class Repo:
                 " tzid, all_day, rrule, rdate, exdate, series_end_utc,"
                 " sequence, created_at, updated_at, ics_sequence"
             )
+            # updated_at ŞİMDİ: eski değerle dirilen etkinlik, silme anından
+            # eski kalır ve senkronda diğer cihazdaki silme kazanırdı.
             degerler = (
                 uid, event["calendar_id"], event["title"], event["description"],
                 event["location"], event["start_utc"], event["end_utc"],
                 event["tzid"], event["all_day"], event["rrule"], event["rdate"],
                 event["exdate"], event["series_end_utc"], event["sequence"],
-                event["created_at"], event["updated_at"], event["ics_sequence"],
+                event["created_at"], _now_db(), event["ics_sequence"],
             )
             if yeni_id is None:
                 cur = self.conn.execute(
