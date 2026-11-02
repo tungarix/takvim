@@ -75,8 +75,8 @@ ayrı ayrı birleşmez; etkinlik kazanırsa üçü birlikte değişir.
 `deleted_at` yerel `updated_at`'ten **kesin olarak** yeniyse yerel kayıt silinir.
 Tersi (kayıt güncellemesi silmeden yeni) ise kayıt kalır, silme yok sayılır ve
 yerel silme kaydı (varsa) kaldırılır. Yerelde silme kaydı olan ama dosyada canlı
-gelen kayıt için aynı karşılaştırma yapılır (kayıt `updated_at` > `deleted_at` ise
-canlanır). Eşitlikte **kayıt kalır** (veri kaybetmemek için).
+gelen kayıt için aynı karşılaştırma yapılır (kayıt `updated_at` >= `deleted_at` ise
+canlanır; yani eşitlikte kayıt yaşar). Eşitlikte **kayıt kalır** (veri kaybetmemek için).
 
 **Silinen kayıtlar (mezar taşları):** her cihaz `deleted_at` ile sildiklerini
 kalıcı tutar (budama yok; satırlar çok küçük). İçe aktarma, uzaktan gelen silmeyi
