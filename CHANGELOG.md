@@ -7,6 +7,26 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+Sürüm 1.8.0 olarak hazırlanıyor; sürüm numarası henüz yükseltilmedi.
+
+### Eklendi
+- **Telefonla senkron dosyası** (`.takvimsync`): ⚙ Ayarlar → "Telefonla senkron" altında
+  "Senkron dosyası oluştur" (tüm takvimlerin, etkinliklerin, görevlerin ve silinenlerin tam
+  durumu, tek dosya) ve "Senkron dosyası aç" (başka cihazın dosyasını birleştirir, sonunda
+  eklenen/güncellenen/silinen/atlanan sayılarını gösterir). Ağ, hesap ya da sunucu yok:
+  dosyayı kendin taşırsın. Birleştirme kayıt kayıt "son yazan kazanır"; silmeler
+  korunur (silinen etkinlik başka cihazdaki eski dosyayla geri gelmez); aynı dosyayı
+  ikinci kez açmak hiçbir şeyi değiştirmez; hata olursa hiçbir şey değişmez. Biçim ve kurallar
+  `docs/senkron.md`'de.
+- Veritabanı migration'ı `006_senkron.sql`: takvimlere `uid` ve `updated_at`, silinenleri
+  tutan `silinenler` tablosu ve tetikleyiciler. Mevcut takvimlere otomatik uid verilir.
+- Mobil uygulama için uyum fixture'ı: `docs/senkron-ornek.takvimsync`,
+  `docs/senkron-ornek-olusumlar.json`; `scripts/senkron_ornek_uret.py` ile yeniden üretilir.
+
+### Değişti
+- Seri silmeyi geri alınca etkinliğin değişme zamanı şimdiye çekiliyor (başka cihazdaki
+  silme geri alınanı ezmesin).
+
 ## [1.7.2] - 2026-10-18
 
 ### Değişti

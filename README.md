@@ -15,12 +15,13 @@
 Takvim ("calendar" in Turkish) is a local-first, account-free, offline
 desktop calendar app for Windows. Everything — events, tasks, calendars, backups —
 stays on your own machine in a local SQLite database; there's no server,
-no sign-up, no sync.
+no sign-up, no cloud sync.
 
 - **Download:** grab `Takvim.exe` from the [latest release](https://github.com/tungarix/takvim/releases/latest) and double-click it. No installer, no Python needed.
 - **"Windows protected your PC" warning:** the `.exe` isn't code-signed, so SmartScreen warns on first run. Click **More info**, then **Run anyway** — it only appears once.
 - **Interface language:** the UI is fully Turkish or fully English, switched from **⚙ Settings → Language** (saved, page reloads). Default is Turkish.
 - **Tasks:** a to-do list in the sidebar. Plan a task for a day (no time) or for specific hours; a timed task becomes a block on the calendar grid. Drag a task from the list onto the grid, check it off in the list or on its block. The quick-add box also takes a `görev:` prefix (Turkish, like the rest of quick add). Tasks are exported and imported as `.ics` VTODO.
+- **Sync with the phone app (unreleased, planned for 1.8.0):** **⚙ Settings → Sync with phone** creates or opens a `.takvimsync` file; you carry it between devices yourself (Share, USB, Drive). No network, no account. Format: [docs/senkron.md](docs/senkron.md).
 - **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept. If the file ever gets damaged, Takvim offers on startup to go back to the latest healthy backup (the damaged file is set aside, not deleted).
 - **Known limitation:** the quick-add box always expects a Turkish sentence (e.g. "yarın 14:00 diş hekimi"), even in English mode — its parser only understands Turkish grammar; the placeholder text shows the expected format.
 - **License:** [MIT](LICENSE).
@@ -283,6 +284,7 @@ olduğunu taşımaz.
 | Yedekler | Üstteki "Yedekler": otomatik yedekleri listeler, seçileni geri yükler |
 | İçe aktar | Üstteki "İçe aktar": `.ics` seç, önizlemeyi onayla (kaç yeni/güncelleme/atlanacak) |
 | Çakışma uyarısı | Oluştururken üst üste gelen saat varsa arayüz söylüyor, engellemiyor |
+| Telefonla senkron | (1.8.0, yayınlanmamış) ⚙ Ayarlar → "Telefonla senkron": "Senkron dosyası oluştur" `.takvimsync` indirir, "Senkron dosyası aç" başka cihazın dosyasını birleştirir (biçim: `docs/senkron.md`) |
 | Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat + arayüz dili (Türkçe/English, kaydedince sayfa yeniden yüklenir) |
 | Dil | Arayüz ya tamamen Türkçe ya tamamen İngilizce. İSTİSNA: hızlı ekleme kutusu İngilizce modda da **Türkçe cümle** bekliyor ("yarın 14:00 diş hekimi") — ayrıştırıcı dilbilgisi Türkçe gömülü, İngilizce cümle tanınmazsa zaman bulunamayıp tüm gün kaydedilir. Boş durum örnekleri bu yüzden çevrilmiyor: doğru kullanımı gösteriyorlar |
 | Görev ekleme | Kenar çubuğundaki **Görevler** kutusuna yaz + Enter (plansız görev), **+** ile form ("Ne zaman?": plansız / gün içinde bir ara / belirli saatlerde), ya da hızlı ekleme kutusuna `görev: rapor yaz yarın 14:00-15:30` (önek iki nokta ile bitmeli; zaman yoksa plansız, yalnız tarih varsa gün planlı, saat varsa saat planlı) |
@@ -369,7 +371,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**787 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**872 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
