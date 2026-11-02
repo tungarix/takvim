@@ -1065,6 +1065,8 @@ kbd {
 .modal-etiket { font-size: 11px; color: var(--metin-soluk); }
 .modal-alanlar textarea { resize: vertical; min-height: 46px; }
 .modal-alanlar select { appearance: auto; }
+.modal-ipucu { margin: 0; font-size: 11px; color: var(--metin-soluk); }
+.modal-dugmeler { display: flex; flex-wrap: wrap; gap: 8px; }
 /* Select SABİT yükseklik almıyor: 32px + 8px padding, 13px metnin satır
  * kutusuna (`line-height: normal` ≈16px) 14px içerik bırakıyordu ve çıkıntılı
  * harfler (Q, g, p) kutu sınırına dayanıyordu. Metin girdileri tek satırı
