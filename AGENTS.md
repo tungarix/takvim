@@ -21,10 +21,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Boyutlandırma, tüm gün taşıma, ay açılır listesi | ✅ bitti |
 | Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
 | Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
+| Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ kod bitti, **1.8.0 YAYINLANMAMIŞ** |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**787 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**872 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -115,6 +116,7 @@ store/  kalıcılık (SQLite)
 ics/    içe/dışa aktarma
 ui/     arayüz (masaüstü penceresi + yerel http.server)
 remind/ hatırlatıcı arka plan süreci
+senkron/ senkron dosyası (.takvimsync) dışa/içe aktarma
 ```
 
 **`core/` hiçbir zaman `store/`, `ics/` veya `ui/` import etmez. Tersi serbest.**
@@ -650,6 +652,74 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     (ekran dışı, 1x1, görev çubuğunda yok) "Takvim" başlıklı bir form tutulur;
     `pencereyi_one_al` onu gösterince `VisibleChanged`/`Activated` "Aç" sayılır.
     "Arka planda çalışıyor" balonu yalnızca ilk inişte (`Tepsi.kur(baloncuk=)`).
+
+### Senkron dosyası (1.8.0, yayınlanmamış)
+
+Biçim ve birleştirme kuralları `docs/senkron.md`'de (mobil uygulama aynı belgeyi
+uyguluyor); aşağıdakiler masaüstü tarafının kararları, hepsinin testi mutasyonla
+doğrulandı (`tests/test_senkron*.py`).
+
+84. **Biçim tek kaynaktan: `docs/senkron.md`.** Kural/biçim değişince belge,
+    `senkron/` ve uyum fixture'ı birlikte güncellenir: fixture
+    (`docs/senkron-ornek.takvimsync` + `senkron-ornek-olusumlar.json`) elle
+    yazılmaz, `scripts/senkron_ornek_uret.py`'den çıkar; `test_senkron_ornek.py`
+    bayatlamayı yakalar. Dosya `version`'ı bilinenden büyükse içe aktarma reddeder.
+85. **Mezar taşı ve `updated_at` TETİKLEYİCİDE (006), Repo kodunda değil.** Takvim/
+    etkinlik/görev silmenin her yolu (takvimin CASCADE'i dahil) `silinenler`'e yazılır,
+    aynı uid yeniden eklenince (geri alma, içe aktarma) kayıt silinir; override ve
+    hatırlatıcı değişince etkinliğin `updated_at`'i 'şimdi' olur. Yeni bir silme yolu
+    eklersen elle `INSERT INTO silinenler` YAZMA, tetikleyici zaten yakalıyor.
+    `restore_last_deleted` `updated_at`'i şimdiye çeker (eski değer kalırsa diğer
+    cihazdaki silme kazanır). `schema.sql`'deki tetikleyici metni migration'la AYNI
+    olmalı (`test_migrations` tetikleyicileri de karşılaştırır). `calendars.uid`
+    sütunu NULL'a açık (ALTER NOT NULL ekleyemez) ama `trg_takvim_ekle_doldur` her
+    INSERT'e uid verir; Repo'yu atlayan INSERT (yedek testleri) uid'siz kalmaz.
+86. **İçe aktarma TEK transaction'dır ve zaman damgasını DOSYADAKİ değere sabitler**
+    (`senkron/ice.py`). Tetikleyiciler 'şimdi' yazdığı için her yazımdan SONRA kaydın
+    `updated_at`'i, mezar taşının `deleted_at`'i dosyadakine çekilir; yoksa içe
+    aktarılan kayıt 'şimdi' damgalı olup bir sonraki dosyada hep "yerelden yeni"
+    görünürdü (idempotency kırılır, silme cihazlar arasında sonsuza yankılanır).
+    `ice.py` ham SQL yazar (Repo `updated_at`'i/mezar taşını bilmiyor) ve
+    `store.repo`'nun `_event_ekle`/`_event_guncelle`/`_tx` yardımcılarını kullanır:
+    `series_end` bütçesi (kural 65) ve `sequence` aynı yerden gelsin.
+87. **Dosya önce SAF ayrıştırılır; tek bozuk kayıt TÜM dosyayı reddeder**
+    (`SenkronHatasi`: `senkron_bozuk` / `senkron_surum_yeni`, sunucuda kodlu 400).
+    Kayıt kayıt atlamak yarım birleşmiş veritabanı demek, ikinci içe aktarma
+    farklı sonuç verirdi. Reddedilenler: sabit genişlikli UTC dışı zaman, `#rrggbb`
+    olmayan renk (54), tekrarlayan uid, hem `plan_day` hem `event_uid` dolu görev,
+    çok yoğun RRULE (65), geçersiz tzid. Sayaçta tek istisna: takvimi yerelde olmayan
+    etkinlik (yetim) `skipped`, dosya reddedilmez.
+88. **Karşılaştırmalar KESİN (`>`), eşitlikte kayıt kalır.** Güncelleme yalnızca
+    dosyadaki `updated_at` kesin yeniyse; silme yalnızca `deleted_at` kesin yeniyse;
+    canlanma mezar taşı kayıttan kesin yeni DEĞİLSE (yani eşitlikte canlanır).
+    docs/senkron.md eşitlikte "kayıt kalır" diyor ama canlanma için parantez içinde
+    "`>`" yazıyor; veri kaybetmeme ilkesine göre eşitlikte canlanma seçildi (belge
+    değiştirilmedi, mobil de aynısını yapmalı). Zamanlar saniye hassasiyetli: aynı
+    saniyedeki düzenleme ve silmede düzenleme kazanır. Dosyada mezar taşı kayıttan
+    yeniyse canlı kayıt hiç yazılmaz (ekle-sonra-sil yok).
+89. **Hatırlatıcılar FARKLA güncellenir, override'lar sil-yeniden-ekle.** Hatırlatıcıyı
+    silip yeniden eklemek `reminder_fired`'i CASCADE ile silerdi: değişmeyen
+    hatırlatıcı bu hafta ötmüş örnekler için yeniden öterdi (kural 23).
+90. **Silmeler sırası: görev → etkinlik → takvim**, hepsi görev/etkinlik/takvim
+    yazımından SONRA. Etkinlikler kendi zamanlarıyla ayrı silinir, takvimin
+    CASCADE'iyle gidenler takvimin `deleted_at`'ini taşır. Takvim silme, içindeki
+    daha yeni değiştirilmiş etkinlikleri de götürür (belge böyle: karşılaştırma
+    yalnızca takvim kaydına bakar). Silinen kaydın mezar taşı yerelde yoksa da
+    taşınır (üçüncü cihaza ulaşsın); mezar taşları budanmaz.
+91. **Takvim ad eşleşmesi `casefold()` + kırpma**: uid bulunamazsa aynı adlı yerel
+    takvim uid'ini dosyadakine çevirerek benimsenir; dosyada kendi uid'iyle yer
+    alan yerel takvim benimsenmez. `casefold` Türkçe İ/ı'yı eşlemez ("İş" ≠ "Iş").
+92. **Görev bağlantısı savunmalı**: `event_uid` yerelde yoksa, tekrarlı/tüm gün bir
+    etkinliği gösteriyorsa (68) ya da blok başka bir göreve bağlıysa (`UNIQUE`)
+    görev plansıza döner, dosya reddedilmez.
+93. **Arayüz**: Ayarlar'da `tur: "dugmeler"` alanı (`modalForm`); dışa aktarma `.ics`
+    ile aynı yoldan (indirme, kural 33), içe aktarma gizli `#senkron-dosya`. Dosya
+    seçici `await`'lerden ÖNCE açılır (kullanıcı etkileşimi eskirse tarayıcı
+    reddeder). Önizleme (`dry_run`) YOK: yazmadan önce tek onay, sonra sayılı özet.
+    Cihaz kimliği veri klasöründeki `cihaz.json`'da (`ayarlar.json`'a konmadı: ayar
+    testleri sözlüğün tamamına kilitli). Cihaz saatleri farklıysa "son yazan"
+    yanılabilir; belge bu sınırı kabul ediyor.
+
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -726,6 +796,16 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
 + v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+**v1.8.0 YAYINLANMAMIŞ** (kod ve testler hazır; `ui/surum.py` ve sürüm numaraları
+BİLİNÇLİ olarak 1.7.2'de duruyor, yayın akışı §1'de): **Telefonla senkron dosyası**
+(kural 84-93, `docs/senkron.md`): `senkron/` paketi, `006_senkron.sql` (takvim
+`uid`/`updated_at`, `silinenler` mezar taşları, tetikleyiciler), Ayarlar → "Telefonla
+senkron" (oluştur / aç), `GET /api/senkron/disa` + `POST /api/senkron/ice`,
+mobil için uyum fixture'ı (`docs/senkron-ornek*`, `scripts/senkron_ornek_uret.py`).
+Yayınlamadan önce: sürümü yükselt, güvenlik incelemesi (§1), CHANGELOG'daki
+`[Yayınlanmamış]` bölümünü `[1.8.0]` yap, paketli exe'de senkron dosyası oluştur/aç
+elle dene (WebView2 indirme + dosya seçici bu ortamda otomatik denenemedi).
 
 v1.7.2'de bitenler (ayrıntı CHANGELOG.md'de):
 
