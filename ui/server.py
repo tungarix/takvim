@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import platform
 import re
 import sqlite3
 from dataclasses import replace
@@ -25,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 from core import UTC, Event, Task, from_wall_clock, parse_iso, parse_task_add, to_local
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
+from senkron import UZANTI, cihaz_kimligi, durum_uret, ice_aktar, json_metni
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
 from store.yedek import veritabani_bozuklugu
 
@@ -641,6 +643,10 @@ class _Handler(BaseHTTPRequestHandler):
                 )
                 return
 
+            if yol == "/api/senkron/disa":
+                self._senkron_disa()
+                return
+
             if yol == "/api/backups":
                 self._json({"backups": _yedek_listesi(self._db_yolu)})
                 return
@@ -713,6 +719,10 @@ class _Handler(BaseHTTPRequestHandler):
 
             if parcalar == ["api", "import"]:
                 self._ics_iceri(parse_qs(parsed.query))
+                return
+
+            if parcalar == ["api", "senkron", "ice"]:
+                self._senkron_ice()
                 return
 
             if parcalar == ["api", "backups", "restore"]:
@@ -1342,6 +1352,39 @@ class _Handler(BaseHTTPRequestHandler):
                 "calendar": hedef.name,
             }
         )
+
+    def _senkron_disa(self) -> None:
+        """GET /api/senkron/disa — `.takvimsync` olarak indirilen tam durum.
+
+        `.ics` dışa aktarmayla aynı yol: tarayıcı/WebView2 indirmesi (kural 33).
+        Cihaz kimliği veri klasöründeki `cihaz.json`'da; bellek DB'sinde kalıcı
+        yer yok, her indirmede geçici bir kimlik gidiyor.
+        """
+        db_yolu = self._db_yolu
+        dizin = Path(str(db_yolu)).resolve().parent if db_yolu and str(db_yolu) != ":memory:" else None
+        durum = durum_uret(
+            self.repo,
+            cihaz_id=cihaz_kimligi(dizin),
+            cihaz_adi=platform.node() or "Takvim",
+            uygulama=f"desktop {SURUM}",
+        )
+        self._gonder(
+            json_metni(durum).encode("utf-8"),
+            "application/json; charset=utf-8",
+            ekler={
+                "Content-Disposition":
+                    f'attachment; filename="takvim-{date.today():%Y%m%d}{UZANTI}"'
+            },
+        )
+
+    def _senkron_ice(self) -> None:
+        """POST /api/senkron/ice — gövdedeki `.takvimsync` metnini birleştirir.
+
+        Bozuk ya da bilinenden yeni sürümlü dosya `SenkronHatasi` (kodlu 400):
+        hiçbir şey değişmez. `.ics`teki gibi `dry_run` yok; ön yüz yazmadan önce
+        onay soruyor, yazdıktan sonra bu sayıları gösteriyor.
+        """
+        self._json(ice_aktar(self.repo, self._metin_govde()).as_dict())
 
     def _hatirlatici_ekle(self, event_id: int) -> None:
         """Seriye hatırlatıcı ekler."""

@@ -236,6 +236,8 @@ function modalAc({ baslik, metin = "", onay = t("tamam"), tehlike = false, kur, 
       } else if (e.key === "Enter" && !e.isComposing) {
         // Çok satırlı alanda Enter yeni satır demek; formu göndermemeli.
         if (e.target && e.target.tagName === "TEXTAREA") return;
+        // Eylem düğmesindeyken Enter o düğmeyi tıklamalı (forma "Kaydet" demek değil).
+        if (e.target && e.target.closest && e.target.closest(".modal-dugmeler")) return;
         e.preventDefault(); e.stopPropagation(); bitir(oku());
       } else if (e.key === "Tab") {
         // Odak kutunun DIŞINA kaçmasın: `perde` tıklamayla kapatıyor ama
@@ -305,6 +307,11 @@ function onayla(baslik, metin, onay = t("tamam"), tehlike = false) {
  */
 function modalForm(baslik, metin, alanlar, onay = t("kaydet"), ucuncu = null, genislik = null) {
   const girdiler = {};
+  const oku = () => {
+    const sonuc = {};
+    Object.entries(girdiler).forEach(([ad, g]) => { sonuc[ad] = g.value; });
+    return sonuc;
+  };
   return modalAc({
     baslik,
     metin,
@@ -312,10 +319,40 @@ function modalForm(baslik, metin, alanlar, onay = t("kaydet"), ucuncu = null, ge
     iptalDegeri: null,
     ucuncu,
     genislik,
-    kur: (govde) => {
+    kur: (govde, bitir) => {
       let ilk = null;
       const satirlar = {};
       alanlar.forEach((a) => {
+        if (a.tur === "dugmeler") {
+          // Değer girdisi değil eylem düğmeleri (Ayarlar > Telefonla senkron):
+          // tıklanınca kutu, formdaki değerler korunarak `{[anahtar]: true}`
+          // ile kapanıyor -- `ucuncu` düğmesiyle aynı sözleşme.
+          const kutu = document.createElement("div");
+          kutu.className = "modal-alan";
+          const etiket = document.createElement("span");
+          etiket.className = "modal-etiket";
+          etiket.textContent = a.etiket;
+          kutu.appendChild(etiket);
+          if (a.ipucu) {
+            const ipucu = document.createElement("p");
+            ipucu.className = "modal-ipucu";
+            ipucu.textContent = a.ipucu;
+            kutu.appendChild(ipucu);
+          }
+          const sira = document.createElement("div");
+          sira.className = "modal-dugmeler";
+          a.dugmeler.forEach((d) => {
+            const dugme = document.createElement("button");
+            dugme.type = "button";
+            dugme.className = "dugme";
+            dugme.textContent = d.etiket;
+            dugme.onclick = () => bitir({ ...oku(), [d.anahtar]: true });
+            sira.appendChild(dugme);
+          });
+          kutu.appendChild(sira);
+          govde.appendChild(kutu);
+          return;
+        }
         const satir = document.createElement("label");
         satirlar[a.ad] = satir;
         satir.className = "modal-alan" + (a.dar ? " dar" : "");
@@ -367,11 +404,7 @@ function modalForm(baslik, metin, alanlar, onay = t("kaydet"), ucuncu = null, ge
       iliskiUygula();
       return ilk;
     },
-    oku: () => {
-      const sonuc = {};
-      Object.entries(girdiler).forEach(([ad, g]) => { sonuc[ad] = g.value; });
-      return sonuc;
-    },
+    oku,
   });
 }
 
@@ -2429,9 +2462,23 @@ async function ayarlariAc() {
           { deger: "en", etiket: "English" },
         ],
       },
+      {
+        ad: "senkron",
+        etiket: t("senkron_etiket"),
+        ipucu: t("senkron_ipucu"),
+        tur: "dugmeler",
+        dugmeler: [
+          { anahtar: "_senkronDisa", etiket: t("senkron_disa_btn") },
+          { anahtar: "_senkronIce", etiket: t("senkron_ice_btn") },
+        ],
+      },
     ],
     t("kaydet"));
   if (!s) return;
+  // Dosya seçici KULLANICI ETKİLEŞİMİ geçerliyken açılmalı: aşağıdaki
+  // `await`lerden ÖNCE tıkla, yoksa tarayıcı ilk tıklamayı eskimiş sayar.
+  if (s._senkronIce) el("senkron-dosya").click();
+  const senkronEylemi = Boolean(s._senkronIce || s._senkronDisa);
   const dilDegisti = (s.dil === "en" ? "en" : "tr") !== durum.dil;
   await eylem(
     () => istek("/api/ayarlar", {
@@ -2445,7 +2492,57 @@ async function ayarlariAc() {
     }),
     t("ayarlar_kaydedildi"),
   );
-  if (dilDegisti) window.location.reload();
+  // Dil değişti ama senkron eylemi başladıysa yeniden yükleme onu keserdi
+  // (dosya diyaloğu / indirme); yeni dil bir sonraki açılışta uygulanır.
+  if (s._senkronDisa) window.location.href = "/api/senkron/disa";
+  if (dilDegisti && !senkronEylemi) window.location.reload();
+}
+
+/* Telefonla senkron (docs/senkron.md): dışa aktarma `.ics`le aynı yoldan,
+ * indirme olarak; içe aktarma gizli dosya girdisinden. `.ics`ten farkı:
+ * önizleme (`dry_run`) yok -- birleştirme kayıt kayıt "son yazan kazanır"
+ * olduğu için sonucu önceden söyleyen ikinci bir geçiş yok, onun yerine yazmadan
+ * ÖNCE tek bir onay ve yazdıktan sonra sayılı özet var. */
+el("senkron-dosya").onchange = (e) => {
+  const dosya = e.target.files[0];
+  e.target.value = "";
+  if (dosya) senkronIceAktar(dosya);
+};
+
+function senkronOzeti(rapor) {
+  const turler = (o) => [
+    o.calendar && t("senkron_takvim", { n: o.calendar }),
+    o.event && t("senkron_etkinlik", { n: o.event }),
+    o.task && t("senkron_gorev", { n: o.task }),
+  ].filter(Boolean).join(", ");
+  const satirlar = [
+    ["added", "senkron_eklendi"], ["updated", "senkron_guncellendi"],
+    ["deleted", "senkron_silindi"], ["skipped", "senkron_atlandi"],
+  ].filter(([sonuc]) => rapor.total[sonuc]).map(([sonuc, anahtar]) => t(anahtar, { liste: turler(rapor[sonuc]) }));
+  return satirlar.length ? satirlar.join("\n") : t("senkron_degisiklik_yok");
+}
+
+async function senkronIceAktar(dosya) {
+  let metin;
+  try {
+    metin = await dosya.text();
+  } catch {
+    bildir(t("dosya_okunamadi"), true);
+    return;
+  }
+  const tamam = await onayla(
+    t("senkron_ice_baslik"), t("senkron_ice_metin", { dosya: dosya.name }), t("senkron_ice_baslik"),
+  );
+  if (!tamam) return;
+  try {
+    const rapor = await istek("/api/senkron/ice", {
+      method: "POST", headers: { "Content-Type": "application/json; charset=utf-8" }, body: metin,
+    });
+    await yukle();
+    await onayla(t("senkron_sonuc_baslik"), senkronOzeti(rapor), t("tamam"));
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
 }
 
 /* `.ics` içe aktarma: önce ÖNİZLEME (`dry_run`), sonra gerçek yazma.
