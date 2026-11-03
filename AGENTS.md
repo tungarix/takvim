@@ -26,7 +26,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**1027 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
+**1045 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -778,7 +778,9 @@ düzeltme, sor). Hepsinin testi mutasyonla doğrulandı (`tests/test_senkron_wif
     Parola hiçbir yere yazılmaz. ECDSA P-256, SAN = IP, 1 gün; TLS ≥ 1.2. Parmak izi = DER'in
     SHA-256'sı base64url dolgusuz (QR'daki `f`).
 97. **Kimlik HER ŞEYDEN ÖNCE** (`_Istek._isle`): yetkisiz istek yol/metot ne olursa olsun 401 alır
-    (404/405 yalnız doğrulanmış isteğe), her başarısızlık sayılır, 5.'de oturum ölür. Kimliğin
+    (404/405 yalnız doğrulanmış isteğe), her başarısızlık KAYNAK IP başına sayılır: bir IP 5.'de o oturum
+    boyunca engellenir (bağlantısı yanıtsız kapanır; oturum ÖLMEZ, ağdaki biri tokensız 5 istekle
+    eşleştirmeyi bozamasın), tüm IP'lerden toplam 50'de oturum kapanır. Kimliğin
     doğrulandığı `_kimlikli` BAYRAĞIYLA izlenir, `Expect` başlığına güvenilmez: HTTP/1.0 +
     `Expect: 100-continue` `handle_expect_100`'e hiç uğramaz. `Expect` akışı da sayılır, 100
     Continue yetkisiz ya da 16 MiB üstü gövdeye verilmez. Karşılaştırma `hmac.compare_digest`.
@@ -788,8 +790,10 @@ düzeltme, sor). Hepsinin testi mutasyonla doğrulandı (`tests/test_senkron_wif
     Dosya doğrulaması `ice.dogrula` = `ice_aktar`ın doğrulayıcısı (derinlik/boyut/kayıt
     kuralları AYNI, RecursionError → 400); doğrulanmadan arayüze HİÇBİR şey gitmez.
 99. **Onay olmadan yazılmaz.** POST doğrulanır → oturum `onay_bekliyor` → arayüz Birleştir/Reddet
-    → yalnız onayda `ice_aktar`. Karar en çok 60 sn VE oturumun kalan ömrü kadar bekler (408);
-    ret 403, süre 408, ikinci eşzamanlı POST 409. Onay penceresi "Reddet" odağıyla açılır
+    → yalnız onayda `ice_aktar`. Karar POST'un ALINDIĞI andan 60 sn bekler (408); oturumun kapanış süresi onay bitene kadar uzar;
+    ret 403, süre 408, ikinci eşzamanlı POST `dogrula`dan ÖNCE 409 (CPU yedirmez); `isleniyor`
+    fazında İptal yok sayılır. Doğrulamanın CPU bütçesi: en çok 20.000 etkinlik, sınırlı serilerin
+    toplam 500.000 örneği (`ice.MAKS_ETKINLIK/MAKS_TOPLAM_ORNEK`, dosya içe aktarmayla ortak). Onay penceresi "Reddet" odağıyla açılır
     (`wifiOnayKutusu`): yanlışlıkla Enter veri birleştirmesin. Başarılı/reddedilen/zaman aşımına
     uğrayan POST'tan sonra oturum kapanır; geçersiz dosya (400) kapatmaz.
 100. **Thread düzeni.** Eşleştirme sunucusu thread'li (`TCPServer`+`ThreadingMixIn`; `HTTPServer`
@@ -797,7 +801,9 @@ düzeltme, sor). Hepsinin testi mutasyonla doğrulandı (`tests/test_senkron_wif
     bekliyor. Ana sunucunun tek-thread kuralı (16) bozulmuyor: her istek `depo_ac()` ile KENDİ
     sqlite bağlantısını açıp kapatır (bellek DB'sinde ortak bağlantı, yalnız geliştirme). TLS
     el sıkışması kabul döngüsünde değil istek thread'inde (takılan istemci diğerlerini tutmasın);
-    eşzamanlı bağlantı en çok 8. Yeni `baslat` eski oturumu kapatır (token'ı ölür); uygulama
+    eşzamanlı bağlantı en çok 8, kaynak IP başına 2; kimliksiz bağlantının TOPLAM ömrü 10 sn (TLS dahil;
+    soket-başı zaman aşımı damlatan istemciyi kesmez), kimlikli POST gövdesi toplam 30 sn
+    (`_Istek._sayac_kur`). Geçici PEM silinemezse (virüs tarayıcısı) yutulur, çıkışta silinir. Yeni `baslat` eski oturumu kapatır (token'ı ölür); uygulama
     kapanışında `_TakvimSunucu.server_close` açık oturumu temizler. `bitir` önce token'ı öldürür
     (`faz="bitti"`), dinleyiciyi hemen arkasından kapatır.
 101. **Günlük ve arayüz.** Günlük yalnız "oturum açıldı/kapandı, sonuç, istek sayısı" (`print`);
@@ -890,7 +896,7 @@ eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 **Wi-Fi eşleştirme** (v1.9.0 hedefi, yayınlanmadı; kural 95-101, `docs/senkron-wifi.md`,
 CHANGELOG [Yayınlanmamış]): `senkron/wifi.py`, `/api/senkron/wifi/*`, Ayarlar → "Wi-Fi ile
 eşleştir" (QR + bağlantı + geri sayım + masaüstü onayı), `scripts/wifi_sunucu_dene.py` (mobil
-istemciyi uçtan uca denemek için; exe'ye girmez). Test sayısı 926 → 1027. Paketli exe duman
+istemciyi uçtan uca denemek için; exe'ye girmez). Test sayısı 926 → 1045 (güvenlik incelemesi düzeltmeleri dahil). Paketli exe duman
 testi artık eşleştirmeyi gerçekten başlatıp TLS parmak izini okuyor (özel ağ yoksa atlar):
 `cryptography` paketlemede eksik kalırsa hata ilk kullanıcıda değil burada görünür. exe boyutu
 16,96 → 20,75 MB (cryptography'nin yerel kütüphaneleri; not: pywebview'in `ssl=True` yolu
