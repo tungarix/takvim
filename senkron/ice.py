@@ -38,6 +38,9 @@ TURLER = ("calendar", "event", "task")
 # Hatırlatıcı en çok 10 yıl önce: daha büyüğü `başlangıç - dakika` hesabında OverflowError verip
 # hatırlatıcı döngüsünü her turda düşürürdü (dosyada sınır yok, uygulamalar bunu reddeder).
 MAKS_HATIRLATICI = 10 * 365 * 24 * 60
+# Etkinlik başına hatırlatıcı sayısı: gerçek kullanım bir elinin parmakları kadar; sınırsız
+# dizi (8 MB'a sığan ~1 milyon değer) hatırlatıcı döngüsünü her turda şişirirdi.
+MAKS_HATIRLATICI_SAYISI = 1000
 
 _ZAMAN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RENK = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -234,6 +237,8 @@ def _etkinlik_ayristir(h: dict) -> _Etkinlik:
         except ValueError:
             raise _bozuk(f"rrule çözülemedi ({uid}): {rrule}") from None
     hatirlaticilar = h.get("reminders", [])
+    if isinstance(hatirlaticilar, list) and len(hatirlaticilar) > MAKS_HATIRLATICI_SAYISI:
+        raise _bozuk(f"reminders: en çok {MAKS_HATIRLATICI_SAYISI} hatırlatıcı ({uid})")
     if not isinstance(hatirlaticilar, list) or not all(
         isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= MAKS_HATIRLATICI for d in hatirlaticilar
     ):
@@ -566,7 +571,10 @@ def ice_aktar(repo: Repo, kaynak: str | bytes | dict) -> SenkronRaporu:
     değişmez. Aynı dosya ikinci kez içe aktarılınca tüm sayılar sıfırdır ve veri
     değişmez (kayıtlar yalnızca KESİN olarak yeniyse yazılıyor).
     """
-    dosya = _ayristir(kaynak)
+    try:
+        dosya = _ayristir(kaynak)
+    except RecursionError:  # iç içe yüzlerce katman: json.loads/doğrulama yığını taşırır
+        raise _bozuk("iç içe yapı çok derin") from None
     rapor = SenkronRaporu()
     with _tx(repo.conn):
         _takvim_birlestir(repo.conn, dosya, rapor)
