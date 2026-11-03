@@ -22,7 +22,7 @@ no sign-up, no cloud sync.
 - **Interface language:** the UI is fully Turkish or fully English, switched from **⚙ Settings → Language** (saved, page reloads). Default is Turkish.
 - **Tasks:** a to-do list in the sidebar. Plan a task for a day (no time) or for specific hours; a timed task becomes a block on the calendar grid. Drag a task from the list onto the grid, check it off in the list or on its block. The quick-add box also takes a `görev:` prefix (Turkish, like the rest of quick add). Tasks are exported and imported as `.ics` VTODO.
 - **Sync with the phone app (new in 1.8.0):** **⚙ Settings → Sync with phone** creates or opens a `.takvimsync` file; you carry it between devices yourself (Share, USB, Drive). No network, no account. Format: [docs/senkron.md](docs/senkron.md).
-- **Pair over Wi-Fi (new):** **⚙ Settings → Sync with phone → Pair over Wi-Fi** shows a QR code; scan it with the phone on the same Wi-Fi to sync without moving a file. A short-lived (3 min) HTTPS server runs only while that screen is open, only on your private network address, and nothing is merged until you approve it on the desktop. If Windows Firewall asks, allow **Private networks**. The file-based sync above always works as a fallback (e.g. guest Wi-Fi that isolates devices). Protocol: [docs/senkron-wifi.md](docs/senkron-wifi.md).
+- **Pair over Wi-Fi (new in 1.9.0):** **⚙ Settings → Sync with phone → Pair over Wi-Fi** shows a QR code; scan it with the phone on the same Wi-Fi to sync without moving a file. A short-lived (3 min) HTTPS server runs only while that screen is open, only on your private network address, and nothing is merged until you approve it on the desktop. If Windows Firewall asks, allow **Private networks**. The file-based sync above always works as a fallback (e.g. guest Wi-Fi that isolates devices). Protocol: [docs/senkron-wifi.md](docs/senkron-wifi.md).
 - **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept. If the file ever gets damaged, Takvim offers on startup to go back to the latest healthy backup (the damaged file is set aside, not deleted).
 - **Known limitation:** the quick-add box always expects a Turkish sentence (e.g. "yarın 14:00 diş hekimi"), even in English mode — its parser only understands Turkish grammar; the placeholder text shows the expected format.
 - **License:** [MIT](LICENSE).
@@ -50,7 +50,7 @@ they were built locally, before this workflow existed.
 
 Bağımsız masaüstü takvim uygulaması. Yerel-öncelikli, tek kullanıcı, çevrimdışı.
 
-**Durum:** v1.8.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
+**Durum:** v1.9.0. Masaüstündeki **Takvim** kısayolu tek dosyalık
 `Takvim.exe`'yi çalıştırır — Python kurulumu gerekmez.
 
 ---
@@ -286,7 +286,7 @@ olduğunu taşımaz.
 | İçe aktar | Üstteki "İçe aktar": `.ics` seç, önizlemeyi onayla (kaç yeni/güncelleme/atlanacak) |
 | Çakışma uyarısı | Oluştururken üst üste gelen saat varsa arayüz söylüyor, engellemiyor |
 | Telefonla senkron | (1.8.0) ⚙ Ayarlar → "Telefonla senkron": "Senkron dosyası oluştur" `.takvimsync` indirir, "Senkron dosyası aç" başka cihazın dosyasını birleştirir (biçim: `docs/senkron.md`) |
-| Wi-Fi ile eşleştir | (yayınlanmamış) ⚙ Ayarlar → Telefonla senkron → "Wi-Fi ile eşleştir": QR kodu telefonla okut, dosya taşımadan senkron (aşağıda "Telefonla Wi-Fi ile eşleştirme") |
+| Wi-Fi ile eşleştir | (1.9.0) ⚙ Ayarlar → Telefonla senkron → "Wi-Fi ile eşleştir": QR kodu telefonla okut, dosya taşımadan senkron (aşağıda "Telefonla Wi-Fi ile eşleştirme") |
 | Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat + arayüz dili (Türkçe/English, kaydedince sayfa yeniden yüklenir) |
 | Dil | Arayüz ya tamamen Türkçe ya tamamen İngilizce. İSTİSNA: hızlı ekleme kutusu İngilizce modda da **Türkçe cümle** bekliyor ("yarın 14:00 diş hekimi") — ayrıştırıcı dilbilgisi Türkçe gömülü, İngilizce cümle tanınmazsa zaman bulunamayıp tüm gün kaydedilir. Boş durum örnekleri bu yüzden çevrilmiyor: doğru kullanımı gösteriyorlar |
 | Görev ekleme | Kenar çubuğundaki **Görevler** kutusuna yaz + Enter (plansız görev), **+** ile form ("Ne zaman?": plansız / gün içinde bir ara / belirli saatlerde), ya da hızlı ekleme kutusuna `görev: rapor yaz yarın 14:00-15:30` (önek iki nokta ile bitmeli; zaman yoksa plansız, yalnız tarih varsa gün planlı, saat varsa saat planlı) |
@@ -382,7 +382,8 @@ Arayüzü tarayıcıda açmak (hata ayıklarken DevTools için pratik):
 ```
 
 **Bağımlılıklar:** `python-dateutil` (RRULE), `icalendar` (`.ics`),
-`pywebview` (masaüstü penceresi; yanında `pythonnet` geliyor), `pytest`
+`pywebview` (masaüstü penceresi; yanında `pythonnet` geliyor), `cryptography`
+(Wi-Fi eşleştirmede oturum başına kendi imzalı TLS sertifikası; `.exe` ~21 MB), `pytest`
 (test), `pyinstaller` (yalnızca paketleme). Windows'ta ayrıca `tzdata` —
 işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz hiç
 çalışmıyor (`ZoneInfoNotFoundError`). Opsiyonel kolaylık değil, zorunluluk.
@@ -391,7 +392,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**926 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**1045 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli
