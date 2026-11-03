@@ -16,7 +16,7 @@ from datetime import date, timedelta
 import pytest
 
 import senkron.ice as ice_modulu
-from core import Event, Task
+from core import UTC, Event, Task
 from senkron import SenkronHatasi, cihaz_kimligi, durum_uret, ice_aktar, json_metni
 from store import Repo
 from tests.helpers import IST, NY, ist
@@ -940,3 +940,74 @@ def test_rdate_exdate_yinelenenler_tek_ve_sirali(a, b):
 
     assert _dosya(b)["events"][0]["exdate"] == ["2026-11-04T07:00:00Z", "2026-11-09T07:00:00Z"]
     assert _dosya(b)["events"][0]["rdate"] == ["2026-12-01T07:00:00Z"]
+
+
+# ---------------------------------------------------------------------------
+# Güvenilmeyen dosya: kaynak tüketimi (güvenlik incelemesi v1.8.0)
+# ---------------------------------------------------------------------------
+
+def _tek_etkinlikli(a, **alanlar) -> dict:
+    """Yalnız bir kez çağrılır: `a`ya takvim + etkinlik ekler, dosyasını döndürür."""
+    k = a.add_calendar("Kişisel", "#3b82f6")
+    _etkinlik(a, k, "e1")
+    d = _dosya(a)
+    d["events"][0].update(alanlar)
+    return d
+
+
+def test_cok_derin_ic_ice_yapi_kodlu_hatayla_reddedilir(a, b):
+    """json.loads/doğrulama yığını taşıyordu: RecursionError yakalanmadan kopuyordu."""
+    derin = '{"format": "takvim-sync", "version": 1, "x": ' + "[" * 100_000 + "]" * 100_000 + "}"
+
+    with pytest.raises(SenkronHatasi) as hata:
+        ice_aktar(b, derin)
+
+    assert hata.value.kod == "senkron_bozuk" and b.list_calendars() == []
+
+
+def test_hatirlatici_sayisi_sinirlidir(a, b):
+    """~1 milyon farklı değerlik dizi (8 MB'a sığar) hatırlatıcı döngüsünü şişirirdi."""
+    sinir = ice_modulu.MAKS_HATIRLATICI_SAYISI
+    d = _tek_etkinlikli(a)
+
+    d["events"][0]["reminders"] = list(range(sinir))
+    ice_aktar(b, d)
+    assert len(b.list_reminders(b.get_event_by_uid("e1").id)) == sinir
+
+    d["events"][0]["reminders"] = list(range(sinir + 1))
+    with Repo.open(":memory:") as c:
+        with pytest.raises(SenkronHatasi, match="reminders"):
+            ice_aktar(c, d)
+        assert c.list_calendars() == []
+
+
+@pytest.mark.parametrize("kural", [
+    "FREQ=DAILY;BYMONTH=2;BYMONTHDAY=30",
+    "FREQ=SECONDLY;UNTIL=99991231T000000Z;BYMONTH=2;BYMONTHDAY=30",
+])
+def test_imkansiz_kural_dosyayi_hizla_reddeder(a, b, kural):
+    """Eskiden 3-13 sn tarar, sonra her görünümde tekrar ederdi."""
+    import time
+
+    d = _tek_etkinlikli(a, rrule=kural)
+    t0 = time.monotonic()
+    with pytest.raises(SenkronHatasi, match="hiçbir tarihe"):
+        ice_aktar(b, d)
+    assert time.monotonic() - t0 < 1.0
+    assert b.list_calendars() == []
+
+
+@pytest.mark.parametrize("kural,bas,bit", [
+    ("FREQ=HOURLY", "0001-01-02T00:00:00Z", "0001-01-02T01:00:00Z"),
+    ("FREQ=SECONDLY", "2026-03-01T00:00:00Z", "2026-03-01T00:00:01Z"),
+])
+def test_uzak_baslangicli_yogun_seri_goruntuyu_dondurmaz(a, b, kural, bas, bit):
+    """Dosya kabul edilir ama ay görünümü milisaniyeler sürer (eskiden 37-46 sn)."""
+    import time
+    from datetime import datetime
+
+    ice_aktar(b, _tek_etkinlikli(a, rrule=kural, tzid="UTC", start_utc=bas, end_utc=bit))
+
+    t0 = time.monotonic()
+    b.occurrences(datetime(2026, 11, 1, tzinfo=UTC), datetime(2026, 12, 1, tzinfo=UTC))
+    assert time.monotonic() - t0 < 2.0

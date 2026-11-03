@@ -153,6 +153,37 @@ def test_yabanci_kaynaktan_ice_aktarma_reddedilir(sunucu, repo):
     assert repo.list_calendars() == []
 
 
+def test_yabanci_siteden_disa_aktarma_indirmesi_reddedilir(sunucu, tmp_path):
+    """Başka sitenin bağlantısı/yönlendirmesi GET'le dosya indirtemez ve `cihaz.json` yazdıramaz."""
+    req = urllib.request.Request(sunucu + "/api/senkron/disa", headers={"Sec-Fetch-Site": "cross-site"})
+
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        urllib.request.urlopen(req)
+
+    assert hata.value.code == 403
+    assert not (tmp_path / "cihaz.json").exists()
+    # Adres çubuğundan ve sayfa içinden açılış geçer.
+    for site in ("none", "same-origin"):
+        req = urllib.request.Request(sunucu + "/api/senkron/disa", headers={"Sec-Fetch-Site": site})
+        with urllib.request.urlopen(req) as yanit:
+            assert yanit.status == 200
+
+
+def test_cok_derin_json_govdesi_baglantiyi_koparmaz(sunucu):
+    """Yüzlerce iç içe `[` RecursionError veriyordu: yanıtsız kopan bağlantı."""
+    derin = "[" * 100_000 + "]" * 100_000
+    durum, govde = _post(sunucu, derin)
+    assert durum == 400 and govde["error_code"] == "senkron_bozuk"
+
+    req = urllib.request.Request(
+        sunucu + "/api/events", method="POST", data=derin.encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        urllib.request.urlopen(req)
+    assert hata.value.code == 400
+
+
 def test_yabanci_host_ile_disa_aktarma_reddedilir(sunucu):
     """Kural 77: DNS rebinding ile tüm takvim okunamasın."""
     req = urllib.request.Request(sunucu + "/api/senkron/disa", headers={"Host": "kotu.example"})

@@ -260,7 +260,10 @@ class _Handler(BaseHTTPRequestHandler):
         uzunluk = self._icerik_uzunlugu()
         if uzunluk == 0:
             return {}
-        veri = json.loads(self.rfile.read(uzunluk))
+        try:
+            veri = json.loads(self.rfile.read(uzunluk))
+        except RecursionError:  # yüzlerce iç içe `[`: yakalanmazsa yanıtsız bağlantı kopması
+            raise ValueError("gövde çok derin iç içe") from None
         if not isinstance(veri, dict):
             raise _KodluHata(
                 "govde_nesne_olmali", "gövde bir JSON nesnesi (obje) olmalı"
@@ -1359,7 +1362,15 @@ class _Handler(BaseHTTPRequestHandler):
         `.ics` dışa aktarmayla aynı yol: tarayıcı/WebView2 indirmesi (kural 33).
         Cihaz kimliği veri klasöründeki `cihaz.json`'da; bellek DB'sinde kalıcı
         yer yok, her indirmede geçici bir kimlik gidiyor.
+
+        GET'in yan etkisi var (ilk çağrıda `cihaz.json` yazılır) ve veriyi indirme
+        olarak verir: başka bir sitenin yönlendirmesi/bağlantısıyla tetiklenmesin diye
+        yazan isteklerle aynı kaynak denetimi (kural 40; adres çubuğundan açılış
+        `Sec-Fetch-Site: none` ile geçer).
         """
+        if not self._kaynak_guvenli():
+            self._guvensizi_reddet("bu istek Takvim penceresinden gelmiyor", "kaynak_guvensiz")
+            return
         db_yolu = self._db_yolu
         dizin = Path(str(db_yolu)).resolve().parent if db_yolu and str(db_yolu) != ":memory:" else None
         durum = durum_uret(

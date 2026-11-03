@@ -90,8 +90,11 @@ def _normalize_until(text: str, tz: tzinfo) -> str:
     return _UNTIL_RE.sub(repl, text)
 
 
-def _ruleset(event: Event) -> rruleset:
+def _ruleset(event: Event, ankraj: datetime | None = None) -> rruleset:
     """Etkinlik için YEREL saat diliminde bir rruleset kurar.
+
+    `ankraj` (yerel, tz'li) verilirse kural DTSTART yerine ondan başlar; bkz.
+    `_ankraj` (yalnızca ızgarası değişmeyen kurallarda, sonuç birebir aynı).
 
     dtstart yerel (tzid) olarak verilir; dateutil her örneği aynı tzinfo ile
     üretir, dolayısıyla duvar saati sabit kalır ve UTC ofseti DST'ye göre
@@ -102,7 +105,7 @@ def _ruleset(event: Event) -> rruleset:
     uydurduğu için bu fark pratikte veriye yansımıyor; bilinçli kabul.
     """
     tz = get_tz(event.tzid)
-    dtstart = event.start_utc.astimezone(tz)
+    dtstart = ankraj if ankraj is not None else event.start_utc.astimezone(tz)
 
     if event.rrule:
         # forceset=True: metin RDATE/EXDATE satırları da içerse tek tip sonuç.
@@ -121,6 +124,79 @@ def _ruleset(event: Event) -> rruleset:
     for excluded in event.exdate:
         rs.exdate(excluded.astimezone(tz))
     return rs
+
+
+# Izgarası SABİT bir zaman birimi olan frekanslar (saniye). AYLIK/YILLIK burada
+# yok: ay ve yıl uzunluğu değişiyor, DTSTART'ın günü BYMONTHDAY'in varsayılanı.
+_IZGARA_SANIYE = {
+    "SECONDLY": 1, "MINUTELY": 60, "HOURLY": 3600, "DAILY": 86_400, "WEEKLY": 604_800,
+}
+_ANKRAJ_ESIK = 2_000  # pencereye bu kadar adımdan yakınsa DTSTART'tan yürümek yeter
+
+_FREQ_RE = re.compile(r"FREQ=([A-Z]+)")
+_INTERVAL_RE = re.compile(r"INTERVAL=(\d+)")
+
+
+def _ankraj(event: Event, yakin: datetime) -> datetime | None:
+    """DTSTART çok gerideyse, `yakin`dan birkaç adım önceki IZGARA noktası (yerel).
+
+    dateutil pencereye varmak için kuralı DTSTART'tan tek tek yürür: yıl 1'den
+    başlayan `FREQ=HOURLY` ya da geçen aydan `FREQ=SECONDLY` seri her ay/hafta
+    görünümünde 37-46 sn tutuyordu (ölçüldü), tek bir `.ics`/`.takvimsync`
+    kaydıyla uygulama KALICI olarak donuyordu. Izgara DTSTART + n*INTERVAL*birim
+    olduğundan, kuralı ızgara üstünde ilerideki bir noktadan başlatmak AYNI
+    örnekleri verir. Yalnızca tek kurallı, COUNT'suz (COUNT başlangıçtan sayılır),
+    DTSTART satırı içermeyen, günlük ve daha sık kurallarda uygulanır; geri kalanı
+    None (DTSTART'tan yürümek, eski davranış). Duvar saati aritmetiği: DST'de
+    ızgara kaymasın diye naive zamanda ilerletiliyor (dateutil'in yaptığı gibi).
+    """
+    metin = (event.rrule or "").upper()
+    if metin.count("FREQ=") != 1 or "COUNT=" in metin or "DTSTART" in metin:
+        return None
+    sikilik = _FREQ_RE.search(metin)
+    birim = _IZGARA_SANIYE.get(sikilik[1]) if sikilik else None
+    if birim is None:
+        return None
+    aralik = _INTERVAL_RE.search(metin)
+    adim = timedelta(seconds=birim * max(1, int(aralik[1]) if aralik else 1))
+    tz = get_tz(event.tzid)
+    bas = event.start_utc.astimezone(tz)
+    gecen = yakin.astimezone(tz).replace(tzinfo=None) - bas.replace(tzinfo=None)
+    adim_sayisi = gecen // adim
+    if adim_sayisi <= _ANKRAJ_ESIK:
+        return None
+    # 2 adım pay: ankrajın kendi periyodunda ankrajdan ÖNCEKİ örnekler (BYDAY...)
+    # düşer; pencere en az iki periyot sonrasında kalmalı.
+    return (bas.replace(tzinfo=None) + (adim_sayisi - 2) * adim).replace(tzinfo=tz, fold=bas.fold)
+
+
+def _imkansiz_mi(rrule_text: str) -> bool:
+    """BYMONTH/BYMONTHDAY çifti HİÇBİR tarihe denk gelmiyor mu (ör. 30 Şubat).
+
+    dateutil böyle kuralda örnek bulamayınca günlük ve daha sık frekansta 9999
+    yılına kadar GÜN GÜN tarar (4-13 sn, her görünümde tekrar). Yalnızca pozitif
+    gün numaraları denetlenir (negatifler her ayda vardır).
+    """
+    for satir in rrule_text.upper().splitlines():
+        gunler = re.search(r"BYMONTHDAY=([^;]+)", satir)
+        if not gunler:
+            continue
+        try:
+            sayilar = [int(g) for g in gunler[1].split(",")]
+        except ValueError:
+            continue  # bozuk sayı: rrulestr kendi hatasını verir
+        if any(g <= 0 for g in sayilar):
+            continue
+        aylar = re.search(r"BYMONTH=([^;]+)", satir)
+        try:
+            ay_listesi = [int(a) for a in aylar[1].split(",")] if aylar else list(range(1, 13))
+        except ValueError:
+            continue
+        # Şubat 29 (artık yıl dahil); 4,6,9,11: 30; diğerleri 31.
+        en_cok = {2: 29, 4: 30, 6: 30, 9: 30, 11: 30}
+        if not any(g <= en_cok.get(a, 31) for g in sayilar for a in ay_listesi):
+            return True
+    return False
 
 
 def _kural_anahtari(event: Event) -> _Anahtar:
@@ -285,7 +361,10 @@ def expand(
 
     rs: rruleset | None = None
     if event.rrule or event.rdate or event.exdate:
-        rs = _onbellekli_ruleset(event)
+        # DTSTART çok gerideyse kural pencerenin yakınından başlatılır (`_ankraj`):
+        # bu küme tek kullanımlık, önbelleğe girmez.
+        ankraj = _ankraj(event, window_start - duration) if event.rrule else None
+        rs = _ruleset(event, ankraj) if ankraj is not None else _onbellekli_ruleset(event)
         # Pencereden ÖNCE başlayıp içine sarkan örnekleri kaçırmamak için sorgu
         # başlangıcını bir süre kadar geriye alıyoruz (gece yarısını aşan
         # etkinlikler, çok günlü tüm gün etkinlikler).
@@ -345,6 +424,9 @@ def _is_instance(event: Event, rs: rruleset | None, start_utc: datetime) -> bool
         return start_utc == event.start_utc
     tz = get_tz(event.tzid)
     target = start_utc.astimezone(tz)
+    ankraj = _ankraj(event, start_utc) if event.rrule else None
+    if ankraj is not None:  # `rs` DTSTART'tan kurulu; uzaktaki hedef için yakın küme
+        rs = _ruleset(event, ankraj)
     return any(
         hit.astimezone(UTC) == start_utc
         for hit in rs.between(target, target, inc=True)
@@ -445,6 +527,9 @@ def series_end(event: Event) -> datetime | None:
         for extra in event.rdate:
             last = max(last, extra)
         return last + duration
+
+    if _imkansiz_mi(event.rrule):
+        raise ValueError("kural hiçbir tarihe denk gelmiyor (BYMONTH/BYMONTHDAY), reddedildi")
 
     if not _is_bounded(event.rrule):
         return None  # sonsuz seri; RDATE eklense bile sonsuz kalır
