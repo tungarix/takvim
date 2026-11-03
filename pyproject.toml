@@ -21,6 +21,10 @@ dependencies = [
     # Yanında pythonnet geliyor (WebView2'nin .NET arayüzü için); ikisi de
     # yalnızca Windows'ta gerekli.
     "pywebview>=6.2; sys_platform == 'win32'",
+    # Wi-Fi eşleştirme (senkron/wifi.py): oturum başına bellekte kendi imzalı TLS
+    # sertifikası. stdlib'de sertifika ÜRETİMİ yok; kendi X.509/ECDSA kodumuzu
+    # yazmak yerine denetlenmiş kütüphane. 43 = Python 3.12 için hazır tekerlek veren en düşük makul sürüm.
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]
