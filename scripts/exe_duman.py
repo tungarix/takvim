@@ -144,6 +144,35 @@ def _kapat(surec: subprocess.Popen) -> None:
         surec.kill()
 
 
+def eski_surum_kur(db: Path, gecici: Path) -> int:
+    """Yükseltme senaryosu: bir ÖNCEKİ şemada, içinde bir takvim olan DB kurar.
+
+    Boş bir dosya "yeni kurulum" sayılır ve yedeklenmez (AGENTS 55); yedeğin
+    migration'dan ÖNCE alındığını ancak gerçekten yükseltilecek bir DB gösterir.
+    Önceki şemanın kendisi geçici bir klasöre kopyalanan migration dosyalarıyla
+    kurulur: şema bilgisi burada ikinci kez yazılmıyor.
+    """
+    adimlar = sorted((KOK / "store" / "migrations").glob("[0-9]*.sql"))
+    kopya = gecici / "eski-migrations"
+    kopya.mkdir()
+    for yol in adimlar[:-1]:
+        (kopya / yol.name).write_bytes(yol.read_bytes())
+    sys.path.insert(0, str(KOK))
+    from store.migrator import migrate
+
+    baglanti = sqlite3.connect(db)
+    try:
+        surum = migrate(baglanti, kopya)
+        baglanti.execute(
+            "INSERT INTO calendars (name, color, visible, created_at) "
+            "VALUES ('Yükseltme denemesi', '#3b82f6', 1, '2026-01-01T00:00:00Z')"
+        )
+        baglanti.commit()
+    finally:
+        baglanti.close()
+    return surum
+
+
 def calistir(exe: Path, etiket: str) -> list[str]:
     """Bütün kontrolleri yapar, başarısız olanların listesini döndürür."""
     surum = kaynak_surumu()
@@ -161,6 +190,7 @@ def calistir(exe: Path, etiket: str) -> list[str]:
     # bırakabiliyor; temizlenemeyen geçici klasör denemeyi başarısız saymaz.
     with tempfile.TemporaryDirectory(prefix="takvim-duman-", ignore_cleanup_errors=True) as gecici:
         db = Path(gecici) / "takvim.db"
+        eski_surum = eski_surum_kur(db, Path(gecici))
         port = bos_port()
         deneme = Deneme(port)
         surec = subprocess.Popen(
@@ -208,10 +238,28 @@ def calistir(exe: Path, etiket: str) -> list[str]:
                     "şema güncel",
                     f"user_version {surum_db}, son migration {beklenen}",
                 )
-                deneme.kontrol(
-                    any((Path(gecici) / "yedek").glob("takvim-*.db")),
-                    "açılış yedeği alındı",
-                )
+                yedekler = sorted((Path(gecici) / "yedek").glob("takvim-*.db"))
+                deneme.kontrol(bool(yedekler), "açılış yedeği alındı")
+                if yedekler:
+                    # Yedek migration'dan ÖNCE alınmalı: eski şemada ve veri duruyor.
+                    yedek_baglanti = sqlite3.connect(f"file:{yedekler[-1]}?mode=ro", uri=True)
+                    try:
+                        yedek_surum = yedek_baglanti.execute("PRAGMA user_version").fetchone()[0]
+                    finally:
+                        yedek_baglanti.close()
+                    deneme.kontrol(
+                        yedek_surum == eski_surum,
+                        "yedek migration'dan önceki şemada",
+                        f"yedek user_version {yedek_surum}, beklenen {eski_surum}",
+                    )
+                baglanti = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+                try:
+                    takvim_sayisi = baglanti.execute(
+                        "SELECT COUNT(*) FROM calendars WHERE name = 'Yükseltme denemesi'"
+                    ).fetchone()[0]
+                finally:
+                    baglanti.close()
+                deneme.kontrol(takvim_sayisi == 1, "yükseltmede mevcut veri korundu")
         finally:
             _kapat(surec)
         hatalar += deneme.hatalar
