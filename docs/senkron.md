@@ -100,7 +100,7 @@ bulunamazsa görev plansıza döner (`plan_day` ve `event_uid` ikisi de null).
 Zaman bloğu etkinliği silinirse görev yerelde de plansıza döner (mevcut
 kural).
 
-**Doğrulama (iki taraf da uygular, tek kayıt bozuksa dosya reddedilir):** yinelenen uid, `#rrggbb` olmayan renk, gece yarısı olmayan tüm gün etkinlik, çözülemeyen RRULE, on yıldan büyük hatırlatıcı, aynı örneğe birden çok override, tekrarlı/tüm gün etkinliğe bağlı görev (görev plansıza döner). Takvim adı kenar boşluklarından kırpılır; `rdate`/`exdate` tekilleştirilir. Dosyada `calendars`/`events`/`tasks`/`deleted` listelerinden biri eksikse dosya reddedilir.
+**Doğrulama (iki taraf da uygular, tek kayıt bozuksa dosya reddedilir):** yinelenen uid, `#rrggbb` olmayan renk, gece yarısı olmayan tüm gün etkinlik, çözülemeyen RRULE, on yıldan büyük hatırlatıcı, aynı örneğe birden çok override, tekrarlı/tüm gün etkinliğe bağlı görev (görev plansıza döner). Takvim adı kenar boşluklarından kırpılır; `rdate`/`exdate` tekilleştirilir.
 
 **Zaman farkı:** iki cihazın saati birbirinden farklıysa "son yazan" yanılabilir;
 bu sınır kabul edilmiştir (v1'de çözülmez). Kullanıcıya belgede söylenir.
