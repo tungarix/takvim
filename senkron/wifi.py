@@ -19,6 +19,7 @@ hepsinin testi var (`tests/test_senkron_wifi.py`):
 
 from __future__ import annotations
 
+import atexit
 import base64
 import hashlib
 import hmac
@@ -55,10 +56,14 @@ __all__ = [
 BAGLANTI_TABANI = "https://aktenak.tech/s"
 OMUR_SN = 180               # en çok 3 dakika
 KARAR_SN = 60               # masaüstü onayı için en çok 60 sn
-MAKS_HATA = 5               # bu kadar başarısız kimlik doğrulamasında oturum ölür
+MAKS_HATA = 5               # bir kaynak IP'nin bu kadar başarısız kimlik denemesinden sonra o IP engellenir
+MAKS_TOPLAM_HATA = 50       # tüm IP'lerden toplam bu kadar başarısızlıkta oturum kapanır (yedek fren)
+EN_COK_IP_BAGLANTI = 2      # aynı kaynak IP'den eşzamanlı bağlantı
 MAKS_GOVDE = 16 * 1024 * 1024
 EN_COK_BAGLANTI = 8         # eşzamanlı bağlantı: yavaş istemciler thread yığmasın
-ISTEK_ZAMAN_ASIMI = 15      # TLS el sıkışması ve soket okumaları için sn
+ISTEK_ZAMAN_ASIMI = 15      # her soket okuması için sn (kimliği doğrulanmış istemci)
+KIMLIKSIZ_OMUR_SN = 10      # kimlik doğrulanana dek bağlantının TOPLAM ömrü (TLS dahil; damlatan istemci yuva tutamasın)
+GOVDE_OMUR_SN = 30          # kimlik doğrulandıktan sonra isteğin GÖVDESİNİ okumak için toplam süre
 ATILAN_GOVDE = 1024 * 1024  # reddedilen isteğin okunup atılan gövdesi (RST yanıtı ezmesin)
 PORT_ARALIGI = (49152, 65535)
 AD_UZUNLUGU = 40
@@ -107,6 +112,28 @@ def varsayilan_ip_bul() -> str:
     if ip == "0.0.0.0":
         raise WifiHatasi("wifi_ag_yok", "ağ bağlantısı bulunamadı")
     return ip
+
+
+def _gecici_sil(yol: str) -> None:
+    """Geçici PEM'i siler. Virüs tarayıcısı vb. dosyayı kilitleyip silmeyi engellese bile eşleştirme
+    BAŞLAMAMAZLIK etmez: anahtar zaten rastgele parolayla şifreli ve geçici klasörde; kısa süre
+    yeniden denenir, olmazsa uygulama çıkışında silinir."""
+    for _ in range(5):
+        try:
+            os.unlink(yol)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            time.sleep(0.05)
+    atexit.register(_sessiz_sil, yol)
+
+
+def _sessiz_sil(yol: str) -> None:
+    try:
+        os.unlink(yol)
+    except OSError:
+        pass
 
 
 def sertifika_uret(ip: str) -> tuple[ssl.SSLContext, str]:
@@ -158,7 +185,7 @@ def sertifika_uret(ip: str) -> tuple[ssl.SSLContext, str]:
             dosya.write(pem)
         baglam.load_cert_chain(yol, password=parola)
     finally:
-        os.unlink(yol)
+        _gecici_sil(yol)
     return baglam, parmak
 
 
@@ -210,6 +237,9 @@ class WifiOturumu:
         self.rapor: dict | None = None
         self.ozet: dict | None = None
         self.hata_sayisi = 0
+        self.hata_ip: dict[str, int] = {}
+        self.engelli: set[str] = set()
+        self._post_var = False
         self.istek_sayisi = 0
         self.baglanti_hatasi = 0
         self._karar: bool | None = None
@@ -293,13 +323,45 @@ class WifiOturumu:
         gecerli = hmac.compare_digest(sunulan.encode("utf-8", "replace"), self._token.encode("ascii"))
         return gecerli and self.faz != "bitti"
 
-    def basarisiz(self) -> None:
-        """Başarısız kimlik doğrulamasını sayar; `MAKS_HATA`'ya varınca oturumu kapatır."""
+    def basarisiz(self, ip: str) -> None:
+        """Başarısız kimlik doğrulamasını KAYNAK IP başına sayar: `MAKS_HATA`'ya varan IP o oturum
+        boyunca engellenir (oturum AÇIK kalır; ağdaki biri tokensız isteklerle eşleştirmeyi bozamasın).
+        Toplam `MAKS_TOPLAM_HATA`'yı aşarsa (çok sayıda IP'den dağınık saldırı) oturum kapanır."""
         with self._kilit:
             self.hata_sayisi += 1
-            oldu = self.hata_sayisi >= MAKS_HATA
+            n = self.hata_ip[ip] = self.hata_ip.get(ip, 0) + 1
+            if n >= MAKS_HATA:
+                self.engelli.add(ip)
+            oldu = self.hata_sayisi >= MAKS_TOPLAM_HATA
         if oldu:
             self.bitir("cok_hata")
+
+    def engelli_mi(self, ip: str) -> bool:
+        with self._kilit:
+            return ip in self.engelli
+
+    def post_ayir(self) -> str:
+        """`dogrula`dan ÖNCE: oturumda aynı anda en çok BİR doğrulanan/onay bekleyen POST olur.
+        `tamam | mesgul | kapandi` döner; `tamam`ı alan `post_birak` ya da onay yoluyla bırakır."""
+        with self._kilit:
+            if self.faz == "bitti":
+                return "kapandi"
+            if self.faz != "bekliyor" or self._post_var:
+                return "mesgul"
+            self._post_var = True
+            return "tamam"
+
+    def post_birak(self) -> None:
+        with self._kilit:
+            self._post_var = False
+
+    def iptal(self) -> None:
+        """Kullanıcı İptal'i. Onaydan sonra birleştirme sürerken (`isleniyor`) YOK SAYILIR: veri
+        birleşecek, sonuç "iptal" diye yanlış yazılmasın."""
+        with self._kilit:
+            if self.faz == "isleniyor":
+                return
+        self.bitir("iptal")
 
     def istek_say(self) -> None:
         with self._kilit:
@@ -310,7 +372,9 @@ class WifiOturumu:
     def onay_iste(self, ozet: dict) -> str:
         """Geçerli dosya geldi: arayüzde karar bekler. `onay|red|zaman|mesgul|kapandi` döner.
 
-        Bekleme en çok `KARAR_SN`, ama oturumun 3 dakikalık ömrünü AŞMAZ.
+        Bekleme POST'un alındığı andan itibaren `KARAR_SN`'dir; oturumun kapanış süresi
+        gerekirse onay bitene kadar uzar (en çok +`KARAR_SN`), çünkü kullanıcıya her
+        zaman tam süre tanınır (spec §3).
         """
         with self._kilit:
             if self.faz != "bekliyor":
@@ -318,7 +382,8 @@ class WifiOturumu:
             self.faz = "onay_bekliyor"
             self.ozet = ozet
             self._karar = None
-            self._karar_bitis = min(self._zaman() + KARAR_SN, self._bitis)
+            self._karar_bitis = self._zaman() + KARAR_SN
+            self._bitis = max(self._bitis, self._karar_bitis)
             while self._karar is None and self.faz == "onay_bekliyor":
                 kalan = self._karar_bitis - self._zaman()
                 if kalan <= 0:
@@ -375,21 +440,40 @@ class _Sunucu(socketserver.ThreadingMixIn, socketserver.TCPServer):
         self.baglam = baglam
         self.dongu_basladi = threading.Event()
         self._yuva = threading.BoundedSemaphore(EN_COK_BAGLANTI)
+        self._ip_kilit = threading.Lock()
+        self._ip_baglanti: dict[str, int] = {}
         super().__init__(adres, _Istek)
 
     def service_actions(self) -> None:
         self.dongu_basladi.set()
 
     def process_request(self, request, client_address) -> None:  # type: ignore[override]
+        ip = client_address[0]
+        if self.oturum.engelli_mi(ip):  # çok sayıda başarısız denemeli IP: yanıtsız, hemen kapat
+            self.shutdown_request(request)
+            return
         if not self._yuva.acquire(blocking=False):
             self.shutdown_request(request)  # kapasite dolu: yanıtsız bırak
             return
+        with self._ip_kilit:
+            if self._ip_baglanti.get(ip, 0) >= EN_COK_IP_BAGLANTI:
+                self._yuva.release()
+                self.shutdown_request(request)  # tek IP bütün yuvaları dolduramasın
+                return
+            self._ip_baglanti[ip] = self._ip_baglanti.get(ip, 0) + 1
         super().process_request(request, client_address)
 
     def process_request_thread(self, request, client_address) -> None:  # type: ignore[override]
         try:
             super().process_request_thread(request, client_address)
         finally:
+            ip = client_address[0]
+            with self._ip_kilit:
+                kalan = self._ip_baglanti.get(ip, 1) - 1
+                if kalan > 0:
+                    self._ip_baglanti[ip] = kalan
+                else:
+                    self._ip_baglanti.pop(ip, None)
             self._yuva.release()
 
     def handle_error(self, request, client_address) -> None:  # type: ignore[override]
@@ -407,12 +491,41 @@ class _Istek(BaseHTTPRequestHandler):
     _kimlikli = False
     _govde_okundu = False
 
+    _sayac: threading.Timer | None = None
+
     def setup(self) -> None:
         self.request.settimeout(ISTEK_ZAMAN_ASIMI)
-        self.request = self.server.baglam.wrap_socket(self.request, server_side=True)  # type: ignore[attr-defined]
-        super().setup()
+        # El sıkışması AYRI yapılır: sayaç, `self.request` SSLSocket olduktan sonra kurulabilsin.
+        self.request = self.server.baglam.wrap_socket(  # type: ignore[attr-defined]
+            self.request, server_side=True, do_handshake_on_connect=False)
+        self._sayac_kur(KIMLIKSIZ_OMUR_SN)
+        try:
+            self.request.do_handshake()
+            super().setup()
+        except BaseException:
+            self._sayaci_durdur()
+            raise
+
+    def _sayaci_durdur(self) -> None:
+        if self._sayac is not None:
+            self._sayac.cancel()
+
+    def _sayac_kur(self, sn: float) -> None:
+        self._sayaci_durdur()
+        self._sayac = threading.Timer(sn, self._kimliksizi_kes)
+        self._sayac.daemon = True
+        self._sayac.start()
+
+    def _kimliksizi_kes(self) -> None:
+        """Toplam süre doldu (takılı el sıkışma, damlatılan başlık ya da gövde): bağlantıyı kopar.
+        `SSLSocket.shutdown` değil temel soketinki: SSL durumuna başka thread'den dokunulmaz."""
+        try:
+            socket.socket.shutdown(self.request, socket.SHUT_RDWR)
+        except OSError:
+            pass
 
     def finish(self) -> None:
+        self._sayaci_durdur()
         super().finish()
         try:
             self.connection.close()  # SSLSocket'i ilk soket sarmaladı: kapanışı biz yapıyoruz
@@ -479,13 +592,22 @@ class _Istek(BaseHTTPRequestHandler):
         # Yalnız `bekliyor`da: onay beklerken süreyi `onay_iste` (408) yönetir.
         if o.faz == "bekliyor" and o.sure_doldu():
             o.bitir("sure_doldu")
+        if o.engelli_mi(self.client_address[0]):
+            self.close_connection = True  # engelli IP: yanıt yok
+            return False
         if o.faz == "bitti":
             self._yanit(401, _YETKISIZ)
             return False
         if not o.yetkili_mi(self.headers.get("Authorization")):
-            o.basarisiz()
+            o.basarisiz(self.client_address[0])
             self._yanit(401, _YETKISIZ)
             return False
+        # Kimlik tamam: yalnız POST gövdesini okumak için toplam süre sınırı kalır (onay beklemesi
+        # ve yanıt yazımı süreyle kesilmez).
+        if self.command == "POST":
+            self._sayac_kur(GOVDE_OMUR_SN)
+        else:
+            self._sayaci_durdur()
         return True
 
     def handle_expect_100(self) -> bool:
@@ -560,14 +682,24 @@ class _Istek(BaseHTTPRequestHandler):
             return
         govde = self.rfile.read(uzunluk)
         self._govde_okundu = True
+        self._sayaci_durdur()  # gövde tamam: onay beklemesi süreyle kesilmez
         if len(govde) < uzunluk:
             self._yanit(400, {"error": "govde_eksik"})
+            return
+        # Pahalı doğrulamadan ÖNCE: oturumda aynı anda tek POST (ikincisi CPU yedirmesin).
+        yer = o.post_ayir()
+        if yer != "tamam":
+            self._yanit(409, {"error": "mesgul" if yer == "mesgul" else "iptal"})
             return
         try:
             ozet = dogrula(govde)
         except SenkronHatasi as hata:
+            o.post_birak()
             self._yanit(400, {"error": hata.kod, "message": str(hata), "param": hata.param})
             return
+        except BaseException:
+            o.post_birak()
+            raise
         sonuc = o.onay_iste(ozet)
         if sonuc == "mesgul":
             self._yanit(409, {"error": "mesgul"})
@@ -630,7 +762,7 @@ class WifiYonetici:
         """Yeni oturum açar. Bağlantı (token içerir) YALNIZ burada döner."""
         with self._kilit:
             if self._oturum is not None:
-                self._oturum.bitir("iptal")
+                self._oturum.iptal()
             ip = self._ip_bul()
             oturum = WifiOturumu(ip=ip, **self._ayar)  # type: ignore[arg-type]
             try:
@@ -654,7 +786,7 @@ class WifiYonetici:
 
     def iptal(self) -> None:
         if self._oturum is not None:
-            self._oturum.bitir("iptal")
+            self._oturum.iptal()
 
     def karar(self, onay: bool) -> None:
         """Birleştir (True) / Reddet (False); bekleyen karar yoksa `WifiHatasi`."""

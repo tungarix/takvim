@@ -11,6 +11,7 @@ import base64
 import hashlib
 import http.client
 import json
+import os
 import re
 import socket
 import ssl
@@ -103,9 +104,10 @@ def _istemci_baglami() -> ssl.SSLContext:
     return baglam
 
 
-def _istek(o, metot, yol, *, token="", govde=None, basliklar=None, zaman_asimi=10):
-    """(durum, başlıklar, gövde) döndürür."""
-    c = http.client.HTTPSConnection("127.0.0.1", o.port, context=_istemci_baglami(), timeout=zaman_asimi)
+def _istek(o, metot, yol, *, token="", govde=None, basliklar=None, zaman_asimi=10, kaynak="127.0.0.1"):
+    """(durum, başlıklar, gövde) döndürür. `kaynak`: istemcinin kaynak IP'si (127.0.0.x hepsi loopback)."""
+    c = http.client.HTTPSConnection("127.0.0.1", o.port, context=_istemci_baglami(), timeout=zaman_asimi,
+                                    source_address=(kaynak, 0))
     try:
         b = dict(basliklar or {})
         if token:
@@ -406,11 +408,9 @@ def test_token_yok_ya_da_yanlis_401(oturum):
 
 def test_bearer_disi_sema_ve_kisa_token_reddedilir(oturum):
     t = _token(oturum)
-    for baslik in (f"Basic {t}", t, f"bearer {t}", f"Bearer {t[:-1]}", f"Bearer {t}x", "Bearer "):
+    for baslik in (f"Basic {t}", t, f"bearer {t}", f"Bearer {t[:-1]}", f"Bearer {t}x"):  # 5 deneme: IP engellenmeden
         durum, _, _ = _istek(oturum, "GET", "/v1/hello", basliklar={"Authorization": baslik})
         assert durum == 401, baslik
-        if oturum.faz == "bitti":
-            break
 
 
 def test_token_sabit_zamanli_karsilastirilir(oturum, monkeypatch):
@@ -421,16 +421,44 @@ def test_token_sabit_zamanli_karsilastirilir(oturum, monkeypatch):
     assert cagrilar
 
 
-def test_besinci_basarisiz_kimlikte_oturum_olur(oturum):
+def test_besinci_basarisiz_kimlikte_yalniz_o_ip_engellenir_oturum_acik_kalir(oturum):
     t = _token(oturum)
     for _ in range(MAKS_HATA - 1):
         assert _istek(oturum, "GET", "/v1/hello", token="y" * 32)[0] == 401
-    assert oturum.faz == "bekliyor"
-    assert _istek(oturum, "GET", "/v1/hello", token=t)[0] == 200  # doğru token hâlâ geçer
+    assert _istek(oturum, "GET", "/v1/hello", token=t)[0] == 200  # doğru token hâlâ geçer, sayaç sıfırlanmaz
     assert _istek(oturum, "GET", "/v1/hello", token="y" * 32)[0] == 401  # 5. hata
-    assert _bekle(lambda: oturum.faz == "bitti")
-    assert oturum.sonuc == "cok_hata"
-    assert _port_kapali(oturum)  # doğru token bile artık ulaşamaz
+    assert oturum.engelli == {"127.0.0.1"}
+    with pytest.raises((OSError, http.client.HTTPException)):  # engelli IP: DOĞRU token bile yanıt almaz
+        _istek(oturum, "GET", "/v1/hello", token=t)
+    assert oturum.faz == "bekliyor"  # oturum ÖLMEDİ
+    # Başka bir kaynak IP'den (ağdaki gerçek telefon) doğru token çalışır.
+    assert _istek(oturum, "GET", "/v1/hello", token=t, kaynak="127.0.0.2")[0] == 200
+
+
+def test_tokensiz_5_istek_baskasinin_eslestirmesini_bozamaz(oturum):
+    """Saldırgan IP'si engellenir; meşru telefon (başka IP) eşleştirmeyi tamamlar."""
+    for _ in range(MAKS_HATA):
+        _istek(oturum, "GET", "/v1/hello", kaynak="127.0.0.3")
+    post = _Post(oturum, _telefon_dosyasi(), kaynak="127.0.0.2")
+    post.start()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")
+    oturum.karar_ver(True)
+    post.join(10)
+    assert post.sonuc[0] == 200 and oturum.sonuc is not None
+
+
+def test_toplam_50_basarisizlikta_oturum_kapanir_yedek_fren(oturum):
+    from senkron.wifi import MAKS_TOPLAM_HATA
+
+    ipler = (MAKS_TOPLAM_HATA + MAKS_HATA - 1) // MAKS_HATA
+    for i in range(ipler):
+        for _ in range(MAKS_HATA):
+            try:
+                _istek(oturum, "GET", "/v1/hello", kaynak=f"127.0.1.{i + 1}")
+            except (OSError, http.client.HTTPException):
+                break  # oturum yarıda kapandı
+    assert _bekle(lambda: oturum.faz == "bitti") and oturum.sonuc == "cok_hata"
+    assert _port_kapali(oturum)
 
 
 def test_yetkisiz_istege_yol_ve_metot_bilgisi_sizmaz(oturum):
@@ -647,7 +675,7 @@ def test_expect_100_yanlis_token_sayilir(oturum):
     for _ in range(MAKS_HATA):
         veri = _ham_post(oturum, ["Authorization: Bearer " + "y" * 32, "Content-Length: 10", "Expect: 100-continue"])
         assert veri.startswith(b"HTTP/1.1 401") and b"100 Continue" not in veri
-    assert _bekle(lambda: oturum.faz == "bitti") and oturum.sonuc == "cok_hata"
+    assert oturum.engelli == {"127.0.0.1"} and oturum.faz == "bekliyor"
 
 
 def test_http_1_0_expect_ile_kimlik_atlanmaz(oturum):
@@ -735,15 +763,31 @@ def test_post_karar_gelmezse_60_sn_sonra_408(oturum, saat, db):
     assert _bekle(lambda: oturum.faz == "bitti") and oturum.sonuc == "zaman_asimi"
 
 
-def test_karar_suresi_oturum_omrunu_asmaz(oturum, saat):
-    """Ömrün son 10 saniyesinde gelen dosya 60 sn değil kalan süre kadar bekler."""
-    saat.t += OMUR_SN - 10
+def test_karar_suresi_postun_alindigi_andan_baslar(oturum, saat):
+    """Ömrün son 5 saniyesinde gelen dosya da TAM 60 sn bekler (spec §3); ömür onay bitene dek uzar."""
+    saat.t += OMUR_SN - 5
     post = _Post(oturum, _telefon_dosyasi())
     post.start()
     assert _bekle(lambda: oturum.faz == "onay_bekliyor")
-    saat.t += 11
+    saat.t += 30  # ömür çoktan doldu ama karar süresi sürüyor
+    time.sleep(0.4)
+    d = oturum.durum()
+    assert oturum.faz == "onay_bekliyor" and d["karar_kalan_sn"] > 0 and d["kalan_sn"] > 0
+    saat.t += KARAR_SN - 30 + 1
     post.join(10)
     assert post.sonuc[0] == 408
+
+
+def test_omur_sonunda_gelen_post_onaylanabilir(oturum, saat, db):
+    saat.t += OMUR_SN - 5
+    post = _Post(oturum, _telefon_dosyasi())
+    post.start()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")
+    saat.t += 20
+    time.sleep(0.3)
+    oturum.karar_ver(True)
+    post.join(10)
+    assert post.sonuc[0] == 200 and _etkinlik_sayisi(db) == 1
 
 
 def test_onay_beklerken_ikinci_post_409(oturum):
@@ -848,3 +892,203 @@ def test_tls_olmayan_baglanti_sunucuyu_dusurmez(oturum):
     assert _bekle(lambda: oturum.baglanti_hatasi >= 1)
     assert _istek(oturum, "GET", "/v1/hello", token=_token(oturum))[0] == 200
     assert oturum.hata_sayisi == 0  # TLS'siz bağlantı kimlik hatası sayılmaz
+
+
+# ---------------------------------------------------------------------------
+# Yavaş (slowloris benzeri) istemciler: kimlik doğrulanmamış bağlantının toplam ömrü sınırlı
+# ---------------------------------------------------------------------------
+
+def _kapanis_bekle(soket, sn: float) -> bool:
+    """Sunucu bağlantıyı `sn` içinde kapattı mı."""
+    son = time.monotonic() + sn
+    soket.settimeout(0.3)
+    while time.monotonic() < son:
+        try:
+            if soket.recv(1024) == b"":
+                return True
+        except TimeoutError:
+            continue
+        except (OSError, ssl.SSLError):
+            return True
+    return False
+
+
+def test_damlatan_istemci_toplam_omurle_kesilir(oturum, monkeypatch):
+    """Her baytı 0,3 sn arayla damlatan istemci, soket-başı 15 sn zaman aşımını hiç tetiklemez;
+    toplam ömür sınırı onu yine de keser ve sunucu başkalarını karşılamaya devam eder."""
+    monkeypatch.setattr(wifi_modulu, "KIMLIKSIZ_OMUR_SN", 1.0)
+    ham = socket.create_connection(("127.0.0.1", oturum.port), timeout=5)
+    tls = _istemci_baglami().wrap_socket(ham)
+    tls.sendall(b"GET /v1/hello HTTP/1.1\r\nX-Yavas: ")
+    son = time.monotonic() + 4
+    kesildi = False
+    while time.monotonic() < son:
+        try:
+            tls.sendall(b"a")
+        except (OSError, ssl.SSLError):
+            kesildi = True
+            break
+        time.sleep(0.3)
+    tls.close()
+    assert kesildi
+    assert _istek(oturum, "GET", "/v1/hello", token=_token(oturum))[0] == 200  # sunucu kilitlenmedi
+    assert oturum.faz == "bekliyor"
+
+
+def test_el_sikismayan_bos_baglanti_toplam_omurle_kesilir(oturum, monkeypatch):
+    monkeypatch.setattr(wifi_modulu, "KIMLIKSIZ_OMUR_SN", 1.0)
+    bos = socket.create_connection(("127.0.0.1", oturum.port), timeout=5)  # TLS el sıkışması yok
+    try:
+        assert _kapanis_bekle(bos, 4)
+    finally:
+        bos.close()
+    assert _istek(oturum, "GET", "/v1/hello", token=_token(oturum))[0] == 200
+
+
+def test_kimlikli_istemci_toplam_omurle_kesilmez(oturum, monkeypatch):
+    """Kimlik doğrulandıktan sonra masaüstü onayı beklemek süre sınırına takılmaz."""
+    monkeypatch.setattr(wifi_modulu, "KIMLIKSIZ_OMUR_SN", 1.0)
+    post = _Post(oturum, _telefon_dosyasi())
+    post.start()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")
+    time.sleep(2.0)  # sınırın iki katı
+    assert oturum.faz == "onay_bekliyor"
+    oturum.karar_ver(True)
+    post.join(10)
+    assert post.sonuc[0] == 200
+
+
+# ---------------------------------------------------------------------------
+# Kaynak IP başına bağlantı sınırı, gövde süresi, iptal yarışı, tek doğrulama, geçici PEM
+# ---------------------------------------------------------------------------
+
+def test_ayni_ipden_en_cok_iki_eszamanli_baglanti(oturum):
+    t = _token(oturum)
+    bos = [socket.create_connection(("127.0.0.1", oturum.port), timeout=5) for _ in range(2)]
+    try:
+        fazla = socket.create_connection(("127.0.0.1", oturum.port), timeout=5)
+        try:
+            assert _kapanis_bekle(fazla, 3)  # üçüncü bağlantı hemen kapatılır
+        finally:
+            fazla.close()
+        # Başka bir kaynak IP'nin yuvası dolmadı: meşru istemci karşılanır.
+        assert _istek(oturum, "GET", "/v1/hello", token=t, kaynak="127.0.0.2")[0] == 200
+    finally:
+        for b in bos:
+            b.close()
+    assert _bekle(lambda: _istek(oturum, "GET", "/v1/hello", token=t)[0] == 200, 5)  # yuvalar geri geldi
+
+
+def test_bagli_ip_sayaci_hata_sonrasi_da_sifirlanir(oturum):
+    """Bağlantılar kapanınca sayaç düşer (sızıntı yok): 10 ardışık istek aynı IP'den geçer."""
+    t = _token(oturum)
+    for _ in range(10):
+        assert _istek(oturum, "GET", "/v1/hello", token=t)[0] == 200
+
+
+def test_govde_toplam_suresi_kimlikli_damlatani_da_keser(oturum, monkeypatch):
+    monkeypatch.setattr(wifi_modulu, "GOVDE_OMUR_SN", 1.0)
+    ham = socket.create_connection(("127.0.0.1", oturum.port), timeout=5)
+    tls = _istemci_baglami().wrap_socket(ham)
+    tls.sendall(f"POST /v1/state HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {_token(oturum)}\r\nContent-Length: 1000\r\n\r\n".encode())
+    kesildi = False
+    for _ in range(15):
+        try:
+            tls.sendall(b"x")
+        except (OSError, ssl.SSLError):
+            kesildi = True
+            break
+        time.sleep(0.3)
+    tls.close()
+    assert kesildi
+    assert oturum.faz == "bekliyor" and _istek(oturum, "GET", "/v1/hello", token=_token(oturum))[0] == 200
+
+
+def test_isleniyor_fazinda_iptal_yok_sayilir_sonuc_dogru(oturum, db, monkeypatch):
+    girdi, birak = threading.Event(), threading.Event()
+    gercek = wifi_modulu.ice_aktar
+
+    def yavas(repo, govde):
+        girdi.set()
+        assert birak.wait(10)
+        return gercek(repo, govde)
+
+    monkeypatch.setattr(wifi_modulu, "ice_aktar", yavas)
+    post = _Post(oturum, _telefon_dosyasi())
+    post.start()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")
+    oturum.karar_ver(True)
+    assert girdi.wait(5) and oturum.faz == "isleniyor"
+    oturum.iptal()  # birleştirme sürerken İptal
+    assert oturum.faz == "isleniyor" and oturum.sonuc is None
+    birak.set()
+    post.join(10)
+    assert post.sonuc[0] == 200 and _etkinlik_sayisi(db) == 1
+    assert _bekle(lambda: oturum.faz == "bitti") and oturum.sonuc == "birlestirildi"
+
+
+def test_iptal_onay_beklerken_hala_calisir(oturum):
+    post = _Post(oturum, _telefon_dosyasi())
+    post.start()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")
+    oturum.iptal()
+    post.join(10)
+    assert post.sonuc[0] == 409 and oturum.sonuc == "iptal"
+
+
+def test_ikinci_post_dogrulamadan_once_409_alir(oturum, monkeypatch):
+    """Doğrulayan/onay bekleyen bir POST varken ikinci POST `dogrula`ya HİÇ girmez (CPU yedirmez)."""
+    sayac = []
+    girdi, birak = threading.Event(), threading.Event()
+    gercek = wifi_modulu.dogrula
+
+    def yavas(govde):
+        sayac.append(1)
+        girdi.set()
+        assert birak.wait(10)
+        return gercek(govde)
+
+    monkeypatch.setattr(wifi_modulu, "dogrula", yavas)
+    ilk = _Post(oturum, _telefon_dosyasi())
+    ilk.start()
+    assert girdi.wait(5)  # ilk POST doğrulamada
+    durum, _, yanit = _istek(oturum, "POST", "/v1/state", token=_token(oturum), govde=_telefon_dosyasi("tel-2"))
+    assert (durum, json.loads(yanit)["error"]) == (409, "mesgul")
+    assert len(sayac) == 1  # ikincisi dogrula'ya girmedi
+    birak.set()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")
+    oturum.karar_ver(False)
+    ilk.join(10)
+
+
+def test_gecersiz_dosya_sonrasi_yeni_post_kabul_edilir(oturum):
+    t = _token(oturum)
+    assert _istek(oturum, "POST", "/v1/state", token=t, govde=b"json degil")[0] == 400
+    post = _Post(oturum, _telefon_dosyasi())
+    post.start()
+    assert _bekle(lambda: oturum.faz == "onay_bekliyor")  # post yeri 400'de serbest bırakıldı
+    oturum.karar_ver(False)
+    post.join(10)
+
+
+def test_gecici_pem_silinemese_de_oturum_baslar(monkeypatch):
+    """Virüs tarayıcısı vb. geçici PEM'i kilitlerse eşleştirme başlamaktan VAZGEÇMEZ."""
+    gercek, cagri = os.unlink, []
+
+    def kilitli(yol):
+        if "takvim-wifi-" in str(yol) and str(yol).endswith(".pem"):
+            cagri.append(yol)
+            raise PermissionError(13, "kilitli")
+        return gercek(yol)
+
+    monkeypatch.setattr(wifi_modulu.os, "unlink", kilitli)
+    monkeypatch.setattr(wifi_modulu.time, "sleep", lambda s: None)
+    kayit = []
+    monkeypatch.setattr(wifi_modulu.atexit, "register", lambda f, *a: kayit.append((f, a)))
+    baglam, parmak = sertifika_uret("127.0.0.1")
+    assert baglam is not None and len(parmak) == 43
+    assert len(cagri) == 5 and kayit and kayit[0][0] is wifi_modulu._sessiz_sil  # tekrar denendi, çıkışta silinecek
+    monkeypatch.setattr(wifi_modulu.os, "unlink", gercek)
+    for f, a in kayit:
+        f(*a)
+    assert not os.path.exists(kayit[0][1][0])
