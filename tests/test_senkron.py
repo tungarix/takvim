@@ -1011,3 +1011,52 @@ def test_uzak_baslangicli_yogun_seri_goruntuyu_dondurmaz(a, b, kural, bas, bit):
     t0 = time.monotonic()
     b.occurrences(datetime(2026, 11, 1, tzinfo=UTC), datetime(2026, 12, 1, tzinfo=UTC))
     assert time.monotonic() - t0 < 2.0
+
+
+# ---------------------------------------------------------------------------
+# Doğrulama CPU bütçesi (Wi-Fi POST ve dosya içe aktarma aynı `_ayristir`i kullanır)
+# ---------------------------------------------------------------------------
+
+def _butce_dosyasi(etkinlikler: list[dict]) -> bytes:
+    return json.dumps({
+        "format": "takvim-sync", "version": 1,
+        "calendars": [{"uid": "c", "name": "K", "color": "#112233", "updated_at": ESKI}],
+        "events": etkinlikler, "tasks": [], "deleted": [],
+    }).encode()
+
+
+def _butce_olay(i: int, rrule: str | None = None) -> dict:
+    h = {"uid": f"e{i}@x", "calendar_uid": "c", "title": f"E{i}", "start_utc": "2026-01-01T06:00:00Z",
+         "end_utc": "2026-01-01T07:00:00Z", "tzid": "Europe/Istanbul", "updated_at": ESKI}
+    if rrule:
+        h["rrule"] = rrule
+    return h
+
+
+def test_cok_yogun_seriler_toplam_butceyi_asinca_reddedilir():
+    """300 x `FREQ=SECONDLY;COUNT=9000` (tek tek geçerli) toplamda saniyelerce CPU yerdi: reddedilir."""
+    dosya = _butce_dosyasi([_butce_olay(i, "FREQ=SECONDLY;COUNT=9000") for i in range(300)])
+    with pytest.raises(SenkronHatasi) as h:
+        ice_modulu.dogrula(dosya)
+    assert h.value.kod == "senkron_bozuk" and "toplamda çok yoğun" in str(h.value)
+
+
+def test_gercekci_buyuk_kullanici_verisi_butceye_takilmaz():
+    """5000 etkinlik, 300'ü 200 örnekli seri (60 bin örnek) + 100 adet 10 yıllık günlük seri (365 bin örnek)."""
+    olaylar = [_butce_olay(i) for i in range(4600)]
+    olaylar += [_butce_olay(5000 + i, "FREQ=WEEKLY;COUNT=200") for i in range(300)]
+    olaylar += [_butce_olay(9000 + i, "FREQ=DAILY;COUNT=3650") for i in range(100)]
+    ozet = ice_modulu.dogrula(_butce_dosyasi(olaylar))
+    assert ozet["events"] == 5000
+
+
+def test_sinirsiz_seriler_ornek_butcesine_sayilmaz():
+    olaylar = [_butce_olay(i, "FREQ=DAILY") for i in range(2000)]
+    assert ice_modulu.dogrula(_butce_dosyasi(olaylar))["events"] == 2000
+
+
+def test_etkinlik_sayisi_siniri(monkeypatch):
+    monkeypatch.setattr(ice_modulu, "MAKS_ETKINLIK", 5)
+    ice_modulu.dogrula(_butce_dosyasi([_butce_olay(i) for i in range(5)]))
+    with pytest.raises(SenkronHatasi):
+        ice_modulu.dogrula(_butce_dosyasi([_butce_olay(i) for i in range(6)]))

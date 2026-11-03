@@ -520,19 +520,24 @@ def series_end(event: Event) -> datetime | None:
     parçasını mümkün kılar: başlangıcı üç yıl önce olan bir seriyi pencereyle
     kesiştirebilmenin tek yolu.
     """
+    return series_end_sayili(event)[0]
+
+
+def series_end_sayili(event: Event) -> tuple[datetime | None, int]:
+    """`series_end` + doğrulama için sayılan örnek sayısı (içe aktarma CPU bütçesi: senkron/ice.py)."""
     duration = event.duration
 
     if not event.rrule:
         last = event.start_utc
         for extra in event.rdate:
             last = max(last, extra)
-        return last + duration
+        return last + duration, 0
 
     if _imkansiz_mi(event.rrule):
         raise ValueError("kural hiçbir tarihe denk gelmiyor (BYMONTH/BYMONTHDAY), reddedildi")
 
     if not _is_bounded(event.rrule):
-        return None  # sonsuz seri; RDATE eklense bile sonsuz kalır
+        return None, 0  # sonsuz seri; RDATE eklense bile sonsuz kalır
 
     # "Sınırlı" (COUNT/UNTIL) YOĞUN olmadığı anlamına gelmiyor -- FREQ=SECONDLY
     # + büyük bir COUNT/UNTIL milyonlarca örnek üretebilir. `itertools.islice`
@@ -547,5 +552,5 @@ def series_end(event: Event) -> datetime | None:
             f"seri çok yoğun: {_MAKS_ORNEK}'den fazla örnek üretiyor, reddedildi"
         )
     if not starts:
-        return None  # tüm örnekler EXDATE ile silinmiş
-    return max(starts).astimezone(UTC) + duration
+        return None, 0  # tüm örnekler EXDATE ile silinmiş
+    return max(starts).astimezone(UTC) + duration, len(starts)
