@@ -6,6 +6,7 @@ ya da sağlam bir sürümü durdurur.
 """
 
 import importlib.util
+import json
 from pathlib import Path
 
 KOK = Path(__file__).resolve().parent.parent
@@ -87,3 +88,32 @@ def test_cp1252_konsolda_turkce_cikti_cokertmez(tmp_path):
 def test_olmayan_exe_hata_dondurur(tmp_path):
     hatalar = exe_duman.calistir(tmp_path / "yok.exe", "")
     assert any("exe bulunamadı" in h for h in hatalar)
+
+
+class _SahteDeneme:
+    """`wifi_denemesi`nin konuştuğu yüzey: istek + kontrol."""
+
+    def __init__(self, durum, govde):
+        self.cevap = (durum, json.dumps(govde).encode())
+        self.hatalar = []
+
+    def istek(self, yol, govde=None):
+        return self.cevap
+
+    def kontrol(self, kosul, ad, ayrinti=""):
+        if not kosul:
+            self.hatalar.append(ad)
+
+
+def test_wifi_denemesi_ozel_ag_yoksa_atlanir_hata_degil():
+    for kod in ("wifi_ag_yok", "wifi_ozel_ag_degil"):
+        d = _SahteDeneme(400, {"error_code": kod})
+        exe_duman.wifi_denemesi(d)
+        assert d.hatalar == []
+
+
+def test_wifi_denemesi_baslatilamadi_hata_sayilir():
+    """Paketlemede `cryptography` eksikse hata TAM BURADA görünmeli (AGENTS 27 benzeri)."""
+    d = _SahteDeneme(400, {"error_code": "wifi_baslatilamadi"})
+    exe_duman.wifi_denemesi(d)
+    assert d.hatalar == ["Wi-Fi eşleştirme başladı"]
