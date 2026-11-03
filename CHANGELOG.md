@@ -7,7 +7,7 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
-Sürüm 1.8.0 olarak hazırlanıyor; sürüm numarası henüz yükseltilmedi.
+## [1.8.0] - 2026-11-03
 
 ### Eklendi
 - **Telefonla senkron dosyası** (`.takvimsync`): ⚙ Ayarlar → "Telefonla senkron" altında
@@ -26,6 +26,20 @@ Sürüm 1.8.0 olarak hazırlanıyor; sürüm numarası henüz yükseltilmedi.
 ### Değişti
 - Seri silmeyi geri alınca etkinliğin değişme zamanı şimdiye çekiliyor (başka cihazdaki
   silme geri alınanı ezmesin).
+- Açılışta günlük yedek artık veritabanı şeması güncellenmeden ÖNCE alınıyor (eskiden sonra
+  alınıyordu; sürüm yükseltmesinde o günün eski şemalı kopyası ezilirdi).
+
+### Güvenlik
+- **Uzak başlangıçlı sık tekrarlar uygulamayı dondurmuyor**: yıl 1'den `FREQ=HOURLY` ya da
+  geçen aydan `FREQ=SECONDLY` gibi bir seri her görünümde 37-46 sn tutuyordu ve tek bir
+  `.ics`/`.takvimsync` kaydıyla kalıcı donma yaratabiliyordu. Kural artık pencerenin yakınındaki
+  bir noktadan başlıyor (sonuç aynı).
+- **Hiçbir tarihe denk gelmeyen kural reddediliyor** (`BYMONTH=2;BYMONTHDAY=30`): günlük ve
+  daha sık frekansta 9999 yılına kadar gün gün taranıp 3-13 sn tutuyordu.
+- Çok derin iç içe JSON artık bağlantıyı yanıtsız koparmıyor, kodlu 400 dönüyor. Senkron
+  dosyasında etkinlik başına en çok 1000 hatırlatıcı kabul ediliyor.
+- Senkron dosyası indirmesi (`GET /api/senkron/disa`) başka sitenin yönlendirmesiyle
+  tetiklenemiyor (yazan isteklerle aynı kaynak denetimi).
 
 ## [1.7.2] - 2026-10-18
 

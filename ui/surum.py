@@ -6,4 +6,4 @@ taşınmadığı için `importlib.metadata` paketlenmiş uygulamada çalışmazd
 Yeni sürümde YALNIZCA burayı değiştir.
 """
 
-SURUM = "1.7.2"
+SURUM = "1.8.0"

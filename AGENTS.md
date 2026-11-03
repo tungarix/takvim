@@ -21,11 +21,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Boyutlandırma, tüm gün taşıma, ay açılır listesi | ✅ bitti |
 | Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
 | Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
-| Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ kod bitti, **1.8.0 YAYINLANMAMIŞ** |
+| Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ bitti (v1.8.0) |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**872 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**926 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -653,7 +653,7 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     `pencereyi_one_al` onu gösterince `VisibleChanged`/`Activated` "Aç" sayılır.
     "Arka planda çalışıyor" balonu yalnızca ilk inişte (`Tepsi.kur(baloncuk=)`).
 
-### Senkron dosyası (1.8.0, yayınlanmamış)
+### Senkron dosyası (v1.8.0)
 
 Biçim ve birleştirme kuralları `docs/senkron.md`'de (mobil uygulama aynı belgeyi
 uyguluyor); aşağıdakiler masaüstü tarafının kararları, hepsinin testi mutasyonla
@@ -723,6 +723,26 @@ doğrulandı (`tests/test_senkron*.py`).
     Cihaz kimliği veri klasöründeki `cihaz.json`'da (`ayarlar.json`'a konmadı: ayar
     testleri sözlüğün tamamına kilitli). Cihaz saatleri farklıysa "son yazan"
     yanılabilir; belge bu sınırı kabul ediyor.
+94. **Güvenilmeyen dosya (v1.8.0 incelemesi, `guvenlik/incelemeler/v1.8.0.md`)**, hepsinin
+    testi mutasyonla doğrulandı:
+    - **Uzak DTSTART'lı sık seri** (`core/recurrence.py::_ankraj`): dateutil pencereye kuralı
+      DTSTART'tan tek tek yürüyerek varıyor; yıl 1'den `FREQ=HOURLY` görünüm başına 37 sn,
+      geçen aydan `FREQ=SECONDLY` 46 sn tutuyordu (`_MAKS_ORNEK` yalnız DÖNEN örnekleri
+      kırpıyor, pencere ÖNCESİNİ değil). Izgarası sabit birimli (saniye..hafta), COUNT'suz,
+      tek kurallı serilerde `expand` ve `_is_instance` kuralı pencerenin 2 adım gerisindeki
+      ızgara noktasından başlatır (tek kullanımlık küme, kural 66 önbelleğine girmez). Aylık/yıllık
+      ve COUNT'lu kurallar DTSTART'tan yürümeye devam eder (ay/yıl uzunluğu, sayaç). Sonucun
+      ankrajsızla birebir aynı olduğunu `tests/test_tekrar_ankraj.py` karşılaştırır.
+    - **İmkânsız BYMONTH/BYMONTHDAY** (`series_end` → ValueError, her giriş yolu: `.ics`,
+      senkron, UI): günlük ve daha sık frekansta dateutil 9999'a kadar gün gün tarıyordu.
+      Yalnız pozitif gün numaraları denetlenir; başka imkânsız kombinasyonlar (BYYEARDAY...) hâlâ
+      yavaş olabilir (kabul edilen risk).
+    - **RecursionError** (`ice_aktar` ve `_govde`): yüzlerce iç içe `[` yakalanmıyordu. Etkinlik
+      başına en çok `MAKS_HATIRLATICI_SAYISI` (1000) hatırlatıcı.
+    - **`GET /api/senkron/disa` kaynak denetimi** (`_kaynak_guvenli`): GET'in yan etkisi var
+      (`cihaz.json`); `Sec-Fetch-Site: cross-site` reddedilir, adres çubuğu (`none`) geçer.
+    - **Açılışta yedek migration'dan ÖNCE** (`ui/__main__.py::depoyu_ac`): kural 55 böyle
+      diyordu ama `Repo.open` migration'ı önce çalıştırıyordu. Şemasız (yeni) dosya yedeklenmez.
 
 ---
 
@@ -798,18 +818,17 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 ## 7. Sıradaki görev
 
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
-+ v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
++ v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 + v1.8.0 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-**v1.8.0 YAYINLANMAMIŞ** (kod ve testler hazır; `ui/surum.py` ve sürüm numaraları
-BİLİNÇLİ olarak 1.7.2'de duruyor, yayın akışı §1'de): **Telefonla senkron dosyası**
-(kural 84-93, `docs/senkron.md`): `senkron/` paketi, `006_senkron.sql` (takvim
-`uid`/`updated_at`, `silinenler` mezar taşları, tetikleyiciler), Ayarlar → "Telefonla
-senkron" (oluştur / aç), `GET /api/senkron/disa` + `POST /api/senkron/ice`,
-mobil için uyum fixture'ı (`docs/senkron-ornek*`, `scripts/senkron_ornek_uret.py`).
-Yayınlamadan önce: sürümü yükselt, güvenlik incelemesi (§1), CHANGELOG'daki
-`[Yayınlanmamış]` bölümünü `[1.8.0]` yap, paketli exe'de senkron dosyası oluştur/aç
-elle dene (WebView2 indirme + dosya seçici bu ortamda otomatik denenemedi).
+v1.8.0'da bitenler (ayrıntı CHANGELOG.md'de; release SHA256: yayınlanınca doldurulacak):
+**Telefonla senkron dosyası** (kural 84-93, `docs/senkron.md`): `senkron/` paketi,
+`006_senkron.sql` (takvim `uid`/`updated_at`, `silinenler` mezar taşları, tetikleyiciler),
+Ayarlar → "Telefonla senkron" (oluştur / aç), `GET /api/senkron/disa` +
+`POST /api/senkron/ice`, mobil için uyum fixture'ı (`docs/senkron-ornek*`,
+`scripts/senkron_ornek_uret.py`) ve sürüm güvenlik incelemesinin düzeltmeleri (kural 94).
+Test sayısı 872 → 926. Paketli exe'de senkron dosyası oluştur/aç ELLE denenmedi (WebView2
+indirme + dosya seçici bu ortamda otomatik denenemedi); ilk gerçek kullanımda dene.
 
 v1.7.2'de bitenler (ayrıntı CHANGELOG.md'de):
 
