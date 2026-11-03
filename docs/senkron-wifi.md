@@ -77,7 +77,9 @@ Masaüstü her zaman `/s` biçimini üretir; istemci `/s/` biçimini de kabul ed
     silme. Birleştirilsin mi?") açılır; kullanıcı, POST'un **alındığı andan** itibaren en çok 60 sn içinde karar verir. Bu
     bekleme oturumun kalan ömründen bağımsızdır: onay beklerken oturumun kapanma süresi
     onay bitene kadar uzar (en çok +60 sn; 2:55'te gelen POST da tam 60 sn bekler).
-    Onay → birleşir, `200 {"report":{"added":…,"updated":…,"deleted":…,"skipped":…}}`;
+    Onay → birleşir, `200 {"report":{"added":{"calendar":n,"event":n,"task":n},"updated":{…},"deleted":{…},"skipped":{…}}}`
+    (dört sayaç da TÜR BAZLI: her biri `calendar`/`event`/`task` anahtarlı bir nesne, düz sayı DEĞİL;
+    `skipped` yalnız takvimi yerelde olmayan yetim etkinlikleri sayar; `total` yanıtta yok);
     ret → `403 {"error":"reddedildi"}`; süre dolarsa `408`; onay beklerken gelen ikinci
     POST → `409 {"error":"mesgul"}`, onay beklerken İptal → bekleyen POST'a `409 {"error":"iptal"}`. Oturumda yalnız BİR başarılı
     ya da reddedilmiş POST olur, sonra oturum kapanır. Geçersiz dosya → `400` ve
