@@ -22,7 +22,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
 | Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
 | Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ bitti (v1.8.0) |
-| Wi-Fi eşleştirme (`senkron/wifi.py`, `/api/senkron/wifi/*`, QR) | ✅ bitti, yayınlanmadı (v1.9.0 hedefi) |
+| Wi-Fi eşleştirme (`senkron/wifi.py`, `/api/senkron/wifi/*`, QR) | ✅ bitti (v1.9.0) |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
@@ -105,7 +105,7 @@ satırı olmamalı, ardından `scripts\exe_duman.py --exe dist\Takvim.exe` çal�
 KENDİ WebView2 bileşenini kullanıyor: uygulamaya tarayıcı motoru gömülmüyor,
 bu yüzden `.exe` 15 MB'tan ~20 MB'a çıkıyor, 150 MB'a değil.
 
-`cryptography` Wi-Fi eşleştirme için eklendi (Arda onayıyla, v1.9.0 hedefi). Gerekçe:
+`cryptography` Wi-Fi eşleştirme için eklendi (Arda onayıyla, v1.9.0). Gerekçe:
 stdlib'de kendi imzalı sertifika ÜRETİMİ yok ve kendi X.509/ECDSA kodumuzu yazmak yanlış
 olurdu. Yalnızca `senkron/wifi.py::sertifika_uret` içinde ve fonksiyonun İÇİNDEN import
 edilir: açılış ve geri kalan modüller onsuz da yüklenir. Başka yerde kullanma (TLS, parola
@@ -760,7 +760,7 @@ doğrulandı (`tests/test_senkron*.py`).
     - **Açılışta yedek migration'dan ÖNCE** (`ui/__main__.py::depoyu_ac`): kural 55 böyle
       diyordu ama `Repo.open` migration'ı önce çalıştırıyordu. Şemasız (yeni) dosya yedeklenmez.
 
-### Wi-Fi eşleştirme (v1.9.0 hedefi, yayınlanmadı)
+### Wi-Fi eşleştirme (v1.9.0)
 
 Protokol ve tehdit modeli `docs/senkron-wifi.md`'de (bağlayıcı; çelişki çıkarsa belgeyi sessizce
 düzeltme, sor). Hepsinin testi mutasyonla doğrulandı (`tests/test_senkron_wifi.py`,
@@ -890,19 +890,23 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 ## 7. Sıradaki görev
 
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
-+ v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 + v1.8.0 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
++ v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 + v1.8.0 + v1.9.0 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-**Wi-Fi eşleştirme** (v1.9.0 hedefi, yayınlanmadı; kural 95-101, `docs/senkron-wifi.md`,
-CHANGELOG [Yayınlanmamış]): `senkron/wifi.py`, `/api/senkron/wifi/*`, Ayarlar → "Wi-Fi ile
+v1.9.0'da bitenler (ayrıntı CHANGELOG.md'de; release SHA256: yayınlanınca doldurulacak):
+**Wi-Fi eşleştirme** (kural 95-101, `docs/senkron-wifi.md`,
+`guvenlik/incelemeler/v1.9.0.md`): `senkron/wifi.py`, `/api/senkron/wifi/*`, Ayarlar → "Wi-Fi ile
 eşleştir" (QR + bağlantı + geri sayım + masaüstü onayı), `scripts/wifi_sunucu_dene.py` (mobil
 istemciyi uçtan uca denemek için; exe'ye girmez). Test sayısı 926 → 1045 (güvenlik incelemesi düzeltmeleri dahil). Paketli exe duman
 testi artık eşleştirmeyi gerçekten başlatıp TLS parmak izini okuyor (özel ağ yoksa atlar):
 `cryptography` paketlemede eksik kalırsa hata ilk kullanıcıda değil burada görünür. exe boyutu
 16,96 → 20,75 MB (cryptography'nin yerel kütüphaneleri; not: pywebview'in `ssl=True` yolu
 `cryptography`yi zaten isteğe bağlı import ediyor, venv'de kuruluysa PyInstaller onu her hâlükârda
-toplar). Gerçek telefonla uçtan uca ve gerçek Windows güvenlik duvarı istemi ELLE denenmedi
-(testler loopback üstünde; duman testi kendi IP'sine bağlanıyor, güvenlik duvarını tetiklemez).
+toplar). ELLE DENENMEYENLER: gerçek telefonla Wi-Fi eşleştirme, gerçek Windows güvenlik duvarı istemi
+(testler loopback üstünde; duman testi kendi IP'sine bağlanıyor, güvenlik duvarını tetiklemez) ve
+paketli exe'de WebView2 dosya seçici (senkron dosyası oluştur/aç); ilk gerçek kullanımda dene.
+Sürüm güvenlik incelemesinin düzeltmeleri kural 95-101'de; kabul edilen riskler kayıtta
+(varsayılan yol VPN ise yanlış IP, yerel süreçlerin başlıksız API çağrısı, CSP yokluğu).
 
 v1.8.0'da bitenler (ayrıntı CHANGELOG.md'de; release SHA256: `fc1572c5…1f7d03`, resmi exe duman testinden, hash ve attestation'dan geçti):
 **Telefonla senkron dosyası** (kural 84-93, `docs/senkron.md`): `senkron/` paketi,

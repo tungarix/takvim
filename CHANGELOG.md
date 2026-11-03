@@ -7,6 +7,8 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.9.0] - 2026-11-03
+
 ### Eklendi
 - **Wi-Fi ile eşleştirme**: ⚙ Ayarlar → Telefonla senkron → "Wi-Fi ile eşleştir". Aynı ağdaki telefonla
   dosya taşımadan senkron: ekranda QR kod + aynı bağlantının metni (kopyala düğmesiyle) + geri sayım
@@ -23,6 +25,25 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 ### Değişti
 - Yeni bağımlılık: `cryptography` (oturum başına kendi imzalı TLS sertifikası üretmek için; stdlib'de
   yok). QR çizimi için `qrcode-generator` 1.4.4 (MIT) tek dosya olarak `ui/static/qrcode.js`.
+  Alt sınır `>=46.0.6,<51` (bilinen açıklı sürümler dışarıda).
+- `Takvim.exe` büyüdü: ~16,96 MB → ~20,75 MB (`cryptography`'nin yerel kütüphaneleri).
+- Windows güvenlik duvarı eşleştirmeyi ilk kullanımda sorabilir: **Özel ağlar**'a izin ver
+  (Genel ağlar'a gerek yok). Eşleştirme ekranı bunu QR'ın altında da söyler.
+
+### Güvenlik
+- Wi-Fi eşleştirme sunucusu yayın öncesi bağımsız bir saldırı incelemesinden geçti
+  (`guvenlik/incelemeler/v1.9.0.md`); yüksek bulgu yok, bulunanların hepsi düzeltildi:
+- Yavaş (damlatan) istemci artık 8 bağlantı yuvasını tutamıyor: kimliksiz bağlantıya toplam
+  10 sn, gövdeye toplam 30 sn sınırı ve kaynak IP başına en çok 2 eşzamanlı bağlantı.
+- Ağdaki biri token'sız 5 istekle eşleştirmeyi öldüremiyor: hatalar IP başına sayılır, 5'te
+  yalnız o IP engellenir; oturum yalnız tüm IP'lerden toplam 50 hatada kapanır.
+- Senkron dosyası doğrulaması CPU yedirmiyor (`FREQ=SECONDLY;COUNT=9000` gibi kayıtlar 5,8 sn
+  tutuyordu): dosyada en çok 20.000 etkinlik, sınırlı serilerin toplam 500.000 örneği; Wi-Fi
+  yolunda aynı anda tek doğrulama (ikincisi 409). Aynı sınırlar dosya içe aktarmada da geçerli.
+- İptal ile birleştirme yarışı kapandı: birleştirme başladıktan sonra İptal yok sayılır.
+- Onay süresi (60 sn) POST'un alındığı andan başlıyor; geçici sertifika dosyası silinemezse
+  (virüs tarayıcısı) eşleştirme engellenmiyor, çıkışta silinir.
+- `cryptography` alt sınırı bilinen açıklı sürümleri dışlayacak şekilde yükseltildi.
 
 ## [1.8.0] - 2026-11-03
 
