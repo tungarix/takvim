@@ -14,8 +14,8 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
   Birleştirilsin mi?" diye sorulur, onaylarsan mevcut senkron birleştirmesiyle birleşir. Bulut, hesap
   ya da kalıcı sunucu yok: eşleştirme ekranı açıkken en çok 3 dakika yaşayan geçici bir HTTPS
   sunucusu çalışır, yalnız özel ağ adresine bağlanır (ev/iş Wi-Fi'ı; `0.0.0.0`'a asla), her
-  oturumda yeni kendi imzalı sertifika + 128 bitlik token kullanır, 5 hatalı denemede ya da ilk
-  veri gönderiminden sonra kapanır. Windows güvenlik duvarı sorarsa "Özel ağlar"a izin ver. Dosya ile
+  oturumda yeni kendi imzalı sertifika + 128 bitlik token kullanır; bir IP 5 hatalı denemede engellenir (toplam 50'de oturum kapanır), oturum ilk
+  veri gönderiminden sonra kapanır; yavaş istemciler toplam süre ve IP başına 2 bağlantı sınırıyla kesilir. Windows güvenlik duvarı sorarsa "Özel ağlar"a izin ver. Dosya ile
   aktarma yedek yol olarak aynen duruyor. Protokol ve tehdit modeli: `docs/senkron-wifi.md`.
 - `scripts/wifi_sunucu_dene.py`: mobil istemciyi uçtan uca denemek için sunucuyu tek komutla
   bağımsız başlatır (yalnız geliştirme; exe'ye girmez).

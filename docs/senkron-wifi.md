@@ -46,19 +46,38 @@ https://aktenak.tech/s#v=1&h=192.168.1.20:51734&t=<token>&f=<parmak izi>&n=<ad>
 - **TLS:** oturum başına bellekte üretilen kendi imzalı sertifika (ECDSA P-256, SAN =
   o IP, 1 gün geçerli; özel anahtar diske yazılmaz). TLS ≥ 1.2.
 - **Ömür:** en çok **3 dakika**; başarılı `POST /v1/state` yanıtından, İptal'den,
-  pencere/uygulama kapanmasından ya da **5 başarısız kimlik doğrulamasından** sonra
-  sunucu kapanır ve token geçersizdir. Aynı anda tek oturum.
+  pencere/uygulama kapanmasından ya da **tüm kaynaklardan toplam 50 başarısız kimlik
+  doğrulamasından** sonra sunucu kapanır ve token geçersizdir. Aynı anda tek oturum.
+  İptal, onay verildikten sonra birleştirme sürerken (`isleniyor`) YOK SAYILIR: veri
+  birleşir ve oturum sonucu "birleştirildi" yazılır.
+- **Bağlantı sınırları (yavaş istemci / kaynak taciz):** kimlik doğrulanana dek bağlantının
+  TOPLAM ömrü (TLS el sıkışması dahil) 10 sn; kimlik doğrulandıktan sonra POST gövdesini
+  okumak için toplam 30 sn (onay beklemesi bu süreye girmez). Aynı kaynak IP'den en çok 2
+  eşzamanlı bağlantı, sunucu genelinde en çok 8; aşan bağlantı yanıtsız hemen kapatılır.
 - **Kimlik:** her istekte `Authorization: Bearer <t>`; sabit zamanlı karşılaştırma;
-  yanlış/eksik → `401 {"error":"yetkisiz"}` ve sayaç artar; başka hiçbir şey sızmaz.
+  yanlış/eksik → `401 {"error":"yetkisiz"}` ve o **kaynak IP**'nin sayacı artar; başka
+  hiçbir şey sızmaz. Bir IP **5 başarısız denemede o oturum boyunca engellenir**: bağlantıları
+  yanıtsız hemen kapatılır (doğru token bile). Oturum KAPANMAZ, böylece ağdaki biri
+  tokensız isteklerle eşleştirmeyi bozamaz; başka IP'deki telefon etkilenmez.
 - **Uçlar** (diğer yol 404, diğer metot 405, CORS başlığı YOK, HTTP/1.1):
   - `GET /v1/hello` → `{"format":"takvim-wifi","version":1,"device":{"name":"…","app":"desktop 1.9.0"}}`
   - `GET /v1/state` → `.takvimsync` JSON'u (docs/senkron.md), `Content-Type: application/json`.
   - `POST /v1/state` → gövde telefonun `.takvimsync` JSON'u. `Content-Length` zorunlu,
-    en çok 16 MiB, JSON derinlik/boyut sınırları dosya içe aktarmayla aynı. Doğrulama
+    en çok 16 MiB (`Content-Length` yoksa `411`, sınır aşılırsa gövde okunmadan `413`),
+    JSON derinlik/boyut sınırları dosya içe aktarmayla aynı: dosyada en çok 20.000
+    etkinlik ve sınırlı (COUNT/UNTIL'li) serilerin doğrulamada sayılan toplam örneği en
+    çok 500.000 (aşarsa `400 senkron_bozuk`; gerçek kullanıcı verisinin çok üstünde,
+    ölçüm: en kötü durum ~1 sn CPU). Oturumda aynı anda yalnız BİR POST doğrulanır/onay
+    bekler; ikincisi doğrulamaya hiç girmeden `409 mesgul` alır. (Not: Wi-Fi POST sınırı
+    16 MiB, dosya içe aktarma yolunun gövde sınırı `_MAKS_GOVDE` 8 MB'dır; fark
+    bilerek korunur, iki yol birleştirilmez.) Doğrulama
     geçerse masaüstü arayüzünde **onay penceresi** ("Telefondan: N etkinlik, M görev, K
-    silme. Birleştirilsin mi?") açılır; kullanıcı en çok 60 sn içinde karar verir.
+    silme. Birleştirilsin mi?") açılır; kullanıcı, POST'un **alındığı andan** itibaren en çok 60 sn içinde karar verir. Bu
+    bekleme oturumun kalan ömründen bağımsızdır: onay beklerken oturumun kapanma süresi
+    onay bitene kadar uzar (en çok +60 sn; 2:55'te gelen POST da tam 60 sn bekler).
     Onay → birleşir, `200 {"report":{"added":…,"updated":…,"deleted":…,"skipped":…}}`;
-    ret → `403 {"error":"reddedildi"}`; süre dolarsa `408`. Oturumda yalnız BİR başarılı
+    ret → `403 {"error":"reddedildi"}`; süre dolarsa `408`; onay beklerken gelen ikinci
+    POST → `409 {"error":"mesgul"}`, onay beklerken İptal → bekleyen POST'a `409 {"error":"iptal"}`. Oturumda yalnız BİR başarılı
     ya da reddedilmiş POST olur, sonra oturum kapanır. Geçersiz dosya → `400` ve
     docs/senkron.md'deki hata kodu.
 - **Günlük:** token ve dosya içeriği ASLA günlüğe yazılmaz; yalnız "oturum açıldı/kapandı,
@@ -102,7 +121,9 @@ https://aktenak.tech/s#v=1&h=192.168.1.20:51734&t=<token>&f=<parmak izi>&n=<ad>
 | Saldırgan | Neden olmaz |
 |---|---|
 | Aynı ağdaki gözlemci | TLS; dinleyemez. Sertifika parmak izi QR'dan gelir, ortadaki adam sertifikayı taklit edemez |
-| Aynı ağda tarayıcı/port tarayıcı | Token 128 bit; 5 hatada oturum kapanır; 3 dk ömür; IP'ye bağlı, rastgele port |
+| Aynı ağda tarayıcı/port tarayıcı | Token 128 bit; IP başına 5 hatada o IP engellenir (oturum sürer), toplam 50 hatada oturum kapanır; 3 dk ömür; IP'ye bağlı, rastgele port |
+| Yavaş/bağlantı yığan istemci (slowloris) | Kimliksiz bağlantıya toplam 10 sn, gövdeye 30 sn; IP başına 2 bağlantı; tek IP tüm yuvaları dolduramaz |
+| Token sahibi / kötü niyetli dosya ile CPU yedirme | Etkinlik ve toplam örnek bütçesi; tek eşzamanlı POST doğrulaması |
 | Telefona sahte bağlantı gönderen (kimlik avı) | Yalnız özel IP; bağlanmadan önce ve göndermeden önce ayrı onay; sahte sunucu telefondan veri ancak kullanıcı iki kez onaylarsa alır |
 | Telefon olarak davranıp masaüstüne veri basan | Token + masaüstünde zorunlu önizleme/onay |
 | Sonradan token yeniden kullanımı | Oturum tek kullanımlık, sunucu kapanınca ölür |
