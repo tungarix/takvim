@@ -25,7 +25,8 @@ import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 
-from core import Event, Override, Task, next_rule_start, parse_iso, series_end
+from core import Event, Override, Task, next_rule_start, parse_iso
+from core.recurrence import series_end_sayili
 from store import Repo
 from store.repo import _event_ekle, _event_guncelle, _to_db, _tx
 
@@ -41,6 +42,13 @@ MAKS_HATIRLATICI = 10 * 365 * 24 * 60
 # Etkinlik başına hatırlatıcı sayısı: gerçek kullanım bir elinin parmakları kadar; sınırsız
 # dizi (8 MB'a sığan ~1 milyon değer) hatırlatıcı döngüsünü her turda şişirirdi.
 MAKS_HATIRLATICI_SAYISI = 1000
+# CPU bütçesi (token sahibi/kötü niyetli dosya doğrulamayı saniyelerce meşgul etmesin): bir dosyadaki
+# etkinlik sayısı ve SINIRLI (COUNT/UNTIL) serilerin doğrulamada sayılan örneklerinin TOPLAMI.
+# Ölçüm (bu makine): ~2,2 µs/örnek => 500.000 örnek ~1,1 sn en kötü durumda; gerçek kullanıcı verisi
+# (5000 etkinlik, çoğu tek, birkaç yüz seri x 50-400 örnek) bunun çok altında kalır. Sınırsız seriler
+# (COUNT/UNTIL'siz) örnek SAYILMAZ: doğrulamada üretilmezler.
+MAKS_ETKINLIK = 20_000
+MAKS_TOPLAM_ORNEK = 500_000
 
 _ZAMAN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RENK = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -206,7 +214,7 @@ def _override_ayristir(h: dict, sure) -> Override:
     )
 
 
-def _etkinlik_ayristir(h: dict) -> _Etkinlik:
+def _etkinlik_ayristir(h: dict, butce: list[int]) -> _Etkinlik:
     uid = _metin(h, "uid", bos_olamaz=True) or ""
     guncelleme = _zaman(h.get("updated_at"), "updated_at")
     olusturma = _zaman(h["created_at"], "created_at") if "created_at" in h else guncelleme
@@ -228,7 +236,10 @@ def _etkinlik_ayristir(h: dict) -> _Etkinlik:
         description=_metin(h, "description", bos_olabilir=True),
         location=_metin(h, "location", bos_olabilir=True),
     )
-    series_end(event)  # çok yoğun seri (TKV-API-001) burada ValueError verir
+    _, ornek = series_end_sayili(event)  # çok yoğun seri (TKV-API-001) burada ValueError verir
+    butce[0] += ornek
+    if butce[0] > MAKS_TOPLAM_ORNEK:
+        raise _bozuk(f"seriler toplamda çok yoğun: en çok {MAKS_TOPLAM_ORNEK} örnek")
     if rrule is not None:
         # Sınırsız bozuk kural series_end'de çözülmüyor; içeri girerse expand() her görünümde
         # patlar ve o ay bir daha açılamaz. Burada çöz, çözülmezse dosyayı reddet (AGENTS 87).
@@ -330,7 +341,11 @@ def _ayristir(kaynak: str | bytes | dict) -> _Dosya:
         )
     try:
         takvimler = [_takvim_ayristir(h) for h in _kayitlar(dosya, "calendars")]
-        etkinlikler = [_etkinlik_ayristir(h) for h in _kayitlar(dosya, "events")]
+        ham_etkinlikler = _kayitlar(dosya, "events")
+        if len(ham_etkinlikler) > MAKS_ETKINLIK:
+            raise _bozuk(f"events: en çok {MAKS_ETKINLIK} etkinlik")
+        butce = [0]
+        etkinlikler = [_etkinlik_ayristir(h, butce) for h in ham_etkinlikler]
         gorevler = [_gorev_ayristir(h) for h in _kayitlar(dosya, "tasks")]
         silinenler: dict[tuple[str, str], str] = {}
         for h in _kayitlar(dosya, "deleted"):
