@@ -17,6 +17,7 @@ import os
 import platform
 import re
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -26,7 +27,14 @@ from urllib.parse import parse_qs, urlparse
 from core import UTC, Event, Task, from_wall_clock, parse_iso, parse_task_add, to_local
 from core.quickadd import parse_quick_add
 from ics import export_repo, import_ics
-from senkron import UZANTI, cihaz_kimligi, durum_uret, ice_aktar, json_metni
+from senkron import (
+    UZANTI,
+    WifiYonetici,
+    cihaz_kimligi,
+    durum_uret,
+    ice_aktar,
+    json_metni,
+)
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
 from store.yedek import veritabani_bozuklugu
 
@@ -650,6 +658,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._senkron_disa()
                 return
 
+            if yol == "/api/senkron/wifi/durum":
+                self._wifi_durum()
+                return
+
             if yol == "/api/backups":
                 self._json({"backups": _yedek_listesi(self._db_yolu)})
                 return
@@ -727,6 +739,10 @@ class _Handler(BaseHTTPRequestHandler):
             if parcalar == ["api", "senkron", "ice"]:
                 self._senkron_ice()
                 return
+
+            if parcalar[:3] == ["api", "senkron", "wifi"] and len(parcalar) == 4:
+                if self._wifi_eylem(parcalar[3]):
+                    return
 
             if parcalar == ["api", "backups", "restore"]:
                 self._yedekten_don()
@@ -1397,6 +1413,78 @@ class _Handler(BaseHTTPRequestHandler):
         """
         self._json(ice_aktar(self.repo, self._metin_govde()).as_dict())
 
+    def _wifi(self) -> WifiYonetici:
+        """Uygulamanın TEK Wi-Fi eşleştirme yöneticisi (ilk kullanımda kurulur).
+
+        Eşleştirme sunucusu ayrı thread'lerde çalışıyor ve bu sunucu TEK THREAD'li
+        sqlite3 bağlantısına bağlı (kural 16): eşleştirme kendi isteği için KENDİ
+        bağlantısını açar. Bellek DB'sinde ikinci bağlantı boş bir veritabanı
+        görürdü, orada ortak bağlantı kullanılıyor (yalnız geliştirme/testler).
+        `wifi_ayar` yalnızca testler içindir (IP bulma ve test IP'leri); üretimde
+        None, yani spec §3 özel-IP kuralı gevşetilmez.
+        """
+        sunucu = self.server
+        if sunucu.wifi is None:  # type: ignore[attr-defined]
+            db_yolu = self._db_yolu
+            dosyada = bool(db_yolu) and str(db_yolu) != ":memory:"
+            dizin = Path(str(db_yolu)).resolve().parent if dosyada else None
+
+            @contextmanager
+            def depo_ac():
+                if not dosyada:
+                    yield sunucu.repo  # type: ignore[attr-defined]
+                    return
+                depo = Repo.open(str(db_yolu))
+                try:
+                    yield depo
+                finally:
+                    depo.close()
+
+            sunucu.wifi = WifiYonetici(  # type: ignore[attr-defined]
+                depo_ac=depo_ac,
+                cihaz_adi=platform.node() or "Takvim",
+                cihaz_id=cihaz_kimligi(dizin),
+                uygulama=f"desktop {SURUM}",
+                **(sunucu.wifi_ayar or {}),  # type: ignore[attr-defined]
+            )
+        return sunucu.wifi  # type: ignore[attr-defined,no-any-return]
+
+    def _wifi_durum(self) -> None:
+        """GET /api/senkron/wifi/durum — oturum durumu (token/bağlantı DÖNMEZ).
+
+        GET'tir ama onay penceresi için gelen verinin özetini taşır: yazan uçlarla
+        aynı kaynak denetimi (kural 40; `Host` denetimi do_GET'te zaten yapıldı).
+        """
+        if not self._kaynak_guvenli():
+            self._guvensizi_reddet("bu istek Takvim penceresinden gelmiyor", "kaynak_guvensiz")
+            return
+        if self.server.wifi is None:  # type: ignore[attr-defined]
+            self._json({"asama": "yok"})
+            return
+        self._json(self._wifi().durum())
+
+    def _wifi_eylem(self, ad: str) -> bool:
+        """POST /api/senkron/wifi/{baslat|iptal|karar}; tanınmayan adda False.
+
+        Bağlantı (token içerir) YALNIZ `baslat` yanıtında döner.
+        """
+        if ad not in ("baslat", "iptal", "karar"):
+            return False
+        govde = self._govde()
+        if ad == "baslat":
+            self._json(self._wifi().baslat())
+        elif ad == "iptal":
+            if self.server.wifi is not None:  # type: ignore[attr-defined]
+                self._wifi().iptal()
+            self._json({"ok": True})
+        else:
+            onay = govde.get("onay")
+            if not isinstance(onay, bool):
+                raise _KodluHata("wifi_karar_gecersiz", "onay true ya da false olmalı")
+            self._wifi().karar(onay)
+            self._json({"ok": True})
+        return True
+
     def _hatirlatici_ekle(self, event_id: int) -> None:
         """Seriye hatırlatıcı ekler."""
         govde = self._govde()
@@ -1641,6 +1729,22 @@ def gunluk_yolu() -> Path:
     return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "Takvim" / "takvim.log"
 
 
+class _TakvimSunucu(HTTPServer):
+    """`HTTPServer` + açık Wi-Fi eşleştirme oturumunu kapanışta temizleme.
+
+    `server_close()` her kapanış yolunda çağrılıyor (pencere kapanması, Ctrl+C,
+    testler): açık eşleştirme sunucusu uygulamadan uzun yaşamasın.
+    """
+
+    wifi: WifiYonetici | None = None
+    wifi_ayar: dict | None = None  # yalnız testler (bkz. `_Handler._wifi`)
+
+    def server_close(self) -> None:
+        if self.wifi is not None:
+            self.wifi.kapat()
+        super().server_close()
+
+
 def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765,
                 verbose: bool = False, db_yolu=None) -> HTTPServer:
     """Sunucuyu kurar ama çalıştırmaz (testler bu hâlini kullanıyor).
@@ -1658,7 +1762,7 @@ def make_server(repo: Repo, tzid: str, host: str = "127.0.0.1", port: int = 8765
     Buraya dönüp `ThreadingHTTPServer` yaparsan `store.connect()`'e
     `check_same_thread=False` geçmen ve erişimi kilitlemen gerekir.
     """
-    httpd = HTTPServer((host, port), _Handler)
+    httpd = _TakvimSunucu((host, port), _Handler)
     httpd.repo = repo  # type: ignore[attr-defined]
     httpd.tzid = tzid  # type: ignore[attr-defined]
     httpd.verbose = verbose  # type: ignore[attr-defined]

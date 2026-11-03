@@ -197,6 +197,9 @@ function modalAc({ baslik, metin = "", onay = t("tamam"), tehlike = false, kur, 
   govde.innerHTML = "";
   govde.hidden = true;
   tamam.textContent = onay;
+  // `kur` bu ikisini değiştirebilir (Wi-Fi eşleştirme); her açılışta varsayılana dön.
+  tamam.hidden = false;
+  iptal.textContent = t("iptal");
   tamam.classList.toggle("tehlike", tehlike);
   tamam.classList.toggle("birincil", !tehlike);
   ucuncuDugme.hidden = !ucuncu;
@@ -2468,6 +2471,7 @@ async function ayarlariAc() {
         ipucu: t("senkron_ipucu"),
         tur: "dugmeler",
         dugmeler: [
+          { anahtar: "_wifi", etiket: t("senkron_wifi_btn") },
           { anahtar: "_senkronDisa", etiket: t("senkron_disa_btn") },
           { anahtar: "_senkronIce", etiket: t("senkron_ice_btn") },
         ],
@@ -2478,7 +2482,7 @@ async function ayarlariAc() {
   // Dosya seçici KULLANICI ETKİLEŞİMİ geçerliyken açılmalı: aşağıdaki
   // `await`lerden ÖNCE tıkla, yoksa tarayıcı ilk tıklamayı eskimiş sayar.
   if (s._senkronIce) el("senkron-dosya").click();
-  const senkronEylemi = Boolean(s._senkronIce || s._senkronDisa);
+  const senkronEylemi = Boolean(s._senkronIce || s._senkronDisa || s._wifi);
   const dilDegisti = (s.dil === "en" ? "en" : "tr") !== durum.dil;
   await eylem(
     () => istek("/api/ayarlar", {
@@ -2495,7 +2499,226 @@ async function ayarlariAc() {
   // Dil değişti ama senkron eylemi başladıysa yeniden yükleme onu keserdi
   // (dosya diyaloğu / indirme); yeni dil bir sonraki açılışta uygulanır.
   if (s._senkronDisa) window.location.href = "/api/senkron/disa";
+  if (s._wifi) await wifiEslestir();
   if (dilDegisti && !senkronEylemi) window.location.reload();
+}
+
+/* Wi-Fi ile eşleştir (docs/senkron-wifi.md). Sunucu KISA ÖMÜRLÜ (3 dk) ve yalnız
+ * özel IP'de; burası yalnız QR + bağlantıyı gösterir, durumu yoklar ve
+ * masaüstü onayını sorar. Bağlantı (içinde token var) YALNIZ `baslat`
+ * yanıtında gelir, yoklama yanıtlarında yoktur ve hiçbir yere kaydedilmez. */
+function qrSvg(metin) {
+  const qr = qrcode(0, "M"); // 0 = sürümü kütüphane seçsin; yalnız ASCII (bağlantı öyle)
+  qr.addData(metin);
+  qr.make();
+  const n = qr.getModuleCount();
+  const sessiz = 4; // QR belirtimi: 4 modül boş kenar
+  const boyut = n + 2 * sessiz;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", `0 0 ${boyut} ${boyut}`);
+  svg.setAttribute("shape-rendering", "crispEdges");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", t("wifi_qr_etiket"));
+  const zemin = document.createElementNS(NS, "rect");
+  zemin.setAttribute("width", boyut);
+  zemin.setAttribute("height", boyut);
+  zemin.setAttribute("fill", "#fff");
+  svg.appendChild(zemin);
+  let d = "";
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (qr.isDark(r, c)) d += `M${c + sessiz} ${r + sessiz}h1v1h-1z`;
+    }
+  }
+  const yol = document.createElementNS(NS, "path");
+  yol.setAttribute("d", d);
+  yol.setAttribute("fill", "#000");
+  svg.appendChild(yol);
+  return svg;
+}
+
+const sureMetni = (sn) => `${Math.floor(sn / 60)}:${String(sn % 60).padStart(2, "0")}`;
+
+/* Açık kutunun içinden durumu saniyede bir yoklar; `degisti(durum)` true
+ * dönerse kutu kapanır. Kutu kapanınca dönen `durdur` çağrılmalı. */
+function wifiYokla(bitir, guncelle, kapat) {
+  let kapandi = false;
+  let yoklaniyor = false;
+  const tik = async () => {
+    if (kapandi || yoklaniyor) return;
+    yoklaniyor = true;
+    try {
+      const d = await istek("/api/senkron/wifi/durum");
+      if (kapandi) return;
+      guncelle(d);
+      if (kapat(d)) bitir({ durum: d });
+    } catch {
+      /* geçici hata: bir sonraki turda yine dene */
+    } finally {
+      yoklaniyor = false;
+    }
+  };
+  const zaman = setInterval(tik, 1000);
+  return () => { kapandi = true; clearInterval(zaman); };
+}
+
+async function wifiBaglantiKutusu(bilgi) {
+  let durdur = () => {};
+  const sonuc = await modalAc({
+    baslik: t("wifi_baslik"),
+    metin: t("wifi_metin"),
+    iptalDegeri: null,
+    genislik: 460,
+    oku: () => null, // Enter = İptal: yanlışlıkla açık bırakma
+    kur: (govde, bitir) => {
+      const kutu = document.createElement("div");
+      kutu.className = "wifi-kutu";
+      const qr = document.createElement("div");
+      qr.className = "wifi-qr";
+      qr.appendChild(qrSvg(bilgi.baglanti));
+      kutu.appendChild(qr);
+
+      const kalan = document.createElement("p");
+      kalan.className = "wifi-kalan";
+      kalan.textContent = t("wifi_kalan", { sure: sureMetni(bilgi.kalan_sn) });
+      kutu.appendChild(kalan);
+
+      const satir = document.createElement("div");
+      satir.className = "wifi-adres";
+      const girdi = document.createElement("input");
+      girdi.type = "text";
+      girdi.className = "modal-girdi";
+      girdi.readOnly = true;
+      girdi.value = bilgi.baglanti;
+      girdi.setAttribute("aria-label", t("wifi_baglanti"));
+      girdi.onfocus = () => girdi.select();
+      const kopyala = document.createElement("button");
+      kopyala.type = "button";
+      kopyala.className = "dugme";
+      kopyala.textContent = t("wifi_kopyala");
+      kopyala.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(bilgi.baglanti);
+          bildir(t("wifi_kopyalandi"));
+        } catch {
+          girdi.select();
+          const tamam = document.execCommand("copy");
+          bildir(tamam ? t("wifi_kopyalandi") : t("wifi_kopyalanamadi"), !tamam);
+        }
+      };
+      satir.append(girdi, kopyala);
+      kutu.appendChild(satir);
+
+      const cihaz = document.createElement("p");
+      cihaz.className = "modal-ipucu";
+      cihaz.textContent = t("wifi_cihaz", { ad: bilgi.ad, ip: bilgi.ip });
+      kutu.appendChild(cihaz);
+      const duvar = document.createElement("p");
+      duvar.className = "modal-ipucu";
+      duvar.textContent = t("wifi_guvenlik_duvari");
+      kutu.appendChild(duvar);
+      govde.appendChild(kutu);
+
+      el("modal-tamam").hidden = true; // tek eylem: İptal
+      durdur = wifiYokla(
+        bitir,
+        (d) => { kalan.textContent = t("wifi_kalan", { sure: sureMetni(d.kalan_sn) }); },
+        (d) => d.asama !== "bekliyor",
+      );
+      return kopyala;
+    },
+  });
+  durdur();
+  return sonuc;
+}
+
+async function wifiOnayKutusu(d0) {
+  let durdur = () => {};
+  let birlestir = false;
+  const tamamTik = () => { birlestir = true; };
+  const metinYap = (d) => t("wifi_onay_metin", {
+    etkinlik: d.ozet.events, gorev: d.ozet.tasks, silme: d.ozet.deleted,
+    sure: sureMetni(d.karar_kalan_sn),
+  });
+  const sonuc = await modalAc({
+    baslik: t("wifi_onay_baslik"),
+    metin: metinYap(d0),
+    onay: t("wifi_birlestir"),
+    iptalDegeri: false,
+    // Güvenli varsayılan: odak "Reddet"te açılır, Enter onu seçer; birleştirmek için
+    // "Birleştir"e bilerek tıklanır / Tab + Enter. Yanlışlıkla Enter veri birleştirmesin.
+    // Tıklama odağı taşımayabilir (ekran okuyucu, ses denetimi): bayrak yakalama
+    // aşamasında, `onclick`ten ÖNCE kuruluyor.
+    oku: () => birlestir || document.activeElement === el("modal-tamam"),
+    kur: (govde, bitir) => {
+      el("modal-tamam").addEventListener("click", tamamTik, true);
+      el("modal-iptal").textContent = t("wifi_reddet");
+      durdur = wifiYokla(
+        bitir,
+        (d) => { if (d.ozet) el("modal-metin").textContent = metinYap(d); },
+        (d) => d.asama === "bitti",
+      );
+      return el("modal-iptal");
+    },
+  });
+  durdur();
+  el("modal-tamam").removeEventListener("click", tamamTik, true);
+  return sonuc;
+}
+
+const WIFI_SONUC_MESAJI = {
+  reddedildi: "wifi_sonuc_reddedildi",
+  zaman_asimi: "wifi_sonuc_zaman_asimi",
+  sure_doldu: "wifi_sonuc_sure_doldu",
+  cok_hata: "wifi_sonuc_cok_hata",
+  hata: "wifi_sonuc_hata",
+};
+
+async function wifiKapat(d) {
+  if (d.sonuc === "birlestirildi" && d.rapor) {
+    await yukle();
+    await onayla(t("senkron_sonuc_baslik"), senkronOzeti(d.rapor), t("tamam"));
+  } else if (WIFI_SONUC_MESAJI[d.sonuc]) {
+    bildir(t(WIFI_SONUC_MESAJI[d.sonuc]), d.sonuc !== "reddedildi");
+  }
+}
+
+async function wifiEslestir() {
+  let bilgi;
+  try {
+    bilgi = await istek("/api/senkron/wifi/baslat", { method: "POST" });
+  } catch (hata) {
+    bildir(hata.message, true);
+    return;
+  }
+  const json = { "Content-Type": "application/json" };
+  const sonuc = await wifiBaglantiKutusu(bilgi);
+  if (!sonuc) { // İptal / Esc / perdeye tık
+    try { await istek("/api/senkron/wifi/iptal", { method: "POST" }); } catch { /* zaten kapanmış */ }
+    return;
+  }
+  let d = sonuc.durum;
+  if (d.asama === "onay_bekliyor") {
+    const karar = await wifiOnayKutusu(d);
+    if (karar === true || karar === false) {
+      try {
+        await istek("/api/senkron/wifi/karar", {
+          method: "POST", headers: json, body: JSON.stringify({ onay: karar }),
+        });
+      } catch (hata) {
+        bildir(hata.message, true);
+        return;
+      }
+    }
+    // Karar verildi (ya da süre doldu): sonuç gelene kadar bekle (birleştirme sürüyor olabilir).
+    for (let i = 0; i < 60; i++) {
+      d = await istek("/api/senkron/wifi/durum");
+      if (d.asama === "bitti") break;
+      await new Promise((coz) => setTimeout(coz, 250));
+    }
+  }
+  await wifiKapat(d);
 }
 
 /* Telefonla senkron (docs/senkron.md): dışa aktarma `.ics`le aynı yoldan,

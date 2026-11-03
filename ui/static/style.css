@@ -1067,6 +1067,15 @@ kbd {
 .modal-alanlar select { appearance: auto; }
 .modal-ipucu { margin: 0; font-size: 11px; color: var(--metin-soluk); }
 .modal-dugmeler { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Wi-Fi eşleştirme: QR her zaman siyah-beyaz, koyu temada da. Tarayıcı açık
+ * zemin üzerinde koyu modül bekliyor; temayı izleyen bir QR okunmaz. */
+.wifi-kutu { display: grid; gap: 10px; justify-items: center; }
+.wifi-qr { width: 220px; max-width: 100%; background: #fff; padding: 8px; border-radius: var(--yaricap); line-height: 0; }
+.wifi-qr svg { width: 100%; height: auto; display: block; }
+.wifi-adres { display: flex; gap: 8px; width: 100%; }
+.wifi-adres input { flex: 1; min-width: 0; font-size: 11px; }
+.wifi-kalan { margin: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+.wifi-kutu .modal-ipucu { text-align: center; }
 /* Select SABİT yükseklik almıyor: 32px + 8px padding, 13px metnin satır
  * kutusuna (`line-height: normal` ≈16px) 14px içerik bırakıyordu ve çıkıntılı
  * harfler (Q, g, p) kutu sınırına dayanıyordu. Metin girdileri tek satırı
