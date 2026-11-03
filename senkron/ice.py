@@ -563,6 +563,25 @@ def _silmeleri_uygula(conn: sqlite3.Connection, dosya: _Dosya, rapor: SenkronRap
             conn.execute("DELETE FROM silinenler WHERE kind = ? AND uid = ?", (tur, uid))
 
 
+def dogrula(kaynak: str | bytes | dict) -> dict[str, int]:
+    """Dosyayı YAZMADAN doğrular; kayıt sayılarını verir (Wi-Fi onay penceresi).
+
+    `ice_aktar`ın doğrulamasının AYNISI (`_ayristir`, aynı `RecursionError` çevirisi):
+    onay penceresinin gösterdiği dosya ile sonra birleştirilen dosya aynı kuraldan
+    geçmiş olsun. Bozuksa `SenkronHatasi`, hiçbir şeye dokunulmaz.
+    """
+    try:
+        dosya = _ayristir(kaynak)
+    except RecursionError:
+        raise _bozuk("iç içe yapı çok derin") from None
+    return {
+        "calendars": len(dosya.takvimler),
+        "events": len(dosya.etkinlikler),
+        "tasks": len(dosya.gorevler),
+        "deleted": len(dosya.silinenler),
+    }
+
+
 def ice_aktar(repo: Repo, kaynak: str | bytes | dict) -> SenkronRaporu:
     """Senkron dosyasını yerel veriyle birleştirir; sayıları döndürür.
 

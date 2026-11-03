@@ -6,6 +6,7 @@ aynı dosyayı konuşur; ağ, hesap, sunucu yok -- dosyayı kullanıcı taşır.
 
 from .disa import BICIM, SURUM, UZANTI, cihaz_kimligi, durum_uret, json_metni
 from .ice import SenkronHatasi, SenkronRaporu, ice_aktar
+from .wifi import WifiHatasi, WifiYonetici
 
 __all__ = [
     # dışa aktarma
@@ -16,6 +17,9 @@ __all__ = [
     "ice_aktar",
     "SenkronRaporu",
     "SenkronHatasi",
+    # Wi-Fi eşleştirme (docs/senkron-wifi.md)
+    "WifiYonetici",
+    "WifiHatasi",
     # biçim
     "BICIM",
     "SURUM",
