@@ -824,7 +824,7 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 + v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 + v1.8.0 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
 
-v1.8.0'da bitenler (ayrıntı CHANGELOG.md'de; release SHA256: yayınlanınca doldurulacak):
+v1.8.0'da bitenler (ayrıntı CHANGELOG.md'de; release SHA256: `fc1572c5…1f7d03`, resmi exe duman testinden, hash ve attestation'dan geçti):
 **Telefonla senkron dosyası** (kural 84-93, `docs/senkron.md`): `senkron/` paketi,
 `006_senkron.sql` (takvim `uid`/`updated_at`, `silinenler` mezar taşları, tetikleyiciler),
 Ayarlar → "Telefonla senkron" (oluştur / aç), `GET /api/senkron/disa` +
