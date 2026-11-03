@@ -23,8 +23,8 @@ dependencies = [
     "pywebview>=6.2; sys_platform == 'win32'",
     # Wi-Fi eşleştirme (senkron/wifi.py): oturum başına bellekte kendi imzalı TLS
     # sertifikası. stdlib'de sertifika ÜRETİMİ yok; kendi X.509/ECDSA kodumuzu
-    # yazmak yerine denetlenmiş kütüphane. 43 = Python 3.12 için hazır tekerlek veren en düşük makul sürüm.
-    "cryptography>=43",
+    # yazmak yerine denetlenmiş kütüphane. 46.0.6 = bilinen açıklı sürümleri dışlayan alt sınır (güvenlik incelemesi); Python 3.12 için hazır tekerlek var.
+    "cryptography>=46.0.6,<51",
 ]
 
 [project.optional-dependencies]

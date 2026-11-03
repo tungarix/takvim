@@ -2609,6 +2609,10 @@ async function wifiBaglantiKutusu(bilgi) {
       };
       satir.append(girdi, kopyala);
       kutu.appendChild(satir);
+      const pano = document.createElement("p");
+      pano.className = "modal-ipucu";
+      pano.textContent = t("wifi_pano_uyari"); // bağlantıdaki token panoda kalır
+      kutu.appendChild(pano);
 
       const cihaz = document.createElement("p");
       cihaz.className = "modal-ipucu";
