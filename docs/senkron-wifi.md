@@ -29,6 +29,8 @@ Birleştirme idempotent olduğundan 4 ve 6 sırası/tekrarı sorun yaratmaz.
 https://aktenak.tech/s#v=1&h=192.168.1.20:51734&t=<token>&f=<parmak izi>&n=<ad>
 ```
 
+Masaüstü her zaman `/s` biçimini üretir; istemci `/s/` biçimini de kabul eder.
+
 - Bilgi **fragment**'ta (`#`): tarayıcı sunucuya göndermez, aktenak.tech token'ı görmez.
 - `v` = 1. `h` = `IPv4:port` (yalnızca özel/yerel aralık, §3). `t` = 32 küçük hex
   (128 bit rastgele, oturum başına). `f` = sunucu sertifikasının DER'inin SHA-256'sı,
@@ -87,7 +89,8 @@ https://aktenak.tech/s#v=1&h=192.168.1.20:51734&t=<token>&f=<parmak izi>&n=<ad>
 
 ## 4. İstemci (telefon)
 
-- Bağlantıyı **doğrular**: şema `https`, ana makine `aktenak.tech`, yol `/s`, fragment
+- Bağlantıyı **doğrular**: şema `https`, ana makine `aktenak.tech`, yol `/s` ya da `/s/` (`/s//`, `/s/x`, `/sss` gibi
+  başka yollar reddedilir), fragment
   alanları geçerli biçimde; `h` özel/yerel IPv4 değilse **bağlanmaz**.
 - **Onay ekranı** (bağlanmadan önce): "«n» (IP) ile eşleşilecek. Bunu, bilgisayarında
   senin açtığın eşleştirme ekranından aldıysan devam et." Kullanıcı onaylamadan ağ
@@ -102,7 +105,7 @@ https://aktenak.tech/s#v=1&h=192.168.1.20:51734&t=<token>&f=<parmak izi>&n=<ad>
   ağlar cihazları ayırabilir), süre doldu, parmak izi uyuşmadı (güvenlik uyarısı),
   masaüstü reddetti, sürüm eski/yeni.
 - Android: `INTERNET` izni (yeni), `usesCleartextTraffic="false"` AYNEN kalır (yalnız
-  HTTPS), `CAMERA` YOK. `https://aktenak.tech/s` için `android:autoVerify="true"`
+  HTTPS), `CAMERA` YOK. `https://aktenak.tech/s` ve `/s/` için (`android:path` her ikisi) `android:autoVerify="true"`
   App Link `intent-filter`'ı; `assetlinks.json` sitede (§5). Bağlantıyı yapıştırma
   alanı yedek yoldur.
 
