@@ -801,6 +801,16 @@ BOZUKLAR = {
     "silinen-zaman-bozuk": _degistir(["deleted"], [{"kind": "event", "uid": "u", "deleted_at": "dün"}]),
     "tekrarlayan-uid": lambda d: d["events"].append(copy.deepcopy(d["events"][0])) or d,
     "cok-yogun-seri": _degistir(["events", 0, "rrule"], "FREQ=SECONDLY;COUNT=2000000"),
+    # e2e (takvim-mobil/tool/e2e) bulgusu: sınırsız çözülemeyen kural series_end'de çözülmüyordu,
+    # içeri girer ve expand() her görünümde ValueError verirdi.
+    "rrule-cozulemez-sinirsiz": _degistir(["events", 0, "rrule"], "FREQ=BOGUS;;;"),
+    "rrule-cozulemez-sinirli": _degistir(["events", 0, "rrule"], "FREQ=DAILY;COUNT=x"),
+    "rrule-gun-adi-gecersiz": _degistir(["events", 0, "rrule"], "FREQ=WEEKLY;BYDAY=XX"),
+    # JSON yalnız vekil kaçışına izin verir; UTF-8'e yazılamaz (ham UnicodeEncodeError olurdu).
+    "yalniz-vekil-karakter": _degistir(["events", 0, "title"], "x" + chr(0xD800) + "y"),
+    # Sınırsız büyük dakika: SQLite INTEGER taşması ve `başlangıç - dakika` OverflowError'ı.
+    "hatirlatici-sqlite-tasmasi": _degistir(["events", 0, "reminders"], [10**30]),
+    "hatirlatici-10-yildan-fazla": _degistir(["events", 0, "reminders"], [10 * 365 * 24 * 60 + 1]),
 }
 
 
@@ -895,3 +905,38 @@ def test_sure_ve_override_bitisi_eksikse_hesaplanir(a, b):
     ov = b.list_overrides(b.get_event_by_uid("seri").id)[0]
     assert ov.new_end_utc == ov.new_start_utc + timedelta(hours=1)
     assert e.id is not None
+
+
+def test_hatirlatici_on_yil_siniri_dahil_kabul_edilir(a, b):
+    k = a.add_calendar("Kişisel", "#3b82f6")
+    _etkinlik(a, k, "e1")
+    d = _dosya(a)
+    d["events"][0]["reminders"] = [10 * 365 * 24 * 60]
+
+    ice_aktar(b, d)
+
+    assert [r.minutes_before for r in b.list_reminders(b.get_event_by_uid("e1").id)] == [10 * 365 * 24 * 60]
+
+
+def test_takvim_adi_kenar_bosluklari_kirpilir_mobil_modeliyle_ayni(a, b):
+    """Mobil takvim adını kırpıyor; kırpılmasaydı iki cihazın adı sonsuza dek ayrışırdı (eşit damga)."""
+    a.add_calendar("Ders", "#3b82f6")
+    d = _dosya(a)
+    d["calendars"][0]["name"] = "  Ders  "
+
+    ice_aktar(b, d)
+
+    assert [c.name for c in b.list_calendars()] == ["Ders"]
+
+
+def test_rdate_exdate_yinelenenler_tek_ve_sirali(a, b):
+    k = a.add_calendar("Kişisel", "#3b82f6")
+    _etkinlik(a, k, "seri", rrule="FREQ=DAILY")
+    d = _dosya(a)
+    d["events"][0]["exdate"] = ["2026-11-09T07:00:00Z", "2026-11-04T07:00:00Z", "2026-11-09T07:00:00Z"]
+    d["events"][0]["rdate"] = ["2026-12-01T07:00:00Z", "2026-12-01T07:00:00Z"]
+
+    ice_aktar(b, d)
+
+    assert _dosya(b)["events"][0]["exdate"] == ["2026-11-04T07:00:00Z", "2026-11-09T07:00:00Z"]
+    assert _dosya(b)["events"][0]["rdate"] == ["2026-12-01T07:00:00Z"]

@@ -25,7 +25,7 @@ import sqlite3
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime
 
-from core import Event, Override, Task, parse_iso, series_end
+from core import Event, Override, Task, next_rule_start, parse_iso, series_end
 from store import Repo
 from store.repo import _event_ekle, _event_guncelle, _to_db, _tx
 
@@ -34,6 +34,10 @@ from .disa import BICIM, SURUM
 __all__ = ["SenkronHatasi", "SenkronRaporu", "ice_aktar"]
 
 TURLER = ("calendar", "event", "task")
+
+# Hatırlatıcı en çok 10 yıl önce: daha büyüğü `başlangıç - dakika` hesabında OverflowError verip
+# hatırlatıcı döngüsünü her turda düşürürdü (dosyada sınır yok, uygulamalar bunu reddeder).
+MAKS_HATIRLATICI = 10 * 365 * 24 * 60
 
 _ZAMAN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _RENK = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -157,7 +161,7 @@ def _zaman_listesi(deger: object, ad: str) -> tuple[datetime, ...]:
         return ()
     if not isinstance(deger, list):
         raise _bozuk(f"{ad}: dizi bekleniyor")
-    return tuple(parse_iso(_zaman(z, ad)) for z in deger)
+    return tuple(sorted({parse_iso(_zaman(z, ad)) for z in deger}))  # yinelenenler tek (mobil de öyle)
 
 
 def _kayitlar(dosya: dict, ad: str) -> list[dict]:
@@ -174,7 +178,7 @@ def _takvim_ayristir(h: dict) -> _Takvim:
         raise _bozuk("color: #rrggbb bekleniyor")  # AGENTS 54: CSS'e giriyor
     return _Takvim(
         uid=_metin(h, "uid", bos_olamaz=True) or "",
-        name=_metin(h, "name", bos_olamaz=True) or "",
+        name=(_metin(h, "name", bos_olamaz=True) or "").strip(),  # mobil modeli de kırpar
         color=renk,
         visible=_bool(h, "visible", True),
         updated_at=_zaman(h.get("updated_at"), "updated_at"),
@@ -222,11 +226,18 @@ def _etkinlik_ayristir(h: dict) -> _Etkinlik:
         location=_metin(h, "location", bos_olabilir=True),
     )
     series_end(event)  # çok yoğun seri (TKV-API-001) burada ValueError verir
+    if rrule is not None:
+        # Sınırsız bozuk kural series_end'de çözülmüyor; içeri girerse expand() her görünümde
+        # patlar ve o ay bir daha açılamaz. Burada çöz, çözülmezse dosyayı reddet (AGENTS 87).
+        try:
+            next_rule_start(event, event.start_utc)
+        except ValueError:
+            raise _bozuk(f"rrule çözülemedi ({uid}): {rrule}") from None
     hatirlaticilar = h.get("reminders", [])
     if not isinstance(hatirlaticilar, list) or not all(
-        isinstance(d, int) and not isinstance(d, bool) and d >= 0 for d in hatirlaticilar
+        isinstance(d, int) and not isinstance(d, bool) and 0 <= d <= MAKS_HATIRLATICI for d in hatirlaticilar
     ):
-        raise _bozuk("reminders: negatif olmayan tamsayı dizisi bekleniyor")
+        raise _bozuk(f"reminders: 0..{MAKS_HATIRLATICI} arası tamsayı dizisi bekleniyor")
     ham_override = h.get("overrides", [])
     if not isinstance(ham_override, list) or not all(isinstance(o, dict) for o in ham_override):
         raise _bozuk("overrides: nesne dizisi bekleniyor")
@@ -266,6 +277,22 @@ def _gorev_ayristir(h: dict) -> _Gorev:
     )
 
 
+def _vekilsiz(deger: object) -> bool:
+    """Metinlerde yalnız (eşsiz) vekil karakter YOK mu. JSON, yalnız vekil kaçışına (U+D800..DFFF) izin veriyor ama UTF-8'e
+    yazılamaz: kayıt sırasında ham UnicodeEncodeError olurdu."""
+    if isinstance(deger, str):
+        try:
+            deger.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    if isinstance(deger, dict):
+        return all(_vekilsiz(k) and _vekilsiz(v) for k, v in deger.items())
+    if isinstance(deger, list):
+        return all(_vekilsiz(v) for v in deger)
+    return True
+
+
 def _tekil(uidler: list[str], ad: str) -> None:
     if len(set(uidler)) != len(uidler):
         raise _bozuk(f"{ad}: aynı uid iki kez")
@@ -284,6 +311,8 @@ def _ayristir(kaynak: str | bytes | dict) -> _Dosya:
             raise _bozuk("JSON olarak okunamadı") from None
     if not isinstance(dosya, dict) or dosya.get("format") != BICIM:
         raise _bozuk(f'"format": "{BICIM}" bekleniyor')
+    if not _vekilsiz(dosya):
+        raise _bozuk("geçersiz Unicode (yalnız vekil karakter)")
     surum = dosya.get("version")
     if not isinstance(surum, int) or isinstance(surum, bool) or surum < 1:
         raise _bozuk("version: pozitif tamsayı bekleniyor")
@@ -308,7 +337,7 @@ def _ayristir(kaynak: str | bytes | dict) -> _Dosya:
             silinenler[anahtar] = max(zaman, silinenler.get(anahtar, ""))
     except SenkronHatasi:
         raise
-    except ValueError as hata:  # model doğrulaması (tzid, aralık, başlık, yoğun seri...)
+    except (ValueError, OverflowError) as hata:  # model doğrulaması (tzid, aralık, başlık, yoğun seri...)
         raise _bozuk(str(hata)) from hata
     _tekil([t.uid for t in takvimler], "calendars")
     _tekil([e.event.uid for e in etkinlikler], "events")
