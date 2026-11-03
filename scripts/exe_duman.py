@@ -17,11 +17,14 @@ yalnızca etiketli çalıştırmada doldurur); boşsa etiket karşılaştırmas�
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
 import os
 import re
 import socket
 import sqlite3
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -78,6 +81,38 @@ def bos_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return int(s.getsockname()[1])
+
+
+def wifi_denemesi(deneme: Deneme) -> None:
+    """Wi-Fi eşleştirme: paketli exe sertifika üretip TLS sunabiliyor mu.
+
+    `cryptography` yalnızca eşleştirme başlatılınca içeriden import ediliyor
+    (`senkron/wifi.py::sertifika_uret`): paketlemede eksik kalırsa uygulama
+    açılır, her şey çalışır ve hata ilk gerçek kullanımda çıkar. Bu yüzden
+    burada gerçekten başlatıp parmak izini TLS'ten okuyoruz. Makinede özel ağ
+    yoksa (bağlantısız CI) atlanır: hata değil, sınanamadı.
+    """
+    durum, govde = deneme.istek("/api/senkron/wifi/baslat", {})
+    yanit = json.loads(govde)
+    if durum == 400 and yanit.get("error_code") in ("wifi_ag_yok", "wifi_ozel_ag_degil"):
+        print(f"  atla Wi-Fi eşleştirme sınanamadı: özel ağ yok ({yanit['error_code']})")
+        return
+    deneme.kontrol(durum == 200, "Wi-Fi eşleştirme başladı", f"HTTP {durum} {yanit.get('error_code', '')}")
+    if durum != 200:
+        return
+    try:
+        baglam = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        baglam.check_hostname = False
+        baglam.verify_mode = ssl.CERT_NONE
+        with socket.create_connection((yanit["ip"], yanit["port"]), timeout=10) as ham:
+            with baglam.wrap_socket(ham) as tls:
+                der = tls.getpeercert(binary_form=True)
+        parmak = base64.urlsafe_b64encode(hashlib.sha256(der).digest()).rstrip(b"=").decode()
+        deneme.kontrol(parmak == yanit["parmak_izi"], "Wi-Fi sertifika parmak izi QR'dakiyle aynı")
+    except OSError as hata:  # Güvenlik duvarı kendi IP'ye bağlantıyı kesmez, ama kesilirse belli olsun
+        deneme.kontrol(False, "Wi-Fi sunucusuna TLS ile bağlanıldı", str(hata))
+    finally:
+        deneme.istek("/api/senkron/wifi/iptal", {})
 
 
 class Deneme:
@@ -210,7 +245,7 @@ def calistir(exe: Path, etiket: str) -> list[str]:
 
                 durum, sayfa = deneme.istek("/")
                 deneme.kontrol(durum == 200 and b"app.js" in sayfa, "ana sayfa paketli")
-                for dosya in ("app.js", "i18n.js", "style.css"):
+                for dosya in ("app.js", "i18n.js", "style.css", "qrcode.js"):
                     durum, icerik = deneme.istek("/" + dosya)
                     deneme.kontrol(durum == 200 and len(icerik) > 1000, f"{dosya} paketli")
 
@@ -224,6 +259,8 @@ def calistir(exe: Path, etiket: str) -> list[str]:
                     durum == 200 and "duman testi" in metin and "BEGIN:VTODO" in metin,
                     ".ics dışa aktarma etkinliği ve görevi içeriyor",
                 )
+
+                wifi_denemesi(deneme)
 
                 # `with sqlite3.connect(...)` bağlantıyı KAPATMAZ; açık kalırsa
                 # Windows geçici klasörü silmeye izin vermiyor.
