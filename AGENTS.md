@@ -687,7 +687,11 @@ doğrulandı (`tests/test_senkron*.py`).
     Kayıt kayıt atlamak yarım birleşmiş veritabanı demek, ikinci içe aktarma
     farklı sonuç verirdi. Reddedilenler: sabit genişlikli UTC dışı zaman, `#rrggbb`
     olmayan renk (54), tekrarlayan uid, hem `plan_day` hem `event_uid` dolu görev,
-    çok yoğun RRULE (65), geçersiz tzid. Sayaçta tek istisna: takvimi yerelde olmayan
+    çok yoğun RRULE (65), geçersiz tzid, ÇÖZÜLEMEYEN RRULE (sınırsız bozuk kural series_end'de
+    çözülmüyordu; içeri girse `expand()` her görünümde patlardı), yalnız vekil karakter (UTF-8'e
+    yazılamaz), 10 yıldan büyük hatırlatıcı (`MAKS_HATIRLATICI`; SQLite/timedelta taşması). Takvim adı
+    kırpılır, rdate/exdate tekilleştirilir (mobil model de öyle; yoksa iki cihaz sonsuza dek ayrışır).
+    Sayaçta tek istisna: takvimi yerelde olmayan
     etkinlik (yetim) `skipped`, dosya reddedilmez.
 88. **Karşılaştırmalar KESİN (`>`), eşitlikte kayıt kalır.** Güncelleme yalnızca
     dosyadaki `updated_at` kesin yeniyse; silme yalnızca `deleted_at` kesin yeniyse;
