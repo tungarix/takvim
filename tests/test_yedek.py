@@ -266,3 +266,63 @@ def test_yedekten_don_ikinci_baglanti_acikken_calir(tmp_path):
             assert [c.name for c in repo.list_calendars()] == ["Kişisel"]
             assert [c.name for c in ikinci.list_calendars()] == ["Kişisel"]
         repo.close()
+
+
+# ---------------------------------------------------------------------------
+# Açılış: yedek migration'dan ÖNCE (AGENTS 55)
+# ---------------------------------------------------------------------------
+
+def _eski_veritabani(yol, son_surum: int):
+    """`son_surum`'e kadar migration uygulanmış, içinde bir takvim olan dosya."""
+    eski_dizin = yol.parent / "eski-migrationlar"
+    eski_dizin.mkdir()
+    for surum, dosya in available():
+        if surum <= son_surum:
+            shutil.copy(dosya, eski_dizin / dosya.name)
+    baglanti = sqlite3.connect(yol)
+    try:
+        migrate(baglanti, eski_dizin)
+        baglanti.execute(
+            "INSERT INTO calendars (name, color, visible, created_at)"
+            " VALUES ('Eski', '#3b82f6', 1, '2026-09-13T08:00:00Z')"
+        )
+        baglanti.commit()
+    finally:
+        baglanti.close()
+
+
+def test_acilista_yedek_migrationdan_once_alinir(tmp_path):
+    """Eski şemalı dosya açılınca bugünkü yedek ESKİ şemada kalmalı.
+
+    Eskiden `Repo.open` migration'ı yedekten önce çalıştırıyordu: günde tek dosya
+    olduğundan yedek, migration sonrası kopyayla ezilir, "migration ters giderse
+    dönülecek nokta" kalmazdı.
+    """
+    from ui.__main__ import depoyu_ac
+
+    db = tmp_path / "takvim.db"
+    _eski_veritabani(db, son_surum=5)
+
+    repo, alinan = depoyu_ac(str(db))
+    try:
+        assert current_version(repo.conn) == available()[-1][0]
+        assert alinan is not None and alinan.exists()
+        yedek = sqlite3.connect(alinan)
+        try:
+            assert current_version(yedek) == 5
+            assert yedek.execute("SELECT name FROM calendars").fetchone()[0] == "Eski"
+        finally:
+            yedek.close()
+    finally:
+        repo.close()
+
+
+def test_yeni_kurulumda_bos_kabuk_yedeklenmez(tmp_path):
+    from ui.__main__ import depoyu_ac
+
+    repo, alinan = depoyu_ac(str(tmp_path / "takvim.db"))
+    try:
+        assert alinan is None and yedek_dosyalari(yedek_klasoru(tmp_path)) == []
+        assert current_version(repo.conn) == available()[-1][0]
+    finally:
+        repo.close()

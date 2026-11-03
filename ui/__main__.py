@@ -34,7 +34,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from core.console import guvenli_konsol
-from store import Repo, yedek_al, yedek_klasoru
+from store import Repo, connect, current_version, migrate, yedek_al, yedek_klasoru
 
 from .ayarlar import ayar_dosyasi, ayar_oku
 from .demo import TZID, seed
@@ -187,6 +187,23 @@ def _olumcul_hata(mesaj: str) -> None:
             pass
 
 
+def depoyu_ac(db: str, *, check_same_thread: bool = True) -> tuple[Repo, Path | None]:
+    """Veritabanını açar: yedek, SONRA migration (AGENTS 55).
+
+    `Repo.open` migration'ı yedekten ÖNCE çalıştırıyordu ve ardından alınan günlük
+    yedek (günde tek dosya) o günün migration öncesi kopyasının üstüne yazıyordu:
+    "işler ters giderse dönülecek tek nokta" aslında yoktu. Yedek bozuk dosyadan alınmaz
+    (`yedek_al`), yedeklenemezse açılış yine devam eder. Dönen ikinci değer alınan yedek.
+    """
+    baglanti = connect(db, check_same_thread=check_same_thread)
+    alinan = None
+    # Şemasız (yeni kurulum) dosyanın yedeği boş kabuk olurdu; ilk yedek sonraki açılışta.
+    if db != ":memory:" and current_version(baglanti) > 0:
+        alinan = yedek_al(baglanti, veri_dizini(db), bugun=date.today())
+    migrate(baglanti)
+    return Repo(baglanti), alinan
+
+
 def main(argv: list[str] | None = None) -> int:
     """Komut satırını çözer ve uygulamayı başlatır."""
     guvenli_konsol()
@@ -322,7 +339,7 @@ def _calistir(args) -> int:
     # için sqlite3'ün thread kontrolünü kapatmamız gerekiyor. Sunucu TEK
     # THREAD'li olduğundan erişim yine sıralı (bkz. `make_server`).
     try:
-        repo = Repo.open(args.db, check_same_thread=args.no_browser)
+        repo, alinan = depoyu_ac(args.db, check_same_thread=args.no_browser)
     except sqlite3.DatabaseError as hata:
         # Bozuk ya da okunamayan veritabanı: kullanıcıya çıkış yolunu göster.
         # "Veritabanı bozuk" mesajı tek başına çaresizlik, yedeklerin yeri
@@ -333,11 +350,7 @@ def _calistir(args) -> int:
         ) from hata
 
     try:
-        # Yedek EN BAŞTA alınıyor: bir sonraki adımda migration çalışabilir ve
-        # migration'dan önceki hâlin kopyası, işler ters giderse geri dönülecek
-        # tek nokta.
         if args.db != ":memory:":
-            alinan = yedek_al(repo.conn, veri_dizini(args.db), bugun=date.today())
             print(f"Yedek: {alinan}" if alinan else "Yedek alınamadı (takvim çalışıyor).", flush=True)
 
         if args.demo:
