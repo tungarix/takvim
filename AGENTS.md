@@ -22,10 +22,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Masaüstü penceresi (`ui/pencere.py`, tarayıcı yerine WebView2) | ✅ bitti |
 | Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
 | Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ bitti (v1.8.0) |
+| Wi-Fi eşleştirme (`senkron/wifi.py`, `/api/senkron/wifi/*`, QR) | ✅ bitti, yayınlanmadı (v1.9.0 hedefi) |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**926 test geçiyor** (ayrıca CI'da her push/PR'da otomatik: bkz.
+**1027 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -103,6 +104,18 @@ satırı olmamalı, ardından `scripts\exe_duman.py --exe dist\Takvim.exe` çal�
 `pythonnet`, `clr_loader`, `cffi`, `bottle`, `proxy_tools` geliyor. Windows'un
 KENDİ WebView2 bileşenini kullanıyor: uygulamaya tarayıcı motoru gömülmüyor,
 bu yüzden `.exe` 15 MB'tan ~20 MB'a çıkıyor, 150 MB'a değil.
+
+`cryptography` Wi-Fi eşleştirme için eklendi (Arda onayıyla, v1.9.0 hedefi). Gerekçe:
+stdlib'de kendi imzalı sertifika ÜRETİMİ yok ve kendi X.509/ECDSA kodumuzu yazmak yanlış
+olurdu. Yalnızca `senkron/wifi.py::sertifika_uret` içinde ve fonksiyonun İÇİNDEN import
+edilir: açılış ve geri kalan modüller onsuz da yüklenir. Başka yerde kullanma (TLS, parola
+saklama vb. için yeni bir ihtiyaç doğarsa önce sor).
+
+QR kodu için `ui/static/qrcode.js` = **qrcode-generator 1.4.4** (Kazuhiko Arase, MIT; npm
+paketinden DEĞİŞTİRİLMEDEN, sha256 `18ae399f81182bc9de916e9c77b195df20cc58d6f2d55a62b085a299f1bf1780`,
+lisans başlığı dosyanın başında). Bağımlılık değil, tek dosya, satır içi betik yok. Elle QR
+kodlayıcı YAZMA; kütüphaneyi güncellersen QR'ı bir çözücüyle yeniden doğrula (sınama yöntemi:
+kural 101). Yalnız ASCII bayt kipinde kullanılıyor (bağlantı öyle); Unicode metin için kullanma.
 
 Yeni bağımlılık eklemeden önce gerekçelendir ve önce sor.
 
@@ -747,6 +760,56 @@ doğrulandı (`tests/test_senkron*.py`).
     - **Açılışta yedek migration'dan ÖNCE** (`ui/__main__.py::depoyu_ac`): kural 55 böyle
       diyordu ama `Repo.open` migration'ı önce çalıştırıyordu. Şemasız (yeni) dosya yedeklenmez.
 
+### Wi-Fi eşleştirme (v1.9.0 hedefi, yayınlanmadı)
+
+Protokol ve tehdit modeli `docs/senkron-wifi.md`'de (bağlayıcı; çelişki çıkarsa belgeyi sessizce
+düzeltme, sor). Hepsinin testi mutasyonla doğrulandı (`tests/test_senkron_wifi.py`,
+`tests/test_ui_wifi.py`).
+
+95. **Sunucu yalnız seçilen özel IPv4'e bağlanır, `0.0.0.0`'a ASLA** ve yalnız kısa ömürlüdür
+    (en çok 180 sn, tek oturum). Özel aralık `ozel_ip_mi`'dir (10/8, 172.16/12, 192.168/16,
+    169.254/16); `ipaddress.is_private` KULLANMA: loopback ve 100.64/10'u da özel sayar. Testlerde
+    loopback için TEK kanal var: `WifiOturumu(test_ipleri=...)` / `_TakvimSunucu.wifi_ayar` (yalnız
+    testler ve `scripts/wifi_sunucu_dene.py --test-ip`); komut satırı/ayar dosyası/ortam değişkeni
+    üzerinden erişilemez ve belirsiz adres (`0.0.0.0`) orada da reddedilir. Üretim yolunu gevşetme.
+96. **Sertifika ve özel anahtar diske yazılmaz, yazılmak ZORUNDA kalan an en kısa tutulur.**
+    `ssl` belleğten yükleyemediği için anahtar RASTGELE PAROLAYLA şifreli PEM olarak geçici
+    dosyaya yazılır, `load_cert_chain` döner dönmez `finally` ile silinir (yükleme patlasa da).
+    Parola hiçbir yere yazılmaz. ECDSA P-256, SAN = IP, 1 gün; TLS ≥ 1.2. Parmak izi = DER'in
+    SHA-256'sı base64url dolgusuz (QR'daki `f`).
+97. **Kimlik HER ŞEYDEN ÖNCE** (`_Istek._isle`): yetkisiz istek yol/metot ne olursa olsun 401 alır
+    (404/405 yalnız doğrulanmış isteğe), her başarısızlık sayılır, 5.'de oturum ölür. Kimliğin
+    doğrulandığı `_kimlikli` BAYRAĞIYLA izlenir, `Expect` başlığına güvenilmez: HTTP/1.0 +
+    `Expect: 100-continue` `handle_expect_100`'e hiç uğramaz. `Expect` akışı da sayılır, 100
+    Continue yetkisiz ya da 16 MiB üstü gövdeye verilmez. Karşılaştırma `hmac.compare_digest`.
+98. **Gövde sınırı başlıkta uygulanır.** `Content-Length` zorunlu (411; chunked de 411), 16 MiB
+    üstü gövde OKUNMADAN 413. Reddedilen küçük (≤1 MiB) gövde okunup atılır, yoksa kapanan
+    bağlantıda TCP sıfırlaması yanıtı ezer (kural 77'deki tuzağın aynısı; PUT testi yakaladı).
+    Dosya doğrulaması `ice.dogrula` = `ice_aktar`ın doğrulayıcısı (derinlik/boyut/kayıt
+    kuralları AYNI, RecursionError → 400); doğrulanmadan arayüze HİÇBİR şey gitmez.
+99. **Onay olmadan yazılmaz.** POST doğrulanır → oturum `onay_bekliyor` → arayüz Birleştir/Reddet
+    → yalnız onayda `ice_aktar`. Karar en çok 60 sn VE oturumun kalan ömrü kadar bekler (408);
+    ret 403, süre 408, ikinci eşzamanlı POST 409. Onay penceresi "Reddet" odağıyla açılır
+    (`wifiOnayKutusu`): yanlışlıkla Enter veri birleştirmesin. Başarılı/reddedilen/zaman aşımına
+    uğrayan POST'tan sonra oturum kapanır; geçersiz dosya (400) kapatmaz.
+100. **Thread düzeni.** Eşleştirme sunucusu thread'li (`TCPServer`+`ThreadingMixIn`; `HTTPServer`
+    DEĞİL: `server_bind` Windows'ta saniyelerce ters DNS bekliyor), çünkü POST 60 sn onay
+    bekliyor. Ana sunucunun tek-thread kuralı (16) bozulmuyor: her istek `depo_ac()` ile KENDİ
+    sqlite bağlantısını açıp kapatır (bellek DB'sinde ortak bağlantı, yalnız geliştirme). TLS
+    el sıkışması kabul döngüsünde değil istek thread'inde (takılan istemci diğerlerini tutmasın);
+    eşzamanlı bağlantı en çok 8. Yeni `baslat` eski oturumu kapatır (token'ı ölür); uygulama
+    kapanışında `_TakvimSunucu.server_close` açık oturumu temizler. `bitir` önce token'ı öldürür
+    (`faz="bitti"`), dinleyiciyi hemen arkasından kapatır.
+101. **Günlük ve arayüz.** Günlük yalnız "oturum açıldı/kapandı, sonuç, istek sayısı" (`print`);
+    token, IP, port, dosya içeriği ve istisna iletisi YAZILMAZ (`handle_error` yalnız sayar).
+    Bağlantı (içinde token var) YALNIZ `POST /api/senkron/wifi/baslat` yanıtında döner; `durum`
+    yoklaması dönmez. Uçlar yazan uçlarla aynı `Host` + `Origin`/`Sec-Fetch-Site` korumalarında,
+    `durum` GET'i de dahil. QR her zaman siyah-beyaz (koyu temada da; temayı izleyen QR okunmaz),
+    4 modül sessiz bölge, SVG DOM ile kurulur (satır içi betik/`innerHTML` yok). QR doğrulaması:
+    tarayıcıda çizilen SVG → canvas → PNG → `zxing-cpp` (geçici venv) ile çözülüp
+    bağlantı metniyle karşılaştırıldı (en kötü durum: 374 karakter, 85x85 modül, de çözüldü;
+    projeye bağımlılık eklenmedi).
+
 ---
 
 ## 4. Kasıtlı kararlar — "hata" sanıp düzeltme
@@ -823,6 +886,17 @@ olduğundan emin ol (`git status`), işin bitince anlamlı bir commit bırak.
 **v1 kapsamı + Faz A–E + v1.0.1 + v1.0.2 + v1.1.0 + v1.2.0 + v1.3.0 + v1.4.0 + v1.4.1
 + v1.5.0 + v1.6.0 + v1.7.0 + v1.7.1 + v1.7.2 + v1.8.0 tamamlandı** (README §1, §10, [CHANGELOG.md](CHANGELOG.md)). Yeni özellik
 eklemeden önce SOR -- kapsam dışı listesi bilinçli olarak kısa tutuluyor.
+
+**Wi-Fi eşleştirme** (v1.9.0 hedefi, yayınlanmadı; kural 95-101, `docs/senkron-wifi.md`,
+CHANGELOG [Yayınlanmamış]): `senkron/wifi.py`, `/api/senkron/wifi/*`, Ayarlar → "Wi-Fi ile
+eşleştir" (QR + bağlantı + geri sayım + masaüstü onayı), `scripts/wifi_sunucu_dene.py` (mobil
+istemciyi uçtan uca denemek için; exe'ye girmez). Test sayısı 926 → 1027. Paketli exe duman
+testi artık eşleştirmeyi gerçekten başlatıp TLS parmak izini okuyor (özel ağ yoksa atlar):
+`cryptography` paketlemede eksik kalırsa hata ilk kullanıcıda değil burada görünür. exe boyutu
+16,96 → 20,75 MB (cryptography'nin yerel kütüphaneleri; not: pywebview'in `ssl=True` yolu
+`cryptography`yi zaten isteğe bağlı import ediyor, venv'de kuruluysa PyInstaller onu her hâlükârda
+toplar). Gerçek telefonla uçtan uca ve gerçek Windows güvenlik duvarı istemi ELLE denenmedi
+(testler loopback üstünde; duman testi kendi IP'sine bağlanıyor, güvenlik duvarını tetiklemez).
 
 v1.8.0'da bitenler (ayrıntı CHANGELOG.md'de; release SHA256: `fc1572c5…1f7d03`, resmi exe duman testinden, hash ve attestation'dan geçti):
 **Telefonla senkron dosyası** (kural 84-93, `docs/senkron.md`): `senkron/` paketi,

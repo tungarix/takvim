@@ -7,6 +7,23 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Wi-Fi ile eşleştirme**: ⚙ Ayarlar → Telefonla senkron → "Wi-Fi ile eşleştir". Aynı ağdaki telefonla
+  dosya taşımadan senkron: ekranda QR kod + aynı bağlantının metni (kopyala düğmesiyle) + geri sayım
+  çıkar; telefon bağlantıyı açıp verisini gönderince "Telefondan: N etkinlik, M görev, K silme.
+  Birleştirilsin mi?" diye sorulur, onaylarsan mevcut senkron birleştirmesiyle birleşir. Bulut, hesap
+  ya da kalıcı sunucu yok: eşleştirme ekranı açıkken en çok 3 dakika yaşayan geçici bir HTTPS
+  sunucusu çalışır, yalnız özel ağ adresine bağlanır (ev/iş Wi-Fi'ı; `0.0.0.0`'a asla), her
+  oturumda yeni kendi imzalı sertifika + 128 bitlik token kullanır, 5 hatalı denemede ya da ilk
+  veri gönderiminden sonra kapanır. Windows güvenlik duvarı sorarsa "Özel ağlar"a izin ver. Dosya ile
+  aktarma yedek yol olarak aynen duruyor. Protokol ve tehdit modeli: `docs/senkron-wifi.md`.
+- `scripts/wifi_sunucu_dene.py`: mobil istemciyi uçtan uca denemek için sunucuyu tek komutla
+  bağımsız başlatır (yalnız geliştirme; exe'ye girmez).
+
+### Değişti
+- Yeni bağımlılık: `cryptography` (oturum başına kendi imzalı TLS sertifikası üretmek için; stdlib'de
+  yok). QR çizimi için `qrcode-generator` 1.4.4 (MIT) tek dosya olarak `ui/static/qrcode.js`.
+
 ## [1.8.0] - 2026-11-03
 
 ### Eklendi

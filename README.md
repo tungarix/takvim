@@ -22,6 +22,7 @@ no sign-up, no cloud sync.
 - **Interface language:** the UI is fully Turkish or fully English, switched from **⚙ Settings → Language** (saved, page reloads). Default is Turkish.
 - **Tasks:** a to-do list in the sidebar. Plan a task for a day (no time) or for specific hours; a timed task becomes a block on the calendar grid. Drag a task from the list onto the grid, check it off in the list or on its block. The quick-add box also takes a `görev:` prefix (Turkish, like the rest of quick add). Tasks are exported and imported as `.ics` VTODO.
 - **Sync with the phone app (new in 1.8.0):** **⚙ Settings → Sync with phone** creates or opens a `.takvimsync` file; you carry it between devices yourself (Share, USB, Drive). No network, no account. Format: [docs/senkron.md](docs/senkron.md).
+- **Pair over Wi-Fi (new):** **⚙ Settings → Sync with phone → Pair over Wi-Fi** shows a QR code; scan it with the phone on the same Wi-Fi to sync without moving a file. A short-lived (3 min) HTTPS server runs only while that screen is open, only on your private network address, and nothing is merged until you approve it on the desktop. If Windows Firewall asks, allow **Private networks**. The file-based sync above always works as a fallback (e.g. guest Wi-Fi that isolates devices). Protocol: [docs/senkron-wifi.md](docs/senkron-wifi.md).
 - **Your data:** lives in `%LOCALAPPDATA%\Takvim\takvim.db` (SQLite); a backup copy is taken automatically on every launch and the last 7 days are kept. If the file ever gets damaged, Takvim offers on startup to go back to the latest healthy backup (the damaged file is set aside, not deleted).
 - **Known limitation:** the quick-add box always expects a Turkish sentence (e.g. "yarın 14:00 diş hekimi"), even in English mode — its parser only understands Turkish grammar; the placeholder text shows the expected format.
 - **License:** [MIT](LICENSE).
@@ -285,6 +286,7 @@ olduğunu taşımaz.
 | İçe aktar | Üstteki "İçe aktar": `.ics` seç, önizlemeyi onayla (kaç yeni/güncelleme/atlanacak) |
 | Çakışma uyarısı | Oluştururken üst üste gelen saat varsa arayüz söylüyor, engellemiyor |
 | Telefonla senkron | (1.8.0) ⚙ Ayarlar → "Telefonla senkron": "Senkron dosyası oluştur" `.takvimsync` indirir, "Senkron dosyası aç" başka cihazın dosyasını birleştirir (biçim: `docs/senkron.md`) |
+| Wi-Fi ile eşleştir | (yayınlanmamış) ⚙ Ayarlar → Telefonla senkron → "Wi-Fi ile eşleştir": QR kodu telefonla okut, dosya taşımadan senkron (aşağıda "Telefonla Wi-Fi ile eşleştirme") |
 | Ayarlar | Üstteki ⚙: tepsiye küçült + bilgisayar açılışında hatırlatıcıyı başlat + arayüz dili (Türkçe/English, kaydedince sayfa yeniden yüklenir) |
 | Dil | Arayüz ya tamamen Türkçe ya tamamen İngilizce. İSTİSNA: hızlı ekleme kutusu İngilizce modda da **Türkçe cümle** bekliyor ("yarın 14:00 diş hekimi") — ayrıştırıcı dilbilgisi Türkçe gömülü, İngilizce cümle tanınmazsa zaman bulunamayıp tüm gün kaydedilir. Boş durum örnekleri bu yüzden çevrilmiyor: doğru kullanımı gösteriyorlar |
 | Görev ekleme | Kenar çubuğundaki **Görevler** kutusuna yaz + Enter (plansız görev), **+** ile form ("Ne zaman?": plansız / gün içinde bir ara / belirli saatlerde), ya da hızlı ekleme kutusuna `görev: rapor yaz yarın 14:00-15:30` (önek iki nokta ile bitmeli; zaman yoksa plansız, yalnız tarih varsa gün planlı, saat varsa saat planlı) |
@@ -295,6 +297,24 @@ Tekrarlı etkinliklerde panelde **üç ayrı işlem** var: "Bu örneği sil" yal
 günü kaldırır, "Seriyi tamamen sil" hepsini (sayı göstererek sorar, tek adımlı
 geri alma var), "Bundan sonrasını değiştir" seriyi ikiye böler (öncekiler
 aynen kalır, sonrakiler yeni seri olur).
+
+### Telefonla Wi-Fi ile eşleştirme
+
+1. Bilgisayar ve telefon **aynı Wi-Fi ağında** olsun (ev/iş ağı; "misafir" ağlar cihazları ayırabilir).
+2. Takvim'de ⚙ **Ayarlar → Telefonla senkron → Wi-Fi ile eşleştir**. QR kod, aynı bağlantının metni
+   (**Kopyala** düğmesiyle) ve geri sayım çıkar.
+3. Telefonda Takvim Mobil'i açıp kamerayla QR'ı okut (ya da bağlantıyı Takvim Mobil'e yapıştır).
+   Telefon verisini gönderince bilgisayarda **"Telefondan: N etkinlik, M görev, K silme. Birleştirilsin
+   mi?"** sorusu çıkar: **Birleştir** ya da **Reddet** (60 sn içinde karar ver; onaylamadan hiçbir şey
+   değişmez).
+4. Eşleştirme ekranı en çok 3 dakika açık kalır; İptal'e basınca, bir kez veri gelince ya da çok
+   sayıda hatalı denemede kapanır.
+
+- **Güvenlik duvarı:** ilk kullanımda Windows sorarsa **Özel ağlar**'a izin ver (Genel ağlar'a gerek yok).
+- Sunucu yalnızca bilgisayarının özel ağ adresine (10.x, 172.16-31.x, 192.168.x, 169.254.x) bağlanır;
+  "özel bir ağa bağlı değilsin" uyarısı çıkarsa dosya ile aktarmayı kullan.
+- **Olmuyorsa yedek yol:** ⚙ Ayarlar → Telefonla senkron → "Senkron dosyası oluştur / aç" ile
+  `.takvimsync` dosyasını telefona kendin taşı (Paylaş, USB, Drive). Biçim: `docs/senkron.md`.
 
 ### Bir şey ters giderse
 
