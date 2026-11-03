@@ -637,8 +637,11 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     attestation'dan ÖNCE: bozuk exe'ye özet üretilmesin. Geçici bir veritabanıyla
     açıp sürümü (etiket = `ui/surum.py` = exe'nin bildirdiği), paketlenmiş arayüz
     dosyalarını, şemayı, açılış yedeğini, yazma + `.ics` dışa aktarmayı ve
-    gerçek `%LOCALAPPDATA%\Takvim\takvim.db`'ye dokunulmadığını sınar. Tek
-    dosyalık exe önyükleyici + asıl süreç: kapatırken `taskkill /T` (yalnızca
+    gerçek `%LOCALAPPDATA%\Takvim\takvim.db`'ye dokunulmadığını sınar. Geçici DB
+    BİR ÖNCEKİ şemada (içinde bir takvimle) önceden kurulur: boş dosya "yeni
+    kurulum" sayılıp yedeklenmez; yedeğin migration'dan ÖNCE alındığı (yedek
+    `user_version` = önceki şema) ve verinin yükseltmede korunduğu ancak böyle
+    görünür. Tek dosyalık exe önyükleyici + asıl süreç: kapatırken `taskkill /T` (yalnızca
     önyükleyiciyi öldürmek portu açık bırakır). Ayarlar kutusundaki günlük yolu
     (`ui/server.py::gunluk_yolu`) `takvim_app._gunluk_yolu` ile aynı olmalı (testi
     var); oradan import edilmiyor, çünkü `takvim_app` günlüğü `ui`'den önce bağlıyor.
