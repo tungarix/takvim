@@ -496,13 +496,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._hata("surum gerekli", 400, "surum_gerekli")
             return
         try:
-            yeni, eski = self._guncelleyici().kurulum_hazirla(surum)
+            yeni, eski, ozet = self._guncelleyici().kurulum_hazirla(surum)
         except GuncellemeHatasi as hata:
             self._guncelleme_hatasi(hata)
             return
         baslat = getattr(self.server, "guncelleme_baslat", tamamlamayi_baslat)
         try:
-            baslat(yeni, eski)
+            baslat(yeni, eski, ozet)
         except OSError as hata:
             print(f"Güncelleme başlatılamadı: {type(hata).__name__}", flush=True)
             self._guncelleme_hatasi(GuncellemeHatasi("baslatilamadi"))

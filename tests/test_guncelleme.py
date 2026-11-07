@@ -349,7 +349,8 @@ def _yayin(sahte, boyut=None):
 
 
 def test_dogru_dosya_indirilir_ve_dogrulanir(sahte, tmp_path):
-    yol = kurulum.hazirla(_ag(sahte), _yayin(sahte), tmp_path / "g")
+    yol, ozet = kurulum.hazirla(_ag(sahte), _yayin(sahte), tmp_path / "g")
+    assert ozet == hashlib.sha256(YENI_EXE).hexdigest()
     assert yol.name == "Takvim-1.10.0.exe" and yol.read_bytes() == YENI_EXE
     assert not list((tmp_path / "g").glob("*.part"))
 
@@ -495,8 +496,9 @@ def test_kurulum_hazirla_dogrulanmis_exe_verir(sahte, tmp_path):
     exe.write_bytes(ESKI_EXE)
     h = _hizmet(sahte, tmp_path, exe=exe)
     h.denetle()
-    yeni, eski = h.kurulum_hazirla("1.10.0")
+    yeni, eski, ozet = h.kurulum_hazirla("1.10.0")
     assert yeni.read_bytes() == YENI_EXE and eski == exe
+    assert ozet == hashlib.sha256(YENI_EXE).hexdigest()
 
 
 def test_exe_yok_ya_da_paketli_degilse_kurulamaz(sahte, tmp_path):
@@ -666,3 +668,163 @@ def test_sonsuz_akis_bildirilen_boyutta_kesilir(tmp_path, monkeypatch):
         ag.indir("https://github.com/tungarix/takvim/releases/download/v1/Takvim.exe", tmp_path / "x.exe", 100)
     assert h.value.kod == "boyut_uyusmuyor" and okuma["n"] == 1
     assert list(tmp_path.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# güvenlik incelemesi düzeltmeleri (v1.10.0)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("adres", [
+    "https://github.com/tungarix/takvim/releases/../../evil/x/releases/a",
+    "https://github.com/tungarix/takvim/releases/%2e%2e/%2e%2e/evil",
+    "https://github.com/tungarix/takvim/releases/a%2Fb",
+    "https://github.com:8443/tungarix/takvim/releases/download/v1/Takvim.exe",
+    "https://api.github.com\t/x",
+    "https://api.github.com/x y",
+    "https://api.github.com/x\r\nX: y",
+    " https://api.github.com/x",
+    "https://api.github.com/x\\y",
+    "https://api.github.com/\u0131",
+])
+def test_adres_denetimi_ayristirici_farklarini_kapatir(adres):
+    from guncelleme.saf import adres_uygun
+
+    assert adres_uygun(adres, DEPO, frozenset()) is False
+
+
+def test_adres_denetimi_mesru_adresleri_kabul_eder():
+    from guncelleme.saf import adres_uygun
+
+    for a in (
+        "https://api.github.com/repos/tungarix/takvim/releases/latest",
+        "https://github.com/tungarix/takvim/releases/download/v1.10.0/Takvim.exe",
+        "https://github.com:443/tungarix/takvim/releases/download/v1.10.0/Takvim.exe",
+        "https://objects.githubusercontent.com/github-production-release-asset/1/2?X-Amz=abc&response-content-disposition=attachment",
+    ):
+        assert adres_uygun(a, DEPO, frozenset()) is True, a
+
+
+def test_tamamla_ozet_tutmazsa_eskiye_dokunmadan_eski_surum_acilir(exeler):
+    eski, _, baslatilan = exeler
+    assert _tamamla(exeler, beklenen_ozet="0" * 64) is False
+    assert eski.read_bytes() == ESKI_EXE
+    assert not (eski.parent / "Takvim.eski.exe").exists()
+    assert baslatilan == [[str(eski)]]
+
+
+def test_tamamla_dogru_ozetle_calisir(exeler):
+    eski, _, _ = exeler
+    assert _tamamla(exeler, beklenen_ozet=hashlib.sha256(YENI_EXE).hexdigest().upper()) is True
+    assert eski.read_bytes() == YENI_EXE
+
+
+def test_yerine_koymadaki_gecici_kilit_yeniden_denenir(exeler, monkeypatch):
+    """Antivirüs yeni kopyayı kısa süre kilitleyebilir: geri almaya düşmeden yeniden dene."""
+    eski, _, _ = exeler
+    gercek = os.replace
+    sayac = {"n": 0}
+
+    def replace(kaynak, hedef):
+        if str(kaynak).endswith(".yeni"):
+            sayac["n"] += 1
+            if sayac["n"] <= 2:
+                raise PermissionError("antivirüs")
+        return gercek(kaynak, hedef)
+
+    monkeypatch.setattr(os, "replace", replace)
+    assert _tamamla(exeler, sure=3.0) is True
+    assert eski.read_bytes() == YENI_EXE and sayac["n"] == 3
+
+
+def test_tamamla_komutu_ozet_zorunlu_ve_gecerli(tmp_path, monkeypatch):
+    import sys
+
+    from guncelleme.kurulum import tamamla_komutu
+
+    kendisi = tmp_path / "Yeni.exe"
+    kendisi.write_bytes(YENI_EXE)
+    monkeypatch.setattr(sys, "executable", str(kendisi))
+    hedef = str(tmp_path / "Takvim.exe")
+    with pytest.raises(SystemExit):  # --sha256 olmadan argparse reddeder
+        tamamla_komutu(["--guncelle-tamamla", "--eski", hedef])
+    assert tamamla_komutu(["--guncelle-tamamla", "--eski", hedef, "--sha256", "xyz"]) == 2
+
+
+def test_tamamlamayi_baslat_hemen_kapanan_surec_hata_verir(monkeypatch, tmp_path):
+    class Olu:
+        def poll(self):
+            return 1
+
+    monkeypatch.setattr(kurulum, "_baslat", lambda komut: Olu())
+    with pytest.raises(OSError):
+        kurulum.tamamlamayi_baslat(tmp_path / "a.exe", tmp_path / "b.exe", "a" * 64, bekle=0)
+
+
+def test_tamamlamayi_baslat_ozeti_komuta_koyar(monkeypatch, tmp_path):
+    komutlar: list = []
+
+    class Canli:
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(kurulum, "_baslat", lambda komut: (komutlar.append(komut), Canli())[1])
+    kurulum.tamamlamayi_baslat(tmp_path / "a.exe", tmp_path / "b.exe", "ab" * 32, pid=7, bekle=0)
+    assert komutlar[0][komutlar[0].index("--sha256") + 1] == "ab" * 32
+
+
+def test_http_istisnalari_ag_hatasina_cevrilir(sahte, monkeypatch):
+    import http.client
+
+    ag = _ag(sahte)
+
+    def patlat(*a, **k):
+        raise http.client.IncompleteRead(b"x")
+
+    monkeypatch.setattr(ag._acici, "open", patlat)
+    with pytest.raises(GuncellemeHatasi) as h:
+        ag.son_yayin()
+    assert h.value.kod == "ag_hatasi"
+
+
+def test_beklenmeyen_hata_da_son_denetimi_yazar(sahte, tmp_path):
+    h = _hizmet(sahte, tmp_path)
+
+    def patlat(etag=None):
+        raise RuntimeError("beklenmedik")
+
+    h.ag.son_yayin = patlat  # type: ignore[method-assign]
+    d = h.denetle()
+    assert d["hata_kodu"] == "ag_hatasi" and d["son_denetim"] is not None
+    assert not h.denetim_zamani_geldi()  # her açılışta yeniden denenmez
+
+
+def test_toplam_indirme_suresi_asilinca_iptal(tmp_path, monkeypatch):
+    import guncelleme.ag as agmod
+
+    class Yavas:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self, n):
+            return b"x"
+
+    ag = Ag(DEPO, "1.9.0")
+    monkeypatch.setattr(ag, "_istek", lambda url, baslik=None: Yavas())
+    monkeypatch.setattr(agmod, "TOPLAM_INDIRME_SN", -1.0)
+    with pytest.raises(GuncellemeHatasi) as h:
+        ag.indir("https://github.com/tungarix/takvim/releases/download/v1/Takvim.exe", tmp_path / "x.exe", 10_000)
+    assert h.value.kod == "ag_hatasi"
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_durum_arka_plan_denetimi_kilidi_tutarken_bile_cevap_verir(sahte, tmp_path):
+    h = _hizmet(sahte, tmp_path)
+    cevap: list = []
+    with h._kilit:  # arka plan denetimi ağdayken kilit tutulur
+        t = threading.Thread(target=lambda: cevap.append(h.durum()))
+        t.start()
+        t.join(2)
+    assert cevap and cevap[0]["mevcut"] == "1.9.0"

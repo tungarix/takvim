@@ -72,10 +72,11 @@ class Yayin:
 
 def adres_uygun(url: object, depo: str, ek_sunucular: frozenset[str]) -> bool:
     """https + izinli sunucu; github.com'da yol bu deponun release'i olmalı."""
-    if not isinstance(url, str):
-        return False
+    if not isinstance(url, str) or not url.isascii() or any(c.isspace() or ord(c) < 32 or c == "\\" for c in url):
+        return False  # boşluk/sekme/CRLF/ters eğik çizgi: ayrıştırıcılar farklı yorumlar
     try:
         p = urlsplit(url)
+        port = p.port
     except ValueError:
         return False
     sunucu = (p.hostname or "").lower()
@@ -83,6 +84,11 @@ def adres_uygun(url: object, depo: str, ek_sunucular: frozenset[str]) -> bool:
         return p.scheme in ("http", "https")
     if p.scheme != "https" or sunucu not in IZINLI_SUNUCULAR or p.username or p.password:
         return False
+    if port not in (None, 443):
+        return False
+    yol = p.path.lower()
+    if ".." in yol.split("/") or "%2e" in yol or "%5c" in yol or "%2f" in yol:
+        return False  # yol çıkışı / kodlanmış ayraç
     if sunucu == "github.com":
         return p.path.startswith(f"/{depo}/releases/")
     return True
