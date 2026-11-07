@@ -430,7 +430,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "otomatik_kayit_hatasi",
                 )
                 return
-        dizin = Path(str(db_yolu)).resolve().parent if db_yolu else None
+        # `:memory:` bir klasör DEĞİL: Path(":memory:").parent çalışma dizinidir ve oraya ayar dosyası yazılırdı.
+        dizin = Path(str(db_yolu)).resolve().parent if db_yolu and str(db_yolu) != ":memory:" else None
         if dizin is not None:
             mevcut = ayar_oku(ayar_dosyasi(dizin))
             if tepsi is not None:
@@ -1792,8 +1793,10 @@ def _ayar_durumu(db_yolu) -> dict:
     tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
     dil = str(VARSAYILANLAR["dil"])
     tema = str(VARSAYILANLAR["tema"])
-    denetim = None
+    # Dosyasız (bellek) veritabanı = demo/geliştirme: güncelleme sorusu ve denetimi anlamsız, kapalı say.
+    denetim: bool | None = False
     if db_yolu is not None and str(db_yolu) != ":memory:":
+        denetim = None
         try:
             sakli = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent))
             tepsi = bool(sakli.get("tepsiye_kucult", tepsi))

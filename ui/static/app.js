@@ -3499,10 +3499,12 @@ async function guncellemeBaslat(ayar) {
         ucuncu: { etiket: t("gu_soru_hayir"), anahtar: "hayir" },
         iptalDegeri: null,
         genislik: 460,
-        // Odak "Hayır"da ve Enter/odak dışı Enter karar SAYILMAZ (null): hızlı ekleme kutusuna yazarken
-        // beliren kutu yanlışlıkla ağ izni vermesin (güvenlik incelemesi, v1.10.0).
+        // Odak "Hayır"da. "Evet" yalnız KENDİ düğmesine tıklanınca/Enter ile basılınca sayılır; odak başka
+        // yerdeyken Enter karar SAYILMAZ (null): hızlı ekleme kutusuna yazarken beliren kutu yanlışlıkla ağ
+        // izni vermesin (güvenlik incelemesi, v1.10.0). `oku` hem Evet tıklamasında hem Enter yolunda çağrılıyor,
+        // ikisini odaktaki öğeyle ayırıyoruz.
         kur: () => el("modal-ucuncu"),
-        oku: () => null,
+        oku: () => (document.activeElement === el("modal-tamam") ? {} : null),
       });
       if (s === null) return;
       const evet = !s.hayir;

@@ -406,3 +406,18 @@ def test_ayarlar_gecersiz_tema_400(sunucu_dosya):
         urllib.request.urlopen(req)
     assert hata.value.code == 400
     assert json.loads(hata.value.read())["error_code"] == "tema_gecersiz"
+
+
+def test_bellek_veritabaninda_ayar_kaydi_dosya_yazmaz(tmp_path, monkeypatch):
+    """`:memory:` klasör değil: ayar POST'u çalışma dizinine ayarlar.json yazmamalı."""
+    monkeypatch.chdir(tmp_path)
+    repo = Repo.open(":memory:", check_same_thread=False)
+    httpd = make_server(repo, IST, host="127.0.0.1", port=0, db_yolu=":memory:")
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        _jpost(f"http://127.0.0.1:{httpd.server_address[1]}", "/api/ayarlar", {"tema": "acik"})
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        repo.close()
+    assert not (tmp_path / "ayarlar.json").exists()

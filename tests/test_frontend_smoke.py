@@ -864,3 +864,67 @@ def test_arama_bugune_planli_gorevi_plansiz_gostermez(page, sunucu):
     sonuc.wait_for()
     metin = sonuc.inner_text()
     assert "Bugün" in metin and "Plansız" not in metin
+
+
+# -- güncelleme rıza kutusu (v1.10.0) ---------------------------------------------
+
+@pytest.fixture
+def sunucu_dosyali(tmp_path):
+    """DOSYA veritabanlı sunucu: güncelleme seçimi sorulmamış (None) olduğu için rıza kutusu çıkar.
+
+    Güncelleyici sahte ağa bağlı: "Evet"in tetiklediği ilk denetim gerçek GitHub'a GİTMEZ.
+    """
+    from guncelleme import Ag, Guncelleyici
+
+    class SahteAg(Ag):
+        def son_yayin(self, etag=None):
+            return "yok", None, None
+
+    db = str(tmp_path / "takvim.db")
+    with Repo.open(db, check_same_thread=False) as repo:
+        repo.add_calendar("Kişisel", "#3f7cf0")
+        httpd = make_server(repo, IST, host="127.0.0.1", port=0, db_yolu=db)
+        httpd.guncelleyici = Guncelleyici(tmp_path, SURUM, ag=SahteAg())
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield f"http://127.0.0.1:{httpd.server_address[1]}"
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+
+def _ayar(temel):
+    with urllib.request.urlopen(temel + "/api/ayarlar") as y:
+        return json.loads(y.read().decode())
+
+
+def test_guncelleme_sorusu_evet_secimi_kaydeder(page, sunucu_dosyali):
+    """Regresyon: "Evet, denetle" kararı yutuluyordu (oku -> null); odak da Hayır'da açılır."""
+    page.goto(sunucu_dosyali)
+    page.wait_for_selector("#perde:not([hidden])")
+    assert page.evaluate("document.activeElement.id") == "modal-ucuncu"  # varsayılan odak Hayır
+    page.click("#modal-tamam")
+    page.wait_for_function("document.getElementById('perde').hidden")
+    page.wait_for_timeout(500)
+    assert _ayar(sunucu_dosyali)["guncelleme_denetimi"] is True
+
+
+def test_guncelleme_sorusu_hayir_secimi_kaydeder(page, sunucu_dosyali):
+    page.goto(sunucu_dosyali)
+    page.wait_for_selector("#perde:not([hidden])")
+    page.click("#modal-ucuncu")
+    page.wait_for_function("document.getElementById('perde').hidden")
+    page.wait_for_timeout(500)
+    assert _ayar(sunucu_dosyali)["guncelleme_denetimi"] is False
+
+
+def test_guncelleme_sorusu_odak_disi_enter_karar_saymaz(page, sunucu_dosyali):
+    """Hızlı ekleme kutusuna yazarken beliren kutuya basılan Enter ağ izni VERMEZ."""
+    page.goto(sunucu_dosyali)
+    page.wait_for_selector("#perde:not([hidden])")
+    page.evaluate("const b = document.getElementById('modal-baslik'); b.tabIndex = -1; b.focus();")
+    page.keyboard.press("Enter")
+    page.wait_for_function("document.getElementById('perde').hidden")
+    page.wait_for_timeout(500)
+    assert _ayar(sunucu_dosyali)["guncelleme_denetimi"] is None  # karar verilmedi, yarın yine sorulur

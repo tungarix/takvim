@@ -704,12 +704,12 @@ def test_adres_denetimi_mesru_adresleri_kabul_eder():
         assert adres_uygun(a, DEPO, frozenset()) is True, a
 
 
-def test_tamamla_ozet_tutmazsa_eskiye_dokunmadan_eski_surum_acilir(exeler):
+def test_tamamla_ozet_tutmazsa_eskiye_dokunmaz_ve_ikinci_kez_acmaz(exeler):
     eski, _, baslatilan = exeler
     assert _tamamla(exeler, beklenen_ozet="0" * 64) is False
     assert eski.read_bytes() == ESKI_EXE
     assert not (eski.parent / "Takvim.eski.exe").exists()
-    assert baslatilan == [[str(eski)]]
+    assert baslatilan == []  # eski süreç hâlâ yaşıyor olabilir: çift pencere açılmaz
 
 
 def test_tamamla_dogru_ozetle_calisir(exeler):
