@@ -7,6 +7,27 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Otomatik güncelleme (isteğe bağlı)**: ilk açılışta tek seferlik soru ("Yeni sürümler otomatik
+  denetlensin mi?"); seçene kadar HİÇBİR ağ isteği yok. Açıksa günde en çok bir kez yalnız
+  `api.github.com/repos/tungarix/takvim/releases/latest` sorulur (`ETag` ile; hesap, çerez, kimlik ya da
+  veri gönderilmez, tek başlık `User-Agent: Takvim/<sürüm>`). Yalnız "Latest" (taslak/ön sürüm değil) ve
+  yalnız daha yüksek sürüm teklif edilir. Kurulumdan önce HER ZAMAN onay istenir; onaydan önce indirme
+  yok. İndirilen `Takvim.exe`'nin SHA-256'sı aynı release'in `SHA256SUMS.txt`'iyle eşleşmezse kurulum
+  iptal olur ve dosya silinir. Yeni exe eski sürecin bitmesini bekleyip kendini eskisinin yerine koyar
+  (`Takvim.eski.exe` yedeği, hata olursa geri alınır ve eski sürüm açılır). ⚙ Ayarlar → Güncellemeler:
+  seçim, "Şimdi denetle", "X.Y.Z sürümünü kur", son denetim durumu. Exe yazılabilir olmayan bir
+  konumdaysa (Program Files vb.) otomatik kurulum yok: elle indirme bağlantısı gösterilir.
+  Sözleşme: `docs/guncelleme.md`.
+- **Görünüm seçeneği**: ⚙ Ayarlar → Görünüm: Sistem / Koyu / Açık ("Kâğıt" paleti). Varsayılan Koyu.
+- Yeni logo (takvim yaprağı): exe ve tepsi simgesi, kenar çubuğu ve favicon.
+
+### Değişti
+- Yazı alt sınırı 12 px, `prefers-reduced-motion` desteği, dokunmatik işaretçide 44 px hedefler.
+- Açık temada vurgu `#c2331d` (mockup'taki `#e5412a` kâğıt zeminde AA 4,5:1'in altında kalıyor).
+- `scripts/exe_guncelleme_dene.py`: paketli exe'nin kendini değiştirmesini gerçekten dener.
+- **Güncelleyiciden önceki kurulumlar (≤ 1.9.0) ilk güncellemeyi bir kez elle yapar.**
+
 ## [1.9.0] - 2026-11-03
 
 ### Eklendi

@@ -2432,6 +2432,34 @@ async function ayarlariAc() {
   // Hata bildirim formu günlük dosyasını istiyor; yeri burada görünmezse
   // kullanıcı onu bulamıyordu. Yalnızca dosya varsa (paketli exe) geliyor.
   const gunluk = mevcut.gunluk ? `\n${t("gunluk_yeri", { yol: mevcut.gunluk })}` : "";
+  let gunc = null;
+  try {
+    gunc = await istek("/api/guncelleme/durum"); // yerel durum, ağ yok
+  } catch {
+    // Güncelleme bölümü olmadan da ayarlar açılır.
+  }
+  const guncAlani = gunc ? [{
+    ad: "guncelleme",
+    etiket: t("gu_etiket"),
+    ipucu: [guncellemeDurumMetni(gunc), gunc.kurulabilir ? "" : t("gu_kurulamaz_ipucu"), t("gu_ipucu")]
+      .filter(Boolean).join("\n"),
+    tur: "dugmeler",
+    dugmeler: [
+      { anahtar: "_guncDenetle", etiket: t("gu_simdi_denetle") },
+      ...(gunc.yeni && gunc.kurulabilir
+        ? [{ anahtar: "_guncKur", etiket: t("gu_kur_dugme", { surum: gunc.yeni.surum }) }] : []),
+    ],
+  }, {
+    ad: "guncSecim",
+    etiket: t("gu_secim_etiket"),
+    tur: "secim",
+    deger: gunc.denetim === true ? "ac" : gunc.denetim === false ? "kapat" : "sor",
+    secenekler: [
+      ...(gunc.denetim === null ? [{ deger: "sor", etiket: t("gu_secim_sor") }] : []),
+      { deger: "ac", etiket: t("gu_secim_ac") },
+      { deger: "kapat", etiket: t("gu_secim_kapat") },
+    ],
+  }] : [];
   const s = await modalForm(t("ayarlar_baslik"),
     t("ayarlar_metin") + surum + gunluk,
     [
@@ -2476,6 +2504,7 @@ async function ayarlariAc() {
           { deger: "acik", etiket: t("tema_acik") },
         ],
       },
+      ...guncAlani,
       {
         ad: "senkron",
         etiket: t("senkron_etiket"),
@@ -2493,7 +2522,7 @@ async function ayarlariAc() {
   // Dosya seçici KULLANICI ETKİLEŞİMİ geçerliyken açılmalı: aşağıdaki
   // `await`lerden ÖNCE tıkla, yoksa tarayıcı ilk tıklamayı eskimiş sayar.
   if (s._senkronIce) el("senkron-dosya").click();
-  const senkronEylemi = Boolean(s._senkronIce || s._senkronDisa || s._wifi);
+  const senkronEylemi = Boolean(s._senkronIce || s._senkronDisa || s._wifi || s._guncDenetle || s._guncKur);
   const dilDegisti = (s.dil === "en" ? "en" : "tr") !== durum.dil;
   await eylem(
     () => istek("/api/ayarlar", {
@@ -2504,6 +2533,8 @@ async function ayarlariAc() {
         otomatik_baslat: s.otomatik === "acik",
         dil: s.dil === "en" ? "en" : "tr",
         tema: s.tema,
+        // "sor" = hâlâ seçilmedi: sessizce "hayır" yazmıyoruz.
+        ...(s.guncSecim === "ac" || s.guncSecim === "kapat" ? { guncelleme_denetimi: s.guncSecim === "ac" } : {}),
       }),
     }),
     t("ayarlar_kaydedildi"),
@@ -2513,6 +2544,18 @@ async function ayarlariAc() {
   // (dosya diyaloğu / indirme); yeni dil bir sonraki açılışta uygulanır.
   if (s._senkronDisa) window.location.href = "/api/senkron/disa";
   if (s._wifi) await wifiEslestir();
+  if (s._guncDenetle) {
+    try {
+      const d = await istek("/api/guncelleme/denetle", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (d.hata_kodu) bildir(t(`hata_guncelleme_${d.hata_kodu}`), true);
+      else bildir(d.yeni ? t("gu_hazir", { surum: d.yeni.surum }) : t("gu_guncel"));
+    } catch (hata) {
+      bildir(hata.message, true);
+    }
+  }
+  if (s._guncKur && gunc && gunc.yeni) await guncellemeKur(gunc.yeni.surum);
   if (dilDegisti && !senkronEylemi) window.location.reload();
 }
 
@@ -3426,8 +3469,9 @@ function statikMetinleriUygula() {
  * sayfa bir anlığına yanlış dilde çizilip sonra düzelir (göz kırpma). Ayar
  * okunamazsa varsayılan `tr` ile devam -- ayarsız açılış Türkçe demek. */
 async function baslat() {
+  let ayar = null;
   try {
-    const ayar = await istek("/api/ayarlar");
+    ayar = await istek("/api/ayarlar");
     if (ayar.dil === "en" || ayar.dil === "tr") durum.dil = ayar.dil;
     if (window.temaUygula && ayar.tema) window.temaUygula(ayar.tema);
   } catch {
@@ -3437,6 +3481,71 @@ async function baslat() {
   statikMetinleriUygula();
   await yukle();
   canliBaslat();
+  guncellemeBaslat(ayar);
+}
+
+/* Otomatik güncelleme (docs/otomatik-guncelleme-plani.md). Kural: kullanıcı
+ * seçmeden AĞ İSTEĞİ YOK. İlk açılışta tek seferlik soru; karar verilmezse
+ * (Esc/İptal) bir şey yapılmaz ve sonraki açılışta yine sorulur. Burada yalnızca
+ * yerel durum okunur; GitHub'a sorma işi sunucudaki arka plan denetimindedir. */
+async function guncellemeBaslat(ayar) {
+  if (!ayar) return;
+  try {
+    if (ayar.guncelleme_denetimi === null) {
+      const s = await modalAc({
+        baslik: t("gu_soru_baslik"),
+        metin: t("gu_soru_metin"),
+        onay: t("gu_soru_evet"),
+        ucuncu: { etiket: t("gu_soru_hayir"), anahtar: "hayir" },
+        iptalDegeri: null,
+        genislik: 460,
+        oku: () => ({}),
+      });
+      if (s === null) return;
+      const evet = !s.hayir;
+      await istek("/api/ayarlar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guncelleme_denetimi: evet }),
+      });
+      if (!evet) return;
+      // Kullanıcı az önce onayladı: ilk denetimi hemen yap.
+      await istek("/api/guncelleme/denetle", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+    } else if (ayar.guncelleme_denetimi !== true) {
+      return;
+    }
+    const d = await istek("/api/guncelleme/durum");
+    if (d.yeni) bildir(t("gu_hazir", { surum: d.yeni.surum }));
+  } catch {
+    // Güncelleme bilgisi uygulamanın açılışını/işini bozmamalı; hata Ayarlar'da görünür.
+  }
+}
+
+/** Kullanıcı onayıyla kurar: sunucu indirip doğrular, yeni exe başlar, uygulama kapanır. */
+async function guncellemeKur(surum) {
+  if (!(await onayla(t("gu_kur_baslik"), t("gu_kur_metin", { surum }), t("gu_kur_btn")))) return;
+  bildir(t("gu_indiriliyor"));
+  try {
+    await istek("/api/guncelleme/kur", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ surum }),
+    });
+    bildir(t("gu_yeniden_basliyor"));
+  } catch (hata) {
+    bildir(hata.message, true);
+  }
+}
+
+/** Ayarlar kutusundaki durum satırı (yerel durumdan, ağsız). */
+function guncellemeDurumMetni(d) {
+  if (d.yeni) return t("gu_durum_yeni", { surum: d.yeni.surum });
+  if (d.hata_kodu) return t("gu_durum_hata", { neden: t(`hata_guncelleme_${d.hata_kodu}`) });
+  if (!d.son_denetim) return t("gu_durum_hic");
+  const an = new Date(d.son_denetim).toLocaleString(yerel());
+  return t("gu_durum_guncel", { surum: d.mevcut, an });
 }
 
 baslat();

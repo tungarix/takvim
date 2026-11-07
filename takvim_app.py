@@ -95,6 +95,13 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
     _gunluge_yonlendir()
 
+    # Güncelleme devri: yeni exe eski sürecin yerini alır (guncelleme/kurulum.py).
+    # Normal açılıştan ÖNCE: ne tek-örnek kilidi ne veritabanı açılıyor.
+    if "--guncelle-tamamla" in sys.argv:
+        from guncelleme.kurulum import tamamla_komutu
+
+        sys.exit(tamamla_komutu(sys.argv[1:]))
+
     # İçe aktarma günlük yönlendirmesinden SONRA: `ui` ağacı açılırken oluşan
     # bir hata da dosyaya düşsün.
     from ui.__main__ import main

@@ -35,6 +35,7 @@ __all__ = [
     "kurulabilir_mi",
     "sha256_dosya",
     "tamamla",
+    "tamamla_komutu",
     "tamamlamayi_baslat",
 ]
 
@@ -203,6 +204,27 @@ def _geri_al(eski_exe: Path, yedek: Path, gecici: Path, yedeklendi: bool) -> Non
     except OSError:
         pass
     os.replace(yedek, eski_exe)
+
+
+def tamamla_komutu(argv: list[str]) -> int:
+    """`Takvim.exe --guncelle-tamamla --eski <yol> --pid <n>` (yeni exe'nin girişi).
+
+    Kendi yolu (`sys.executable`) yeni exe'dir. `--eski` yalnızca `.exe` olmalı ve
+    kendisi olmamalı: bu bayrak yerel bir süreçten rastgele bir dosyanın üstüne
+    yazmanın kısayolu olmasın (yine de yerel kullanıcı sınırında; yetki yükseltmez).
+    """
+    import argparse
+
+    ayristirici = argparse.ArgumentParser(prog="guncelle-tamamla")
+    ayristirici.add_argument("--guncelle-tamamla", action="store_true")
+    ayristirici.add_argument("--eski", required=True)
+    ayristirici.add_argument("--pid", type=int, default=0)
+    args, _ = ayristirici.parse_known_args(argv)
+    eski, yeni = Path(args.eski), Path(sys.executable)
+    if eski.suffix.lower() != ".exe" or eski.resolve() == yeni.resolve():
+        print("Güncelleme reddedildi: geçersiz hedef", flush=True)
+        return 2
+    return 0 if tamamla(yeni, eski, args.pid) else 1
 
 
 def eski_artiklari_temizle(eski_exe: Path, klasor: Path) -> None:

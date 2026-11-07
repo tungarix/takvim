@@ -142,6 +142,27 @@ class Deneme:
             self.hatalar.append(ad + (f": {ayrinti}" if ayrinti else ""))
 
 
+def guncelleme_denemesi(deneme: Deneme, ayar: dict, veri: Path) -> None:
+    """Yeni kurulumda güncelleme KAPALI ve ağ isteği YOK (plan §1.1).
+
+    İlk açılışta seçim yoktur (`None`); GitHub'a hiç gidilmemiş olmalı: denetim
+    yapılsaydı `guncelleme.json` yazılırdı. Teklif yokken `kur` indirme başlatmaz.
+    """
+    deneme.kontrol(ayar.get("guncelleme_denetimi") is None, "güncelleme denetimi sorulmamış (seçim yok)")
+    durum, govde = deneme.istek("/api/guncelleme/durum")
+    d = json.loads(govde) if durum == 200 else {}
+    deneme.kontrol(
+        durum == 200 and d.get("yeni") is None and d.get("son_denetim") is None,
+        "yeni kurulumda güncelleme teklifi ve denetim kaydı yok",
+    )
+    durum, govde = deneme.istek("/api/guncelleme/kur", {"surum": "99.0.0"})
+    deneme.kontrol(durum == 400, "teklif yokken kurulum reddedilir", f"HTTP {durum}")
+    deneme.kontrol(
+        not (veri / "guncelleme.json").exists() and not (veri / "guncelleme").exists(),
+        "açılışta hiçbir güncelleme ağ isteği/indirmesi yapılmadı",
+    )
+
+
 def _hazir_bekle(deneme: Deneme, surec: subprocess.Popen) -> dict | None:
     bitis = time.monotonic() + BEKLEME_SN
     while time.monotonic() < bitis:
@@ -245,7 +266,7 @@ def calistir(exe: Path, etiket: str) -> list[str]:
 
                 durum, sayfa = deneme.istek("/")
                 deneme.kontrol(durum == 200 and b"app.js" in sayfa, "ana sayfa paketli")
-                for dosya in ("app.js", "i18n.js", "style.css", "qrcode.js"):
+                for dosya in ("app.js", "i18n.js", "style.css", "qrcode.js", "tema.js", "logo.png"):
                     durum, icerik = deneme.istek("/" + dosya)
                     deneme.kontrol(durum == 200 and len(icerik) > 1000, f"{dosya} paketli")
 
@@ -261,6 +282,7 @@ def calistir(exe: Path, etiket: str) -> list[str]:
                 )
 
                 wifi_denemesi(deneme)
+                guncelleme_denemesi(deneme, ayar, Path(gecici))
 
                 # `with sqlite3.connect(...)` bağlantıyı KAPATMAZ; açık kalırsa
                 # Windows geçici klasörü silmeye izin vermiyor.

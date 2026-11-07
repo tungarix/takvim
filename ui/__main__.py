@@ -41,6 +41,7 @@ from .demo import TZID, seed
 from .kurtarma import KurtarmaReddedildi, bozuksa_kurtar, tk_bilgi, tk_evet_hayir
 from .pencere import BASLIK, pencere_ac
 from .server import bos_port_bul, make_server, serve
+from .surum import SURUM
 from .tek_ornek import kilit_adi, kilit_al, pencereyi_one_al, pid_oku, pid_yaz
 
 
@@ -427,6 +428,7 @@ def _onyuzle_calistir(args, repo, port: int) -> int:
     gercek_port = httpd.server_address[1]
     url = f"http://{args.host}:{gercek_port}"
     print(f"Takvim: {url}", flush=True)
+    _guncelleme_kur(httpd, args)
 
     sunucu = threading.Thread(target=httpd.serve_forever, name="sunucu", daemon=True)
     sunucu.start()
@@ -435,10 +437,61 @@ def _onyuzle_calistir(args, repo, port: int) -> int:
     finally:
         # `shutdown()` BAŞKA bir thread'den çağrılmalı — serve_forever döngüsü
         # sunucu thread'inde dönüyor, oradan çağırmak kilitlenirdi.
+        dur = getattr(httpd, "guncelleme_dur", None)
+        if dur is not None:
+            dur.set()
         httpd.shutdown()
         httpd.server_close()
         sunucu.join(timeout=3)
     return 0
+
+
+def _uygulamayi_kapat() -> None:
+    """Güncelleme devrinde süreci bitirir (yanıt yazıldıktan sonra).
+
+    `webview.destroy()` yetmez: tepsiye küçültme açıksa pencere kapanışı tepsiye
+    iner ve süreç yaşar, yeni exe de eskisinin bitmesini boşuna beklerdi.
+    SQLite her işlemi kendi yazıyor (WAL/günlük), sert çıkış veri kaybettirmez.
+    """
+    threading.Timer(0.5, os._exit, args=(0,)).start()
+
+
+def _guncelleme_dongusu(guncelleyici, ayar_yolu: Path, dur: threading.Event) -> None:
+    """Arka planda günde en çok bir denetim; yalnız kullanıcı açtıysa (plan §1).
+
+    Ayar HER turda dosyadan okunuyor: kullanıcı kapatınca bir sonraki turda durur.
+    İlk tur açılıştan 30 sn sonra (açılışı yavaşlatmasın). Hata döngüyü öldürmez.
+    """
+    from guncelleme.hizmet import arka_plan_adimi
+
+    bekle = 30.0
+    while not dur.wait(bekle):
+        bekle = 1800.0
+        try:
+            acik = ayar_oku(ayar_yolu).get("guncelleme_denetimi") is True
+            arka_plan_adimi(guncelleyici, acik)
+        except Exception:
+            traceback.print_exc()
+
+
+def _guncelleme_kur(httpd, args) -> None:
+    """Güncelleyiciyi sunucuya bağlar; yalnız pencereli açılışta arka plan denetimi başlar."""
+    from guncelleme import Guncelleyici, eski_artiklari_temizle
+
+    dizin = None if args.db == ":memory:" else veri_dizini(args.db)
+    httpd.guncelleyici = Guncelleyici(dizin, SURUM)
+    httpd.guncelleme_kapat = _uygulamayi_kapat
+    if dizin is None:
+        return
+    if getattr(sys, "frozen", False):
+        # Önceki güncellemenin artıkları (Takvim.eski.exe, indirme klasörü).
+        eski_artiklari_temizle(Path(sys.executable), dizin / "guncelleme")
+    dur = threading.Event()
+    httpd.guncelleme_dur = dur
+    threading.Thread(
+        target=_guncelleme_dongusu, args=(httpd.guncelleyici, ayar_dosyasi(dizin), dur),
+        name="guncelleme", daemon=True,
+    ).start()
 
 
 def _onyuz_ac(url: str, dizin: Path, tarayici_zorla: bool) -> None:

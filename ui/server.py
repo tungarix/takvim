@@ -26,6 +26,7 @@ from urllib.parse import parse_qs, urlparse
 
 from core import UTC, Event, Task, from_wall_clock, parse_iso, parse_task_add, to_local
 from core.quickadd import parse_quick_add
+from guncelleme import GuncellemeHatasi, Guncelleyici, tamamlamayi_baslat
 from ics import export_repo, import_ics
 from senkron import (
     UZANTI,
@@ -397,12 +398,17 @@ class _Handler(BaseHTTPRequestHandler):
         oto = govde.get("otomatik_baslat")
         dil = govde.get("dil")
         tema = govde.get("tema")
+        denetim = govde.get("guncelleme_denetimi")
         for ad, deger in (("tepsiye_kucult", tepsi), ("otomatik_baslat", oto)):
             if deger is not None and not isinstance(deger, bool):
                 self._hata(f"{ad} true/false olmalı", 400, "ayar_tipi_gecersiz", {"ad": ad})
                 return
         if dil is not None and dil not in DILLER:
             self._hata(f"geçersiz dil: {dil}", 400, "dil_gecersiz", {"deger": str(dil)})
+            return
+        if denetim is not None and not isinstance(denetim, bool):
+            self._hata("guncelleme_denetimi true/false olmalı", 400, "ayar_tipi_gecersiz",
+                       {"ad": "guncelleme_denetimi"})
             return
         if tema is not None and tema not in TEMALAR:
             self._hata(f"geçersiz tema: {tema}", 400, "tema_gecersiz", {"deger": str(tema)})
@@ -435,8 +441,76 @@ class _Handler(BaseHTTPRequestHandler):
                 mevcut["dil"] = dil
             if tema is not None:
                 mevcut["tema"] = tema
+            if denetim is not None:
+                mevcut["guncelleme_denetimi"] = denetim
             ayar_yaz(ayar_dosyasi(dizin), mevcut)
         self._json(_ayar_durumu(db_yolu))
+
+    # -- otomatik güncelleme ---------------------------------------------------
+
+    def _guncelleyici(self) -> Guncelleyici:
+        """Sunucuya bağlı güncelleyici; yoksa (testler, bellek DB'si) ilk istekte kurulur."""
+        g = getattr(self.server, "guncelleyici", None)
+        if g is None:
+            db_yolu = self._db_yolu
+            dizin = (
+                None if db_yolu is None or str(db_yolu) == ":memory:"
+                else Path(str(db_yolu)).resolve().parent
+            )
+            g = Guncelleyici(dizin, SURUM)
+            self.server.guncelleyici = g  # type: ignore[attr-defined]
+        return g
+
+    def _guncelleme_durumu(self) -> dict:
+        db_yolu = self._db_yolu
+        denetim = None
+        if db_yolu is not None and str(db_yolu) != ":memory:":
+            denetim = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent)).get("guncelleme_denetimi")
+        return {**self._guncelleyici().durum(), "denetim": denetim}
+
+    def _guncelleme_hatasi(self, hata: GuncellemeHatasi) -> None:
+        """Kodlu hata: istemci `hata_guncelleme_<kod>` şablonunu gösterir (i18n.js)."""
+        durum = 429 if hata.kod == "limit" else 502 if hata.kod == "ag_hatasi" else 400
+        self._hata(f"güncelleme başarısız: {hata.kod}", durum, f"guncelleme_{hata.kod}")
+
+    def _guncelleme_denetle(self) -> None:
+        """POST /api/guncelleme/denetle — "Şimdi denetle": kullanıcının kendi isteği.
+
+        Otomatik denetim kapalı/sorulmamışken de çalışır (tek seferlik, kullanıcı
+        tıkladı); arka plandaki denetim ise yalnızca `guncelleme_denetimi: true` iken
+        (bkz. `ui/__main__.py::_guncelleme_dongusu`).
+        """
+        self._govde()  # gövdeyi okuyup at (kural 77/98: reddedilen/yok sayılan gövde)
+        self._json({**self._guncelleyici().denetle(), "denetim": self._guncelleme_durumu()["denetim"]})
+
+    def _guncelleme_kur(self) -> None:
+        """POST /api/guncelleme/kur {"surum"} — kullanıcı onayladı: indir, doğrula, başlat.
+
+        Yalnızca denetimin bulduğu sürüm kurulur. Başarıda yanıt ÖNCE yazılır,
+        sonra uygulama kapanır (`guncelleme_kapat`): yeni exe eski sürecin
+        bitmesini bekleyip dosyayı değiştiriyor.
+        """
+        govde = self._govde()
+        surum = govde.get("surum")
+        if not isinstance(surum, str):
+            self._hata("surum gerekli", 400, "surum_gerekli")
+            return
+        try:
+            yeni, eski = self._guncelleyici().kurulum_hazirla(surum)
+        except GuncellemeHatasi as hata:
+            self._guncelleme_hatasi(hata)
+            return
+        baslat = getattr(self.server, "guncelleme_baslat", tamamlamayi_baslat)
+        try:
+            baslat(yeni, eski)
+        except OSError as hata:
+            print(f"Güncelleme başlatılamadı: {type(hata).__name__}", flush=True)
+            self._guncelleme_hatasi(GuncellemeHatasi("baslatilamadi"))
+            return
+        self._json({"ok": True, "surum": surum})
+        kapat = getattr(self.server, "guncelleme_kapat", None)
+        if kapat is not None:
+            kapat()
 
     def _cakisma(self, sorgu: dict) -> None:
         """GET /api/conflicts — verilen aralıkla kesişen SAATLİ örnekler.
@@ -684,6 +758,10 @@ class _Handler(BaseHTTPRequestHandler):
                 self._json(_ayar_durumu(self._db_yolu))
                 return
 
+            if yol == "/api/guncelleme/durum":
+                self._json(self._guncelleme_durumu())
+                return
+
             if yol == "/api/tasks":
                 self._json(gorev_payload(self.repo, self.tzid))
                 return
@@ -768,6 +846,14 @@ class _Handler(BaseHTTPRequestHandler):
 
             if parcalar == ["api", "ayarlar"]:
                 self._ayar_kaydet()
+                return
+
+            if parcalar == ["api", "guncelleme", "denetle"]:
+                self._guncelleme_denetle()
+                return
+
+            if parcalar == ["api", "guncelleme", "kur"]:
+                self._guncelleme_kur()
                 return
 
             if (
@@ -1706,6 +1792,7 @@ def _ayar_durumu(db_yolu) -> dict:
     tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
     dil = str(VARSAYILANLAR["dil"])
     tema = str(VARSAYILANLAR["tema"])
+    denetim = None
     if db_yolu is not None and str(db_yolu) != ":memory:":
         try:
             sakli = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent))
@@ -1714,6 +1801,7 @@ def _ayar_durumu(db_yolu) -> dict:
                 dil = sakli["dil"]
             if sakli.get("tema", tema) in TEMALAR:
                 tema = sakli["tema"]
+            denetim = sakli.get("guncelleme_denetimi")
         except OSError:
             pass
     try:
@@ -1724,7 +1812,7 @@ def _ayar_durumu(db_yolu) -> dict:
     # olmayan bir yolu göstermek kullanıcıyı boş yere aratırdı.
     gunluk = gunluk_yolu()
     return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil,
-            "tema": tema, "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
+            "tema": tema, "guncelleme_denetimi": denetim, "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
 
 
 def gunluk_yolu() -> Path:

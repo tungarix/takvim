@@ -17,7 +17,7 @@ from .ag import Ag, GuncellemeHatasi
 from .kurulum import hazirla, kurulabilir_mi
 from .saf import MAKS_EXE_BAYT, Yayin, adres_uygun, daha_yeni_mi
 
-__all__ = ["ARALIK", "Guncelleyici"]
+__all__ = ["ARALIK", "Guncelleyici", "arka_plan_adimi"]
 
 # Günde en çok bir denetim (plan §1.2). "Şimdi denetle" bu sınıra takılmaz: o,
 # kullanıcının kendi isteği.
@@ -165,3 +165,15 @@ class Guncelleyici:
             if self._exe is None or self.indirme_klasoru is None or not kurulabilir_mi(self._exe):
                 raise GuncellemeHatasi("kurulamaz", "exe yazılabilir bir konumda değil")
             return hazirla(self.ag, yayin, self.indirme_klasoru), self._exe
+
+
+def arka_plan_adimi(g: Guncelleyici, denetim_acik: bool) -> bool:
+    """Arka plan döngüsünün tek adımı; ağa GİTTİYSE True.
+
+    Kural (plan §1.1): kullanıcı denetimi açmadıysa (kapalı ya da hiç sorulmadı)
+    ağ isteği YOK. Açıksa en çok günde bir kez.
+    """
+    if not denetim_acik or not g.denetim_zamani_geldi():
+        return False
+    g.denetle()
+    return True
