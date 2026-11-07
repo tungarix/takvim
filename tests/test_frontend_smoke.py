@@ -403,6 +403,8 @@ def sunucu_en(tmp_path):
     `:memory:` DB'de `ayarlar.json` yok, dil dosyaya yazılamıyor -- o yüzden
     İngilizce ön yüz testi dosya DB'si istiyor. Dil sayfa açılmadan ÖNCE
     API'den yazılıyor; açılış `baslat()` içinde okuyup tek seferde çiziyor.
+
+    Güncelleme seçimi de verilir (hayır): dosya DB'de seçim yoksa ilk açılış rıza kutusu çıkar ve tıklamaları engeller.
     """
     from ui.server import make_server as _kur
 
@@ -416,7 +418,7 @@ def sunucu_en(tmp_path):
             temel = f"http://127.0.0.1:{httpd.server_address[1]}"
             req = urllib.request.Request(
                 temel + "/api/ayarlar", method="POST",
-                data=json.dumps({"dil": "en"}).encode("utf-8"),
+                data=json.dumps({"dil": "en", "guncelleme_denetimi": False}).encode("utf-8"),
                 headers={"Content-Type": "application/json; charset=utf-8"},
             )
             with urllib.request.urlopen(req):
