@@ -339,7 +339,7 @@ def test_bellek_veritabaninda_da_calisir():
 def test_qr_kutuphanesi_ve_betik_sirasi():
     html = (STATIC / "index.html").read_text(encoding="utf-8")
     sira = [m.group(1) for m in re.finditer(r'<script src="([^"]+)"', html)]
-    assert sira == ["i18n.js", "qrcode.js", "app.js"]
+    assert sira == ["tema.js", "i18n.js", "qrcode.js", "app.js"]  # tema.js başta: açılışta göz kırpmasın
     assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", html)  # satır içi betik YOK
     lib = (STATIC / "qrcode.js").read_text(encoding="utf-8")
     assert "Kazuhiko Arase" in lib and "MIT license" in lib  # lisans başlığı yerinde

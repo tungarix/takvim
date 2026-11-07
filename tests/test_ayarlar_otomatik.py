@@ -33,6 +33,7 @@ def test_varsayilanlar_kapali(tmp_path):
         "tepsiye_kucult": False,
         "otomatik_baslat": False,
         "dil": "tr",
+        "tema": "koyu",
     }
 
 
@@ -68,6 +69,7 @@ def test_bilinmeyen_anahtar_yazilmaz(tmp_path):
         "tepsiye_kucult": True,
         "otomatik_baslat": False,
         "dil": "tr",
+        "tema": "koyu",
     }
 
 
@@ -306,7 +308,7 @@ def test_ayarlar_varsayilanla_gelir(sunucu_dosya, monkeypatch):
     temel, tmp_path, _ = sunucu_dosya
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "bos"))
     assert _jget(temel, "/api/ayarlar") == {
-        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr", "surum": SURUM,
+        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr", "tema": "koyu", "surum": SURUM,
         "gunluk": None}
 
 
@@ -362,3 +364,43 @@ def test_ayarlar_kurulum_patlarsa_500_ve_dosya_degismez(sunucu_dosya, monkeypatc
         _jpost(temel, "/api/ayarlar", {"otomatik_baslat": True})
     assert hata.value.code == 500
     assert ayar_oku(ayar_dosyasi(tmp_path))["otomatik_baslat"] is False
+
+
+# ---------------------------------------------------------------------------
+# tema (Görünüm)
+# ---------------------------------------------------------------------------
+
+def test_tema_varsayilan_koyu_ve_gecersiz_degere_duser(tmp_path):
+    """Dosyada tanınmayan tema varsayılana (koyu) dönüyor, uygulama açılıyor."""
+    yol = ayar_dosyasi(tmp_path)
+    yol.write_text(json.dumps({"tema": "mor"}), encoding="utf-8")
+    assert ayar_oku(yol)["tema"] == "koyu"
+
+
+def test_tema_gidis_donus(tmp_path):
+    """Üç geçerli değer aynen yazılıp okunuyor."""
+    yol = ayar_dosyasi(tmp_path)
+    for tema in ("acik", "sistem", "koyu"):
+        assert ayar_yaz(yol, {"tema": tema}) is True
+        assert ayar_oku(yol)["tema"] == tema
+
+
+def test_ayarlar_tema_kaydedilir(sunucu_dosya):
+    """POST tema'yı yazıyor, GET'e yansıyor; diğer ayarlar değişmiyor."""
+    temel, _, _ = sunucu_dosya
+    yanit = _jpost(temel, "/api/ayarlar", {"tema": "acik"})
+    assert yanit["tema"] == "acik"
+    assert yanit["dil"] == "tr" and yanit["tepsiye_kucult"] is False
+    assert _jget(temel, "/api/ayarlar")["tema"] == "acik"
+
+
+def test_ayarlar_gecersiz_tema_400(sunucu_dosya):
+    """Kapalı kümenin dışı sessizce kabul edilmiyor, 400 + kodlu hata."""
+    temel, _, _ = sunucu_dosya
+    req = urllib.request.Request(
+        temel + "/api/ayarlar", data=json.dumps({"tema": "mor"}).encode(),
+        headers={"Content-Type": "application/json"}, method="POST")
+    with pytest.raises(urllib.error.HTTPError) as hata:
+        urllib.request.urlopen(req)
+    assert hata.value.code == 400
+    assert json.loads(hata.value.read())["error_code"] == "tema_gecersiz"
