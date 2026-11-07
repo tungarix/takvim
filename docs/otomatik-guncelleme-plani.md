@@ -7,8 +7,9 @@ uygulamalara otomatik güncelleme yaptırmak lazım". Tavsiyelerin tamamı plana
 | Adım | Masaüstü | Mobil | İçerik |
 |---|---|---|---|
 | 0 | 1.9.0 | 0.3.0 | Gerçek telefonla Wi-Fi eşleştirme denemesi (sürüm yok) |
-| 1 | 1.10.0 | 0.4.0 | Tasarım A + tema seçeneği + yeni logo |
-| 2 | 1.11.0 | 0.5.0 | Otomatik güncelleme |
+| 1 | yerel | yerel | Tasarım A + tema seçeneği + yeni logo (yayın yok) |
+| 2 | yerel | yerel | Otomatik güncelleme (yayın yok) |
+| 3 | 1.10.0 | 0.5.0 | Hepsi tek güncellemede yayınlanır (mobilde 0.4.0 atlanır) |
 
 ## 0. Tasarım işi (adım 1, uygulanmadı)
 
@@ -120,11 +121,13 @@ varlık adlarının sözleşmesi (`docs/` içinde bir cümle) ve release notu ş
 
 1. **Adım 0, gerçek cihaz:** Wi-Fi eşleştirme gerçek telefonla ve gerçek Windows güvenlik
    duvarı istemiyle denenir. Yeni özellik eklemeden önce mevcut sürümün çalıştığı görülür.
-2. **Adım 1, tasarım (1.10.0 / 0.4.0):** tasarım A, tema seçeneği, yeni logo.
-3. **Adım 2, güncelleyici (1.11.0 / 0.5.0):** ayrı sürüm, çünkü dışarıdan indirilip
-   çalıştırılan dosya en riskli yüzey ve bu koddaki bir hatanın düzeltmesi yine o kodla
-   ulaştırılmak zorunda. Ayrı güvenlik incelemesi ve gerçek exe değişimi testi ŞART.
-4. **İlk güncelleme elle:** güncelleyiciden önceki kurulumlar (masaüstü ≤ 1.10.0, mobil ≤ 0.4.0)
+2. **Adım 1, tasarım (yerel):** tasarım A, tema seçeneği, yeni logo. Yayın yok.
+3. **Adım 2, güncelleyici (yerel):** dışarıdan indirilip çalıştırılan dosya en riskli yüzey ve bu
+   koddaki bir hatanın düzeltmesi yine o kodla ulaştırılmak zorunda. Yayından önce ayrı güvenlik
+   incelemesi ve gerçek exe değişimi testi ŞART.
+4. **Adım 3, tek yayın (1.10.0 / 0.5.0):** tasarım ve güncelleyici birlikte çıkar. İnceleme ya da
+   testlerden biri geçmezse ikisi de bekler.
+5. **İlk güncelleme elle:** güncelleyiciden önceki kurulumlar (masaüstü ≤ 1.9.0, mobil ≤ 0.3.0)
    bir kez elle güncellenir (Pati'de de böyleydi). Site ve release notları bunu söyler.
 
 ## 6. Kararlar (tavsiyeler plana işlendi)
@@ -133,7 +136,7 @@ varlık adlarının sözleşmesi (`docs/` içinde bir cümle) ve release notu ş
 2. **Masaüstünde önce bildirim:** onaydan önce indirme yok.
 3. **Mobilde varsayılan yalnız Wi-Fi:** mobil veride ayrı onay.
 4. **Varsayılan tema:** masaüstünde Koyu, mobilde Sistem.
-5. **İki ayrı sürüm:** önce tasarım, sonra güncelleyici.
+5. **Tek yayın (Arda'nın kararı):** her şey yerelde biter, masaüstü 1.10.0 ve mobil 0.5.0 birlikte çıkar.
 6. **Önce gerçek cihaz denemesi:** adım 0 bitmeden adım 1'e geçilmez.
 7. **Ertelendi:** masaüstü exe kod imzalama (ücretli sertifika).
 
