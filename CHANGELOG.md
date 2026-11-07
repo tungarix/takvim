@@ -7,6 +7,8 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.10.0] - 2026-11-07
+
 ### Eklendi
 - **Otomatik güncelleme (isteğe bağlı)**: ilk açılışta tek seferlik soru ("Yeni sürümler otomatik
   denetlensin mi?"); seçene kadar HİÇBİR ağ isteği yok. Açıksa günde en çok bir kez yalnız
