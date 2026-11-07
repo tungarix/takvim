@@ -27,7 +27,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**1154 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
+**1176 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
