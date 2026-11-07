@@ -9,7 +9,7 @@ uygulamalara otomatik güncelleme yaptırmak lazım". Tavsiyelerin tamamı plana
 | 0 | 1.9.0 | 0.3.0 | Gerçek telefonla Wi-Fi eşleştirme denemesi (sürüm yok) |
 | 1 | yerel | yerel | Tasarım A + tema seçeneği + yeni logo (yayın yok) |
 | 2 | yerel | yerel | Otomatik güncelleme (yayın yok) |
-| 3 | 1.10.0 | 0.5.0 | Hepsi tek güncellemede yayınlanır (mobilde 0.4.0 atlanır) |
+| 3 | 1.10.0 | 0.4.0 | Hepsi tek güncellemede yayınlanır |
 
 ## 0. Tasarım işi (adım 1, uygulanmadı)
 
@@ -125,7 +125,7 @@ varlık adlarının sözleşmesi (`docs/` içinde bir cümle) ve release notu ş
 3. **Adım 2, güncelleyici (yerel):** dışarıdan indirilip çalıştırılan dosya en riskli yüzey ve bu
    koddaki bir hatanın düzeltmesi yine o kodla ulaştırılmak zorunda. Yayından önce ayrı güvenlik
    incelemesi ve gerçek exe değişimi testi ŞART.
-4. **Adım 3, tek yayın (1.10.0 / 0.5.0):** tasarım ve güncelleyici birlikte çıkar. İnceleme ya da
+4. **Adım 3, tek yayın (1.10.0 / 0.4.0):** tasarım ve güncelleyici birlikte çıkar. İnceleme ya da
    testlerden biri geçmezse ikisi de bekler.
 5. **İlk güncelleme elle:** güncelleyiciden önceki kurulumlar (masaüstü ≤ 1.9.0, mobil ≤ 0.3.0)
    bir kez elle güncellenir (Pati'de de böyleydi). Site ve release notları bunu söyler.
@@ -136,7 +136,7 @@ varlık adlarının sözleşmesi (`docs/` içinde bir cümle) ve release notu ş
 2. **Masaüstünde önce bildirim:** onaydan önce indirme yok.
 3. **Mobilde varsayılan yalnız Wi-Fi:** mobil veride ayrı onay.
 4. **Varsayılan tema:** masaüstünde Koyu, mobilde Sistem.
-5. **Tek yayın (Arda'nın kararı):** her şey yerelde biter, masaüstü 1.10.0 ve mobil 0.5.0 birlikte çıkar.
+5. **Tek yayın (Arda'nın kararı):** her şey yerelde biter, masaüstü 1.10.0 ve mobil 0.4.0 birlikte çıkar.
 6. **Önce gerçek cihaz denemesi:** adım 0 bitmeden adım 1'e geçilmez.
 7. **Ertelendi:** masaüstü exe kod imzalama (ücretli sertifika).
 
