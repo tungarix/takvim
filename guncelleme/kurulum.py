@@ -173,7 +173,9 @@ def tamamla(
     try:
         beklenen = sha256_dosya(yeni_exe)
         if beklenen_ozet is not None and beklenen != beklenen_ozet.lower():
-            raise OSError("yeni exe özeti beklenenle uyuşmuyor")
+            # Eski süreç hâlâ yaşıyor olabilir: onu ikinci kez AÇMAYIZ (çift pencere), yalnızca çıkarız.
+            print("Güncelleme iptal: yeni exe özeti beklenenle uyuşmuyor", flush=True)
+            return False
         pid_bekle(pid, sure)
         yedeklendi = False
         while True:

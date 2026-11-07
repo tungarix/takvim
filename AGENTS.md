@@ -829,7 +829,10 @@ değişim `scripts/exe_guncelleme_dene.py` ile elle denenir.
     bir kez çalışır (`arka_plan_adimi`); ayar HER turda dosyadan okunur. İstisna "Şimdi denetle"
     (`POST /api/guncelleme/denetle`): kullanıcının kendi tıkı. Elle yazılmış `"evet"` seçim SAYILMAZ.
     Yeni bir yerde GitHub'a istek atacaksan bu kuralı ve testlerini bozma. `--no-browser` kopyası denetim
-    yapmaz (yalnız pencereli açılış): iki süreç aynı sorguyu atmasın.
+    yapmaz (yalnız pencereli açılış): iki süreç aynı sorguyu atmasın. İlk açılış rıza kutusunda odak
+    "Hayır"dadır ve `oku` odaktaki öğeye bakar ("Evet" yalnız kendi düğmesiyle; odak dışı Enter = karar yok):
+    bunu BASİTLEŞTİRME, yazarken beliren kutu Enter'la ağ izni vermesin. Bellek veritabanında soru çıkmaz
+    (`guncelleme_denetimi: false` döner). Bu davranışın tarayıcı testi `tests/test_frontend_smoke.py`'de.
 103. **Adres denetimi tek yerde** (`saf.adres_uygun`): yalnız https + `IZINLI_SUNUCULAR`; `github.com`'da yol
     bu deponun release'i olmalı; yönlendirmeler (`ag._Yonlendirme`) ve diskten okunan saklı teklif de aynı
     denetimden geçer. Yeni sunucu EKLEME; testler için `ek_sunucular` (yalnız loopback, üretimde boş).
@@ -841,7 +844,8 @@ değişim `scripts/exe_guncelleme_dene.py` ile elle denenir.
     `kur` yalnızca denetimin bulduğu sürümü kurar (arayüzdeki bayat sürüm reddedilir).
 106. **Çalışan exe'yi değiştirme** (`kurulum.tamamla`): tek dosyalı exe'de İKİ süreç var (önyükleyici + asıl),
     süreç numarasını beklemek YETMEZ: taşıma `PermissionError`da süre sınırına kadar yeniden denenir.
-    Sıra: eski → `Takvim.eski.exe`, yeni → `.yeni` geçici adına kopya + SHA-256 sağlaması → eski yola
+    Yeni exe `--sha256` (beklenen özet, zorunlu) ile başlar ve eskiye dokunmadan önce kendini bununla doğrular;
+    uyuşmazlıkta ESKİ SÜRECİ İKİNCİ KEZ AÇMAZ (hâlâ yaşıyor olabilir). Sıra: eski → `Takvim.eski.exe`, yeni → `.yeni` geçici adına kopya + SHA-256 sağlaması → eski yola
     `os.replace`. Herhangi bir adım patlarsa eski dosya geri konur ve ESKİ sürüm açılır; kilit hiç
     açılmazsa eski dosyaya hiç dokunulmaz. `--guncelle-tamamla` `takvim_app.py`'de normal açılıştan ÖNCE
     ele alınır (tek-örnek kilidi/veritabanı açılmadan). Yeni süreç `PYINSTALLER_RESET_ENVIRONMENT=1` ile
