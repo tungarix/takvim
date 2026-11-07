@@ -111,16 +111,17 @@ class Guncelleyici:
         return son is None or son > simdi or simdi - son >= ARALIK
 
     def durum(self) -> dict:
-        with self._kilit:
-            yayin = self._bilinen_yayin()
-            son = self.son_denetim()
-            return {
-                "mevcut": self.surum,
-                "yeni": {"surum": yayin.surum, "sayfa": yayin.sayfa_url} if yayin else None,
-                "son_denetim": son.isoformat() if son else None,
-                "hata_kodu": self._durum.get("hata_kodu"),
-                "kurulabilir": self._exe is not None and kurulabilir_mi(self._exe),
-            }
+        # Kilitsiz: arka plan denetimi ağdayken (kilit tutulurken) tek thread'li sunucu bu sorguda
+        # takılmasın. Yalnızca anlık okuma; yazan taraf sözlüğü atomik tek anahtar atamalarıyla değiştirir.
+        yayin = self._bilinen_yayin()
+        son = self.son_denetim()
+        return {
+            "mevcut": self.surum,
+            "yeni": {"surum": yayin.surum, "sayfa": yayin.sayfa_url} if yayin else None,
+            "son_denetim": son.isoformat() if son else None,
+            "hata_kodu": self._durum.get("hata_kodu"),
+            "kurulabilir": self._exe is not None and kurulabilir_mi(self._exe),
+        }
 
     def denetle(self) -> dict:
         """GitHub'a sorar; sonucu saklar ve `durum()`u döndürür.
@@ -135,6 +136,8 @@ class Guncelleyici:
                 sonuc, yayin, yeni_etag = self.ag.son_yayin(etag if isinstance(etag, str) else None)
             except GuncellemeHatasi as hata:
                 self._durum["hata_kodu"] = hata.kod
+            except Exception:
+                self._durum["hata_kodu"] = "ag_hatasi"
             else:
                 self._durum["hata_kodu"] = None
                 if sonuc == "yeni" and yayin is not None:
@@ -152,8 +155,11 @@ class Guncelleyici:
             self._yaz()
             return self.durum()
 
-    def kurulum_hazirla(self, surum: str) -> tuple[Path, Path]:
-        """İstenen sürümü indirir ve doğrular; `(yeni_exe, eski_exe)` verir.
+    def kurulum_hazirla(self, surum: str) -> tuple[Path, Path, str]:
+        """İstenen sürümü indirir ve doğrular; `(yeni_exe, eski_exe, sha256)` verir.
+
+        `sha256` SHA256SUMS.txt'teki beklenen özet: yeni exe devri bunu yeniden doğrular
+        (doğrulama ile kullanım arasındaki pencereyi daraltır).
 
         `surum` bilinen teklifle eşleşmezse (arayüz bayat/değiştirilmiş) reddedilir:
         yalnızca denetimin bulduğu sürüm kurulabilir.
@@ -164,7 +170,8 @@ class Guncelleyici:
                 raise GuncellemeHatasi("surum_bilinmiyor", surum)
             if self._exe is None or self.indirme_klasoru is None or not kurulabilir_mi(self._exe):
                 raise GuncellemeHatasi("kurulamaz", "exe yazılabilir bir konumda değil")
-            return hazirla(self.ag, yayin, self.indirme_klasoru), self._exe
+            yeni, ozet = hazirla(self.ag, yayin, self.indirme_klasoru)
+            return yeni, self._exe, ozet
 
 
 def arka_plan_adimi(g: Guncelleyici, denetim_acik: bool) -> bool:

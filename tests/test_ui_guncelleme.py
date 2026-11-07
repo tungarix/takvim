@@ -5,6 +5,7 @@ Sahte GitHub ve exe değiştirme testleri `test_guncelleme.py`'de; burada sunucu
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import urllib.error
@@ -42,10 +43,10 @@ def uygulama(sahte, tmp_path):  # noqa: F811
     httpd.guncelleyici = Guncelleyici(tmp_path, "1.9.0", ag=_ag(sahte), simdi=lambda: AN, exe_yolu=exe)
     olay = _Olay()
 
-    def baslat(yeni, eski):
+    def baslat(yeni, eski, ozet):
         if olay.patlat:
             raise OSError("başlatılamadı")
-        olay.append(("baslat", yeni, eski))
+        olay.append(("baslat", yeni, eski, ozet))
 
     httpd.guncelleme_baslat = baslat
     httpd.guncelleme_kapat = lambda: olay.append(("kapat",))
@@ -138,8 +139,9 @@ def test_kur_dogrular_baslatir_sonra_kapatir(uygulama):
     kod, govde = _istek(temel, "/api/guncelleme/kur", {"surum": "1.10.0"})
     assert kod == 200 and govde["ok"] is True
     assert [o[0] for o in olay] == ["baslat", "kapat"]  # önce başlat, sonra kapan
-    _, yeni, eski = olay[0]
+    _, yeni, eski, ozet = olay[0]
     assert yeni.read_bytes() == YENI_EXE and eski == tmp_path / "Takvim.exe"
+    assert ozet == hashlib.sha256(YENI_EXE).hexdigest()  # yeni exe kendini bununla yeniden doğrular
     assert eski.read_bytes() == ESKI_EXE  # çalışan dosyaya dokunulmadı
 
 
@@ -265,7 +267,8 @@ def test_dongu_ayari_her_turda_okur(sahte, tmp_path, monkeypatch):  # noqa: F811
 def test_tamamla_komutu_gecersiz_hedefi_reddeder(tmp_path, monkeypatch):
     import sys
 
-    assert tamamla_komutu(["--guncelle-tamamla", "--eski", str(tmp_path / "bir.txt")]) == 2
+    ozet = ["--sha256", "a" * 64]
+    assert tamamla_komutu(["--guncelle-tamamla", "--eski", str(tmp_path / "bir.txt"), *ozet]) == 2
     kendisi = tmp_path / "Takvim.exe"
     monkeypatch.setattr(sys, "executable", str(kendisi))
-    assert tamamla_komutu(["--guncelle-tamamla", "--eski", str(kendisi)]) == 2
+    assert tamamla_komutu(["--guncelle-tamamla", "--eski", str(kendisi), *ozet]) == 2

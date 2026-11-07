@@ -3499,7 +3499,10 @@ async function guncellemeBaslat(ayar) {
         ucuncu: { etiket: t("gu_soru_hayir"), anahtar: "hayir" },
         iptalDegeri: null,
         genislik: 460,
-        oku: () => ({}),
+        // Odak "Hayır"da ve Enter/odak dışı Enter karar SAYILMAZ (null): hızlı ekleme kutusuna yazarken
+        // beliren kutu yanlışlıkla ağ izni vermesin (güvenlik incelemesi, v1.10.0).
+        kur: () => el("modal-ucuncu"),
+        oku: () => null,
       });
       if (s === null) return;
       const evet = !s.hayir;

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,8 +51,8 @@ def sha256_dosya(yol: Path) -> str:
     return ozet.hexdigest()
 
 
-def hazirla(ag: Ag, yayin: Yayin, klasor: Path) -> Path:
-    """Yeni exe'yi indirir ve DOĞRULAR; doğrulanmış dosyanın yolunu verir.
+def hazirla(ag: Ag, yayin: Yayin, klasor: Path) -> tuple[Path, str]:
+    """Yeni exe'yi indirir ve DOĞRULAR; `(doğrulanmış dosya yolu, beklenen sha256)` verir.
 
     `SHA256SUMS.txt` bulunamaz/belirsizse ya da özet tutmazsa dosya silinir.
     Aynı klasördeki eski indirmeler (yarım ya da önceki sürüm) önce temizlenir.
@@ -73,7 +74,7 @@ def hazirla(ag: Ag, yayin: Yayin, klasor: Path) -> Path:
         except OSError:
             pass
         raise GuncellemeHatasi("ozet_uyusmuyor", f"{gelen} != {beklenen}")
-    return hedef
+    return hedef, beklenen
 
 
 def kurulabilir_mi(exe: Path | None = None) -> bool:
@@ -104,21 +105,32 @@ def _bayraklar() -> int:
     )
 
 
-def _baslat(komut: list[str]) -> None:
+def _baslat(komut: list[str]) -> subprocess.Popen | None:
     # Önyükleyicinin kendi geçici klasörünü yeni süreç yeniden kullanmasın.
     ortam = {**os.environ, "PYINSTALLER_RESET_ENVIRONMENT": "1"}
-    subprocess.Popen(
+    return subprocess.Popen(
         komut, creationflags=_bayraklar(), env=ortam, close_fds=True,
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
 
 
-def tamamlamayi_baslat(yeni_exe: Path, eski_exe: Path, pid: int | None = None) -> None:
-    """Doğrulanmış yeni exe'yi `--guncelle-tamamla` ile başlatır (çağıran sonra kapanır)."""
-    _baslat([
+def tamamlamayi_baslat(
+    yeni_exe: Path, eski_exe: Path, ozet: str, pid: int | None = None, *, bekle: float = 1.0
+) -> None:
+    """Doğrulanmış yeni exe'yi `--guncelle-tamamla` ile başlatır (çağıran sonra kapanır).
+
+    `ozet`: beklenen SHA-256; yeni exe kendi dosyasını bununla yeniden doğrular. Süreç `bekle`
+    sn içinde ölürse (antivirüs karantinası, bozuk paket) `OSError`: çağıran KAPANMAZ, mevcut
+    sürümle devam eder.
+    """
+    surec = _baslat([
         str(yeni_exe), "--guncelle-tamamla",
         "--eski", str(eski_exe), "--pid", str(pid if pid is not None else os.getpid()),
+        "--sha256", ozet,
     ])
+    time.sleep(bekle)
+    if surec is not None and surec.poll() is not None:
+        raise OSError("yeni exe başlar başlamaz kapandı")
 
 
 def _pid_bekle(pid: int, sure: float) -> None:
@@ -146,17 +158,22 @@ def tamamla(
     sure: float = 30.0,
     uyku: float = 0.25,
     pid_bekle: Callable[[int, float], None] = _pid_bekle,
-    baslat: Callable[[list[str]], None] = _baslat,
+    baslat: Callable[[list[str]], object] = _baslat,
+    beklenen_ozet: str | None = None,
 ) -> bool:
     """Eski exe'yi yenisiyle değiştirir ve açar; başarılıysa True.
 
     Başarısızlıkta eski dosya geri konur ve ESKİ sürüm açılır (False). Kurulum
     hiç başlamadıysa (kilit süre içinde açılmadı) eski dosyaya hiç dokunulmaz.
+    `beklenen_ozet` verilmişse yeni exe ESKİYE DOKUNULMADAN ÖNCE bununla doğrulanır.
     """
     yedek = eski_exe.with_name(eski_exe.stem + ESKI_EK)
     gecici = eski_exe.with_name(eski_exe.name + ".yeni")
     bitis = time.monotonic() + sure
     try:
+        beklenen = sha256_dosya(yeni_exe)
+        if beklenen_ozet is not None and beklenen != beklenen_ozet.lower():
+            raise OSError("yeni exe özeti beklenenle uyuşmuyor")
         pid_bekle(pid, sure)
         yedeklendi = False
         while True:
@@ -170,11 +187,17 @@ def tamamla(
                     raise
                 time.sleep(uyku)
         try:
-            beklenen = sha256_dosya(yeni_exe)
             shutil.copyfile(yeni_exe, gecici)
             if sha256_dosya(gecici) != beklenen:
                 raise OSError("kopya sağlaması tutmadı")
-            os.replace(gecici, eski_exe)
+            while True:  # antivirüs yeni kopyayı kısa süre kilitleyebilir
+                try:
+                    os.replace(gecici, eski_exe)
+                    break
+                except PermissionError:
+                    if time.monotonic() >= bitis:
+                        raise
+                    time.sleep(uyku)
         except BaseException:
             _geri_al(eski_exe, yedek, gecici, yedeklendi)
             raise
@@ -219,12 +242,16 @@ def tamamla_komutu(argv: list[str]) -> int:
     ayristirici.add_argument("--guncelle-tamamla", action="store_true")
     ayristirici.add_argument("--eski", required=True)
     ayristirici.add_argument("--pid", type=int, default=0)
+    ayristirici.add_argument("--sha256", required=True)
     args, _ = ayristirici.parse_known_args(argv)
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", args.sha256):
+        print("Güncelleme reddedildi: geçersiz özet", flush=True)
+        return 2
     eski, yeni = Path(args.eski), Path(sys.executable)
     if eski.suffix.lower() != ".exe" or eski.resolve() == yeni.resolve():
         print("Güncelleme reddedildi: geçersiz hedef", flush=True)
         return 2
-    return 0 if tamamla(yeni, eski, args.pid) else 1
+    return 0 if tamamla(yeni, eski, args.pid, beklenen_ozet=args.sha256) else 1
 
 
 def eski_artiklari_temizle(eski_exe: Path, klasor: Path) -> None:

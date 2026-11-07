@@ -9,8 +9,10 @@ da "Şimdi denetle"ye bastıysa) çağrılır; çağıran taraf bunu garanti ede
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -19,6 +21,8 @@ from .saf import IZINLI_SUNUCULAR, Yayin, adres_uygun, yayin_coz
 
 __all__ = ["Ag", "GuncellemeHatasi"]
 
+# İndirmenin TOPLAM süre sınırı (tek soket işlemi 10 sn ama damlatan sunucu süreyi uzatabilir).
+TOPLAM_INDIRME_SN = 600.0
 _MAKS_JSON = 1024 * 1024
 _MAKS_OZET = 64 * 1024
 _PARCA = 64 * 1024
@@ -93,13 +97,13 @@ class Ag:
             if hata.code == 404:
                 return "yok", None, None
             raise GuncellemeHatasi(self._hata_kodu(hata), f"HTTP {hata.code}") from hata
-        except (urllib.error.URLError, OSError, ValueError) as hata:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as hata:
             raise GuncellemeHatasi("ag_hatasi", type(hata).__name__) from hata
         if len(ham) > _MAKS_JSON:
             raise GuncellemeHatasi("bozuk_yanit", "yanıt çok büyük")
         try:
             veri = json.loads(ham.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as hata:
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as hata:
             raise GuncellemeHatasi("bozuk_yanit", "geçersiz JSON") from hata
         yayin = yayin_coz(veri, self.depo, self.ek_sunucular)
         return ("yeni", yayin, yeni_etag) if yayin else ("yok", None, yeni_etag)
@@ -109,7 +113,7 @@ class Ag:
         try:
             with self._istek(url) as yanit:
                 ham = yanit.read(_MAKS_OZET + 1)
-        except (urllib.error.URLError, OSError, ValueError) as hata:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as hata:
             raise GuncellemeHatasi("ag_hatasi", type(hata).__name__) from hata
         if len(ham) > _MAKS_OZET:
             raise GuncellemeHatasi("bozuk_yanit", "özet dosyası çok büyük")
@@ -125,6 +129,7 @@ class Ag:
         gecici = hedef.with_name(hedef.name + ".part")
         ozet = hashlib.sha256()
         toplam = 0
+        bitis = time.monotonic() + TOPLAM_INDIRME_SN
         try:
             hedef.parent.mkdir(parents=True, exist_ok=True)
             with self._istek(url) as yanit, open(gecici, "wb") as cikti:
@@ -133,6 +138,8 @@ class Ag:
                     if not parca:
                         break
                     toplam += len(parca)
+                    if time.monotonic() > bitis:  # soket zaman aşımı damlatan akışı kesmez
+                        raise GuncellemeHatasi("ag_hatasi", "indirme süresi doldu")
                     if toplam > beklenen_boyut:
                         raise GuncellemeHatasi("boyut_uyusmuyor", "beklenenden büyük")
                     ozet.update(parca)
@@ -146,7 +153,7 @@ class Ag:
         except PermissionError as hata:
             _sil(gecici)
             raise GuncellemeHatasi("izin_yok", type(hata).__name__) from hata
-        except (urllib.error.URLError, OSError, ValueError) as hata:
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as hata:
             _sil(gecici)
             raise GuncellemeHatasi("ag_hatasi", type(hata).__name__) from hata
         return ozet.hexdigest()
