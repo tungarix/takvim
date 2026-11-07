@@ -1,17 +1,22 @@
-# Otomatik güncelleme planı (masaüstü 1.10.0 + mobil 0.4.0)
+# Tasarım ve otomatik güncelleme planı
 
-Durum: **PLAN, uygulanmadı.** Karar tarihi 2026-11-07 (Arda: "sıradaki güncellemede
-uygulamalara otomatik güncelleme yaptırmak lazım"). İki uygulama aynı ilkeleri paylaşır;
-ayrıntılar platforma göre ayrışır. Sıradaki güncellemenin kapsamı: **tasarım A + tema
-seçeneği (Sistem/Koyu/Açık) + otomatik güncelleme**.
+Durum: **PLAN, uygulanmadı.** Plan tarihi 2026-11-07. Arda'nın isteği: "sıradaki güncellemede
+uygulamalara otomatik güncelleme yaptırmak lazım". Tavsiyelerin tamamı plana işlendi (§6).
+İki uygulama aynı ilkeleri paylaşır; ayrıntılar platforma göre ayrışır.
 
-## 0. Aynı güncellemedeki tasarım işi (uygulanmadı)
+| Adım | Masaüstü | Mobil | İçerik |
+|---|---|---|---|
+| 0 | 1.9.0 | 0.3.0 | Gerçek telefonla Wi-Fi eşleştirme denemesi (sürüm yok) |
+| 1 | 1.10.0 | 0.4.0 | Tasarım A + tema seçeneği + yeni logo |
+| 2 | 1.11.0 | 0.5.0 | Otomatik güncelleme |
+
+## 0. Tasarım işi (adım 1, uygulanmadı)
 
 Arda'nın kararı: iki uygulamada da **A yönü** (koyu & mercan, cilalı), **açık sürüm seçeneğiyle**.
 
 - **Tema seçeneği:** Ayarlar → Görünüm: Sistem / Koyu / Açık. Açık palet "Kâğıt" mockup'ından
   (zemin `#f5f2ec`, yüzey `#fffdf9`, metin `#1d1b18`, vurgu `#e5412a`); kontrastı hesaplanarak
-  doğrulanacak. Öneri: masaüstü varsayılanı Koyu, mobil varsayılanı Sistem.
+  doğrulanacak. Varsayılan: masaüstünde Koyu, mobilde Sistem.
 - **Masaüstü denetim bulguları:** yazı alt sınırı 12 px, `prefers-reduced-motion`, tüm
   etkileşimli öğelerde `:focus-visible` halkası, `pointer: coarse` altında 44 px hedef,
   kenarlık + geniş gölge tutarlılığı, kenar çubuğunda logo, favicon.
@@ -46,9 +51,8 @@ Arda'nın kararı: iki uygulamada da **A yönü** (koyu & mercan, cilalı), **a�
 ## 2. Masaüstü (Windows, PyInstaller tek dosya exe)
 
 **Akış:** denetim thread'i (açılışta + her 24 saatte) → `releases/latest` → yeni sürüm
-varsa durum satırı ("1.10.0 hazır") + tepsi/uygulama içi bildirim, ayarlar anahtarı açıksa
-**önden indirme** (ya da yalnız bildirim; bkz. §6 açık karar) → hash doğrulama →
-onay → kurulum.
+varsa durum satırı ("X.Y.Z hazır") + tepsi/uygulama içi bildirim → kullanıcı onayı →
+indirme → hash doğrulama → kurulum. **Onaydan önce indirme yok.**
 
 **Kurulum yöntemi (Windows çalışan exe'yi üzerine yazdırmaz):**
 1. Yeni exe `%LOCALAPPDATA%\Takvim\guncelleme\Takvim-<sürüm>.exe` olarak iner (`.part` →
@@ -83,7 +87,7 @@ kullanıcı kurulumuna DOKUNMADAN), `exe_duman.py`'ye "yeni kurulumda ağ isteğ
 
 **Akış:** uygulama açılışında ve ayarlar anahtarı açıksa en çok günde bir kez denetim
 (arka plan işi/WorkManager YOK, yeni bağımlılık YOK) → yeni sürüm varsa uygulama içi
-bildirim ("0.4.0 hazır, 58 MB") → onayda indir (**varsayılan yalnız Wi-Fi'da**; mobil
+bildirim ("X.Y.Z hazır, 58 MB") → onayda indir (**varsayılan yalnız Wi-Fi'da**; mobil
 veride ayrı onay) → hash → sistem kurulum penceresi.
 
 **Kurulum:** `PackageInstaller` oturumu (`MainActivity.kt` method channel'ı), manifest'e
@@ -112,22 +116,26 @@ Değişiklik gerekmiyor: release zaten `SHA256SUMS.txt` ve sabit adlı varlıkla
 varlık adlarının sözleşmesi (`docs/` içinde bir cümle) ve release notu şablonunda
 "otomatik güncelleme" bölümü.
 
-## 5. Sürümler ve sıra
+## 5. Sıra
 
-- **Masaüstü 1.10.0:** tasarım A + tema seçeneği (Sistem/Koyu/Açık) + güncelleyici.
-- **Mobil 0.4.0:** aynı üçü + yeni izin.
-- Önce tasarım (ayrı, hızlı), sonra güncelleyici (güvenlik incelemesi gerektirir: dışarıdan
-  indirilen ve çalıştırılan dosya = en yüksek riskli yüzey).
-- Mevcut kurulumlar (≤ 1.9.0 ve ≤ 0.3.0) bu özelliği içermez: **bir kez elle** güncellenir
-  (Pati'de de böyleydi). Site ve release notları bunu söyler.
+1. **Adım 0, gerçek cihaz:** Wi-Fi eşleştirme gerçek telefonla ve gerçek Windows güvenlik
+   duvarı istemiyle denenir. Yeni özellik eklemeden önce mevcut sürümün çalıştığı görülür.
+2. **Adım 1, tasarım (1.10.0 / 0.4.0):** tasarım A, tema seçeneği, yeni logo.
+3. **Adım 2, güncelleyici (1.11.0 / 0.5.0):** ayrı sürüm, çünkü dışarıdan indirilip
+   çalıştırılan dosya en riskli yüzey ve bu koddaki bir hatanın düzeltmesi yine o kodla
+   ulaştırılmak zorunda. Ayrı güvenlik incelemesi ve gerçek exe değişimi testi ŞART.
+4. **İlk güncelleme elle:** güncelleyiciden önceki kurulumlar (masaüstü ≤ 1.10.0, mobil ≤ 0.4.0)
+   bir kez elle güncellenir (Pati'de de böyleydi). Site ve release notları bunu söyler.
 
-## 6. Açık kararlar (Arda)
+## 6. Kararlar (tavsiyeler plana işlendi)
 
-1. **İlk soru mu, varsayılan mı?** Öneri: ilk soru (zorunlu seçim), ağ isteği seçimden önce yok.
-2. **Masaüstünde önden indirme mi, yalnız bildirim mi?** Öneri: bildir, onayda indir
-   (kullanıcı onay vermeden 20 MB indirmemek ürün sözüne daha yakın).
-3. **Mobilde yalnız Wi-Fi varsayılanı** (öneri: evet).
-4. Güvenlik incelemesi (zorunlu) ve masaüstü exe kod imzalama (ücretli, ertelenmiş karar).
+1. **İlk açılışta tek seferlik soru:** seçim yapılana kadar ağ isteği yok.
+2. **Masaüstünde önce bildirim:** onaydan önce indirme yok.
+3. **Mobilde varsayılan yalnız Wi-Fi:** mobil veride ayrı onay.
+4. **Varsayılan tema:** masaüstünde Koyu, mobilde Sistem.
+5. **İki ayrı sürüm:** önce tasarım, sonra güncelleyici.
+6. **Önce gerçek cihaz denemesi:** adım 0 bitmeden adım 1'e geçilmez.
+7. **Ertelendi:** masaüstü exe kod imzalama (ücretli sertifika).
 
 ## 7. Riskler
 
