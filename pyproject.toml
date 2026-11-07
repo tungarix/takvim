@@ -39,7 +39,7 @@ test-ui = ["pytest-playwright>=0.5"]
 
 [tool.setuptools]
 package-data = { store = ["schema.sql", "migrations/*.sql"], ui = ["static/*"] }
-packages = ["core", "store", "ics", "senkron", "ui", "remind"]
+packages = ["core", "store", "ics", "senkron", "ui", "remind", "guncelleme"]
 
 [tool.setuptools.dynamic]
 # Uygulama sürümü ekranda da gösteriliyor; iki yerde tutulursa biri unutulur.
