@@ -298,6 +298,15 @@ günü kaldırır, "Seriyi tamamen sil" hepsini (sayı göstererek sorar, tek ad
 geri alma var), "Bundan sonrasını değiştir" seriyi ikiye böler (öncekiler
 aynen kalır, sonrakiler yeni seri olur).
 
+### Güncellemeler (isteğe bağlı)
+
+İlk açılışta "Yeni sürümler otomatik denetlensin mi?" diye sorulur; **seçene kadar ağ isteği yapılmaz**.
+Evet dersen Takvim günde en çok bir kez yalnızca GitHub'a "son sürüm nedir" diye sorar (veri
+göndermez); yeni sürüm varsa ⚙ Ayarlar → Güncellemeler'de görünür ve **kurmadan önce sana sorar**.
+İndirilen dosyanın SHA-256'sı yayındaki `SHA256SUMS.txt`'le eşleşmezse kurulum iptal olur. Sorun
+çıkarsa mevcut sürümle devam edersin; verine dokunulmaz. Ayrıntı: `docs/guncelleme.md`. Bu özellikten
+önceki sürümler (≤ 1.9.0) ilk güncellemeyi bir kez elle yapar.
+
 ### Telefonla Wi-Fi ile eşleştirme
 
 1. Bilgisayar ve telefon **aynı Wi-Fi ağında** olsun (ev/iş ağı; "misafir" ağlar cihazları ayırabilir).
@@ -392,7 +401,7 @@ işletim sisteminin IANA veritabanı olmadığı için stdlib `zoneinfo` onsuz h
 
 ## 6. Kabul kriterleri
 
-**1045 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
+**1154 test geçiyor.** Blueprint §7 listesinin tamamı karşılandı:
 
 - [x] Her ayın son iş günü (`BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1`)
 - [x] 31 Ocak başlangıçlı aylık tekrar → Şubat davranışı bilinçli

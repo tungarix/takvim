@@ -28,6 +28,9 @@ VARSAYILANLAR: dict[str, Any] = {
     "dil": "tr",
     # Görünüm: "koyu" | "acik" | "sistem" (işletim sistemini izler).
     "tema": "koyu",
+    # Otomatik güncelleme denetimi: None = hiç sorulmadı (ağ isteği YOK, ilk açılışta
+    # tek seferlik soru çıkar), True/False = kullanıcının seçimi (plan §1.1).
+    "guncelleme_denetimi": None,
 }
 
 # `isinstance` denetimi "de" gibi bir dizeyi de geçirir; dil kapalı kümeden
@@ -59,7 +62,11 @@ def ayar_oku(yol: str | Path) -> dict[str, Any]:
         return sonuc
     for anahtar, varsayilan in VARSAYILANLAR.items():
         deger = ham.get(anahtar, varsayilan)
-        if isinstance(deger, type(varsayilan)):
+        if anahtar == "guncelleme_denetimi":
+            # Üç durumlu: None | bool ("evet" gibi bir dize sessizce True OLMAZ).
+            if deger is None or isinstance(deger, bool):
+                sonuc[anahtar] = deger
+        elif isinstance(deger, type(varsayilan)):
             sonuc[anahtar] = deger
     if sonuc["dil"] not in DILLER:
         sonuc["dil"] = VARSAYILANLAR["dil"]

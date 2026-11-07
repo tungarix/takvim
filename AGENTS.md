@@ -23,10 +23,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
 | Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ bitti (v1.8.0) |
 | Wi-Fi eşleştirme (`senkron/wifi.py`, `/api/senkron/wifi/*`, QR) | ✅ bitti (v1.9.0) |
+| Otomatik güncelleme (`guncelleme/`, `/api/guncelleme/*`) + Görünüm (tema) | ✅ yerelde bitti (v1.10.0 yayınlanacak) |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**1045 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
+**1154 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -815,6 +816,45 @@ düzeltme, sor). Hepsinin testi mutasyonla doğrulandı (`tests/test_senkron_wif
     tarayıcıda çizilen SVG → canvas → PNG → `zxing-cpp` (geçici venv) ile çözülüp
     bağlantı metniyle karşılaştırıldı (en kötü durum: 374 karakter, 85x85 modül, de çözüldü;
     projeye bağımlılık eklenmedi).
+
+### Otomatik güncelleme (v1.10.0)
+
+Sözleşme `docs/guncelleme.md`'de; kod `guncelleme/` paketinde (`saf` ağsız mantık, `ag` GitHub istemcisi,
+`kurulum` doğrulama + exe değiştirme, `hizmet` durum). `core/` bu paketi import etmez. Hepsinin testi
+mutasyonla doğrulandı (`tests/test_guncelleme.py`, `tests/test_ui_guncelleme.py`); paketli exe ile gerçek
+değişim `scripts/exe_guncelleme_dene.py` ile elle denenir.
+
+102. **Kullanıcı seçmeden ağ isteği YOK.** `ayarlar.json` → `guncelleme_denetimi`: `None` (hiç sorulmadı) |
+    bool. Arka plan denetimi (`ui/__main__.py::_guncelleme_dongusu`) yalnız `True` iken ve en çok günde
+    bir kez çalışır (`arka_plan_adimi`); ayar HER turda dosyadan okunur. İstisna "Şimdi denetle"
+    (`POST /api/guncelleme/denetle`): kullanıcının kendi tıkı. Elle yazılmış `"evet"` seçim SAYILMAZ.
+    Yeni bir yerde GitHub'a istek atacaksan bu kuralı ve testlerini bozma. `--no-browser` kopyası denetim
+    yapmaz (yalnız pencereli açılış): iki süreç aynı sorguyu atmasın.
+103. **Adres denetimi tek yerde** (`saf.adres_uygun`): yalnız https + `IZINLI_SUNUCULAR`; `github.com`'da yol
+    bu deponun release'i olmalı; yönlendirmeler (`ag._Yonlendirme`) ve diskten okunan saklı teklif de aynı
+    denetimden geçer. Yeni sunucu EKLEME; testler için `ek_sunucular` (yalnız loopback, üretimde boş).
+104. **Dosya adı sözleşmesi sabit**: `Takvim.exe` + `SHA256SUMS.txt` (`saf.EXE_ADI/OZET_ADI`). Başka adlı varlık
+    sessizce kabul edilmez; aynı adlı ikinci varlık yok sayılır; özet dosyasında aynı ad iki kez geçerse
+    belirsiz sayılıp kurulum iptal olur. Yayın hattında bu adları değiştirirsen güncelleyici KIRILIR.
+105. **Önce doğrula, sonra yerleştir**: indirme `.part`'a, boyut bildirilene EŞİT olmalı (fazlası okunmaz:
+    disk doldurma), SHA-256 `SHA256SUMS.txt`'le eşleşmeli, yoksa dosya silinir. Onaydan ÖNCE indirme yok.
+    `kur` yalnızca denetimin bulduğu sürümü kurar (arayüzdeki bayat sürüm reddedilir).
+106. **Çalışan exe'yi değiştirme** (`kurulum.tamamla`): tek dosyalı exe'de İKİ süreç var (önyükleyici + asıl),
+    süreç numarasını beklemek YETMEZ: taşıma `PermissionError`da süre sınırına kadar yeniden denenir.
+    Sıra: eski → `Takvim.eski.exe`, yeni → `.yeni` geçici adına kopya + SHA-256 sağlaması → eski yola
+    `os.replace`. Herhangi bir adım patlarsa eski dosya geri konur ve ESKİ sürüm açılır; kilit hiç
+    açılmazsa eski dosyaya hiç dokunulmaz. `--guncelle-tamamla` `takvim_app.py`'de normal açılıştan ÖNCE
+    ele alınır (tek-örnek kilidi/veritabanı açılmadan). Yeni süreç `PYINSTALLER_RESET_ENVIRONMENT=1` ile
+    başlar. Windows çalışan exe'yi YENİDEN ADLANDIRMAYA izin verir, üzerine yazmaya/silmeye vermez
+    (`exe_guncelleme_dene.py` paketli exe'de ölçtü): akış bu yüzden rename tabanlı, yeniden deneme döngüsü
+    antivirüs/önyükleyici kilidi içindir. Yazılabilir olmayan konumda (`kurulabilir_mi`) otomatik kurulum yok, elle indirme gösterilir.
+107. **Uygulama kapanışı sert** (`_uygulamayi_kapat`: yanıt yazıldıktan 0.5 sn sonra `os._exit(0)`): tepsiye
+    küçültme açıkken `webview.destroy()` süreci bitirmez ve yeni exe eskisini boşuna beklerdi. SQLite her
+    işlemi kendi yazıyor, veri kaybı yok.
+108. **Tema**: `ayarlar.json` → `tema` (`koyu`|`acik`|`sistem`), `ui/static/tema.js` `<html data-tema>`'yı
+    açılışta (localStorage önbelleğiyle, göz kırpmasın diye) koyar; renkler yalnız `style.css` jetonlarında
+    (`:root` koyu, `:root[data-tema="acik"]` açık). Yeni renk eklerken İKİ temada da tanımla; açık temada
+    vurgu bilerek `#c2331d` (mockup'taki `#e5412a` AA'nın altında, hesap CSS yorumunda).
 
 ---
 

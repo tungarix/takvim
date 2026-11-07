@@ -6,7 +6,8 @@
 
 ## English
 
-Takvim is a local-first desktop app: no server, no account, no network
+Takvim is a local-first desktop app: no server, no account, no network (apart from the
+optional update check described in `docs/guncelleme.md`, off until you choose it)
 sync. Your data stays in a local SQLite file. That keeps the attack surface
 small, but not empty. The app runs a small HTTP server on `127.0.0.1` for its
 own window, reads `.ics` files you import, and restores backups.
