@@ -39,7 +39,7 @@ from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedek
 from store.yedek import veritabani_bozuklugu
 
 from . import otomatik
-from .ayarlar import DILLER, VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
+from .ayarlar import DILLER, TEMALAR, VARSAYILANLAR, ayar_dosyasi, ayar_oku, ayar_yaz
 from .presenter import (
     day_payload,
     gorev_payload,
@@ -396,12 +396,16 @@ class _Handler(BaseHTTPRequestHandler):
         tepsi = govde.get("tepsiye_kucult")
         oto = govde.get("otomatik_baslat")
         dil = govde.get("dil")
+        tema = govde.get("tema")
         for ad, deger in (("tepsiye_kucult", tepsi), ("otomatik_baslat", oto)):
             if deger is not None and not isinstance(deger, bool):
                 self._hata(f"{ad} true/false olmalı", 400, "ayar_tipi_gecersiz", {"ad": ad})
                 return
         if dil is not None and dil not in DILLER:
             self._hata(f"geçersiz dil: {dil}", 400, "dil_gecersiz", {"deger": str(dil)})
+            return
+        if tema is not None and tema not in TEMALAR:
+            self._hata(f"geçersiz tema: {tema}", 400, "tema_gecersiz", {"deger": str(tema)})
             return
         db_yolu = self._db_yolu
         if oto is not None:
@@ -429,6 +433,8 @@ class _Handler(BaseHTTPRequestHandler):
                 mevcut["otomatik_baslat"] = oto
             if dil is not None:
                 mevcut["dil"] = dil
+            if tema is not None:
+                mevcut["tema"] = tema
             ayar_yaz(ayar_dosyasi(dizin), mevcut)
         self._json(_ayar_durumu(db_yolu))
 
@@ -1699,12 +1705,15 @@ def _ayar_durumu(db_yolu) -> dict:
     """
     tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
     dil = str(VARSAYILANLAR["dil"])
+    tema = str(VARSAYILANLAR["tema"])
     if db_yolu is not None and str(db_yolu) != ":memory:":
         try:
             sakli = ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent))
             tepsi = bool(sakli.get("tepsiye_kucult", tepsi))
             if sakli.get("dil", dil) in DILLER:
                 dil = sakli["dil"]
+            if sakli.get("tema", tema) in TEMALAR:
+                tema = sakli["tema"]
         except OSError:
             pass
     try:
@@ -1715,7 +1724,7 @@ def _ayar_durumu(db_yolu) -> dict:
     # olmayan bir yolu göstermek kullanıcıyı boş yere aratırdı.
     gunluk = gunluk_yolu()
     return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil,
-            "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
+            "tema": tema, "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
 
 
 def gunluk_yolu() -> Path:

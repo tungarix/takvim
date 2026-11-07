@@ -2466,6 +2466,17 @@ async function ayarlariAc() {
         ],
       },
       {
+        ad: "tema",
+        etiket: t("tema_etiket"),
+        tur: "secim",
+        deger: ["koyu", "acik", "sistem"].includes(mevcut.tema) ? mevcut.tema : "koyu",
+        secenekler: [
+          { deger: "sistem", etiket: t("tema_sistem") },
+          { deger: "koyu", etiket: t("tema_koyu") },
+          { deger: "acik", etiket: t("tema_acik") },
+        ],
+      },
+      {
         ad: "senkron",
         etiket: t("senkron_etiket"),
         ipucu: t("senkron_ipucu"),
@@ -2492,10 +2503,12 @@ async function ayarlariAc() {
         tepsiye_kucult: s.tepsi === "kucult",
         otomatik_baslat: s.otomatik === "acik",
         dil: s.dil === "en" ? "en" : "tr",
+        tema: s.tema,
       }),
     }),
     t("ayarlar_kaydedildi"),
   );
+  if (window.temaUygula) window.temaUygula(s.tema);
   // Dil değişti ama senkron eylemi başladıysa yeniden yükleme onu keserdi
   // (dosya diyaloğu / indirme); yeni dil bir sonraki açılışta uygulanır.
   if (s._senkronDisa) window.location.href = "/api/senkron/disa";
@@ -3416,6 +3429,7 @@ async function baslat() {
   try {
     const ayar = await istek("/api/ayarlar");
     if (ayar.dil === "en" || ayar.dil === "tr") durum.dil = ayar.dil;
+    if (window.temaUygula && ayar.tema) window.temaUygula(ayar.tema);
   } catch {
     // Ayar alınamazsa varsayılan dilde devam; yukle() hatayı zaten bildirir.
   }

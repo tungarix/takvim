@@ -1,6 +1,6 @@
 """Kullanıcı ayarları (`ayarlar.json`, veritabanının yanında).
 
-Tek dosya, üç anahtar: tepsiye küçült + otomatik başlatma + dil. Üçü de
+Tek dosya, dört anahtar: tepsiye küçült + otomatik başlatma + dil + tema. Üçü de
 varsayılan KAPALI/TR — pencereyi kapatmak uygulamayı kapatır (mevcut davranış),
 Başlangıç klasörüne yazmak sistem düzeyinde değişiklik (AGENTS 24), arayüz
 dili değişince sayfa yeniden yüklenir. Açmak kullanıcının bilinçli kararı,
@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-__all__ = ["VARSAYILANLAR", "ayar_dosyasi", "ayar_oku", "ayar_yaz"]
+__all__ = ["TEMALAR", "VARSAYILANLAR", "ayar_dosyasi", "ayar_oku", "ayar_yaz"]
 
 VARSAYILANLAR: dict[str, Any] = {
     "tepsiye_kucult": False,
@@ -26,6 +26,8 @@ VARSAYILANLAR: dict[str, Any] = {
     # sunucu gün/ay adlarını ve hata kodlarını buna göre seçiyor. Hızlı ekleme
     # kutusu her iki dilde de Türkçe cümle bekliyor (bkz. README §1).
     "dil": "tr",
+    # Görünüm: "koyu" | "acik" | "sistem" (işletim sistemini izler).
+    "tema": "koyu",
 }
 
 # `isinstance` denetimi "de" gibi bir dizeyi de geçirir; dil kapalı kümeden
@@ -33,6 +35,7 @@ VARSAYILANLAR: dict[str, Any] = {
 # tanınmayan değer sessizce varsayılana düşmüyor, burada varsayılan DÖNÜYOR
 # çünkü bozuk ayar dosyasıyla uygulamayı açmamak kabul edilemez).
 DILLER = ("tr", "en")
+TEMALAR = ("koyu", "acik", "sistem")
 
 
 def ayar_dosyasi(veri_dizini: str | Path) -> Path:
@@ -60,6 +63,8 @@ def ayar_oku(yol: str | Path) -> dict[str, Any]:
             sonuc[anahtar] = deger
     if sonuc["dil"] not in DILLER:
         sonuc["dil"] = VARSAYILANLAR["dil"]
+    if sonuc["tema"] not in TEMALAR:
+        sonuc["tema"] = VARSAYILANLAR["tema"]
     return sonuc
 
 
