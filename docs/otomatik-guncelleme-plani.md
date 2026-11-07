@@ -5,6 +5,20 @@ uygulamalara otomatik güncelleme yaptırmak lazım"). İki uygulama aynı ilkel
 ayrıntılar platforma göre ayrışır. Sıradaki güncellemenin kapsamı: **tasarım A + tema
 seçeneği (Sistem/Koyu/Açık) + otomatik güncelleme**.
 
+## 0. Aynı güncellemedeki tasarım işi (uygulanmadı)
+
+Arda'nın kararı: iki uygulamada da **A yönü** (koyu & mercan, cilalı), **açık sürüm seçeneğiyle**.
+
+- **Tema seçeneği:** Ayarlar → Görünüm: Sistem / Koyu / Açık. Açık palet "Kâğıt" mockup'ından
+  (zemin `#f5f2ec`, yüzey `#fffdf9`, metin `#1d1b18`, vurgu `#e5412a`); kontrastı hesaplanarak
+  doğrulanacak. Öneri: masaüstü varsayılanı Koyu, mobil varsayılanı Sistem.
+- **Masaüstü denetim bulguları:** yazı alt sınırı 12 px, `prefers-reduced-motion`, tüm
+  etkileşimli öğelerde `:focus-visible` halkası, `pointer: coarse` altında 44 px hedef,
+  kenarlık + geniş gölge tutarlılığı, kenar çubuğunda logo, favicon.
+- **Mobil:** varsayılan Material görünümü yerine aynı kimlik (jetonlar tek dosyada); ekran
+  listesi denetimden gelecek. `git stash`'teki onaysız deneme kullanılmayacak.
+- **Logo:** yeni yaprak logo yerel commit'lerde; exe ve APK'ya bu sürümle girer.
+
 ## 1. İlkeler (ikisi için ortak)
 
 1. **Kullanıcı izniyle.** Güncelleme denetimi bir ağ isteğidir; ürün sözü "ağ yalnız sen
