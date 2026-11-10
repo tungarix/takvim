@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 import urllib.error
@@ -134,7 +135,10 @@ def test_kurkomutu_tek_tirnagi_kacirir():
     assert "O'Neil" not in komut.replace("O''Neil", "")
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="PowerShell/WScript.Shell yalnız Windows'ta")
+@pytest.mark.skipif(
+    sys.platform != "win32" or os.environ.get("CI") is not None,
+    reason="gerçek PowerShell/WScript.Shell: CI kutusunda sessizce başarısız (bkz. test_ayarlar_otomatik.py)",
+)
 def test_apostroflu_klasore_kisayol_kurulur(tmp_path):
     klasor = tmp_path / "O'Neil"
     assert otomatik.kur(klasor) is True
