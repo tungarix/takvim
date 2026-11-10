@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 
 from .models import Occurrence
-from .timeutil import get_tz
+from .timeutil import UTC, get_tz
 
 __all__ = ["overlaps", "conflicts", "free_slots"]
 
@@ -57,6 +57,12 @@ def _covered_days(occ: Occurrence, tz) -> list[date]:
         days.append(cursor)
         cursor += timedelta(days=1)
     return days
+
+
+def _fark(a: datetime, b: datetime) -> timedelta:
+    """Gerçek süre farkı. Aynı ZoneInfo'yu taşıyan iki aware değerin doğrudan
+    çıkarması naive duvar farkı verir, DST gününde 1 saat şaşar (AGENTS 14)."""
+    return a.astimezone(UTC) - b.astimezone(UTC)
 
 
 def free_slots(
@@ -112,10 +118,10 @@ def free_slots(
 
         cursor = window_start
         for start, end in merged:
-            if start > cursor and start - cursor >= minimum:
+            if start > cursor and _fark(start, cursor) >= minimum:
                 out.append((cursor, start))
             cursor = max(cursor, end)
-        if window_end > cursor and window_end - cursor >= minimum:
+        if window_end > cursor and _fark(window_end, cursor) >= minimum:
             out.append((cursor, window_end))
 
     out.sort()

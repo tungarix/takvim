@@ -151,6 +151,15 @@ class Override:
             and self.new_end_utc < self.new_start_utc
         ):
             raise ValueError("new_end_utc, new_start_utc'den önce olamaz")
+        # Yalnız bitiş verilmişse etkin başlangıç orijinaldir; yoksa expand()
+        # Occurrence'ta patlar ve o seriyi içeren her görünüm açılamaz.
+        if (
+            not self.cancelled
+            and self.new_start_utc is None
+            and self.new_end_utc is not None
+            and self.new_end_utc < self.original_start_utc
+        ):
+            raise ValueError("new_end_utc, original_start_utc'den önce olamaz")
 
 
 @dataclass(frozen=True, slots=True)

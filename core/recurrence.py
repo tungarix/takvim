@@ -256,6 +256,22 @@ def _overrides_for(
     return out
 
 
+def _bitis(event: Event, start_utc: datetime, duration: timedelta) -> datetime:
+    """Örneğin bitişi. Tüm gün etkinlikte süre yerel duvar saatiyle sayılır.
+
+    Sabit UTC süresi DST gününde (23/25 saat) bitişi ertesi günün 01:00'ine ya
+    da önceki günün 23:00'üne kaydırıyordu (AGENTS 13).
+    """
+    if not event.all_day:
+        return start_utc + duration
+    tz = get_tz(event.tzid)
+    gun = event.end_utc.astimezone(tz).replace(tzinfo=None) - event.start_utc.astimezone(
+        tz
+    ).replace(tzinfo=None)
+    yerel = start_utc.astimezone(tz).replace(tzinfo=None) + gun
+    return yerel.replace(tzinfo=tz).astimezone(UTC)
+
+
 def _plain(event: Event, start_utc: datetime, duration: timedelta) -> Occurrence:
     """Override'sız örnek."""
     return Occurrence(
@@ -263,7 +279,7 @@ def _plain(event: Event, start_utc: datetime, duration: timedelta) -> Occurrence
         uid=event.uid,
         title=event.title,
         start_utc=start_utc,
-        end_utc=start_utc + duration,
+        end_utc=_bitis(event, start_utc, duration),
         all_day=event.all_day,
         tzid=event.tzid,
         calendar_id=event.calendar_id,
@@ -287,7 +303,7 @@ def _overridden(
         end = ov.new_end_utc
     else:
         # Sadece başlangıç kaydırıldıysa süre korunur.
-        end = start + duration
+        end = _bitis(event, start, duration)
     return Occurrence(
         event_id=event.id,
         uid=event.uid,
@@ -553,4 +569,4 @@ def series_end_sayili(event: Event) -> tuple[datetime | None, int]:
         )
     if not starts:
         return None, 0  # tüm örnekler EXDATE ile silinmiş
-    return max(starts).astimezone(UTC) + duration, len(starts)
+    return _bitis(event, max(starts).astimezone(UTC), duration), len(starts)

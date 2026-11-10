@@ -23,11 +23,11 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 | Görevler (`Task`, 005 migration'ı, `/api/tasks`, `.ics` VTODO, `görev:`) | ✅ bitti (v1.5.0) |
 | Senkron dosyası (`senkron/`, 006 migration'ı, Ayarlar → Telefonla senkron) | ✅ bitti (v1.8.0) |
 | Wi-Fi eşleştirme (`senkron/wifi.py`, `/api/senkron/wifi/*`, QR) | ✅ bitti (v1.9.0) |
-| Otomatik güncelleme (`guncelleme/`, `/api/guncelleme/*`) + Görünüm (tema) | ✅ yerelde bitti (v1.10.0 yayınlanacak) |
+| Otomatik güncelleme (`guncelleme/`, `/api/guncelleme/*`) + Görünüm (tema) | ✅ bitti (v1.10.0) |
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**1176 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
+**1229 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 

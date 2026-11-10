@@ -70,6 +70,13 @@ COMMIT;"""
         except Exception:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
+            # Sürüm BEGIN'den önce okundu: aynı anda açılan ikinci süreç bayat
+            # sürümle aynı DDL'i yeniden çalıştırıp çarpışabilir. Adım geri
+            # alındı; sürüm artık hedefe ulaştıysa başkası uygulamıştır.
+            yeni = current_version(conn)
+            if yeni >= target:
+                version = yeni
+                continue
             raise
         version = target
     return version

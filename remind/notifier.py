@@ -15,6 +15,7 @@ işletim sistemi olmadan test edebiliyoruz.
 from __future__ import annotations
 
 import platform
+import re
 import shutil
 import subprocess
 from typing import Protocol
@@ -53,18 +54,26 @@ class ConsoleNotifier:
         return True
 
 
+_PS_TIRNAK = re.compile("['‘’‚‛]")
+_XML_GECERSIZ = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+
+
 def _ps_kacir(metin: str) -> str:
     """PowerShell tek tırnaklı dizesi + XML için kaçırma.
 
     Sıra önemli: önce XML varlıkları, sonra PowerShell tırnağı. Ters sırada
     yapılırsa `&` kaçırması `&amp;` üretir ve `&` yeniden kaçırılır.
     """
+    # XML'de geçersiz karakterler LoadXml'i patlatıp hatırlatıcıyı kaybettirir.
+    metin = _XML_GECERSIZ.sub("", metin)
     metin = (
         metin.replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
     )
-    return metin.replace("'", "''")
+    # PowerShell ASCII ' dışında U+2018/2019/201A/201B'yi de tırnak sayar:
+    # hepsi ikiye katlanmazsa dize erken kapanır ve metin kod olarak çalışır.
+    return _PS_TIRNAK.sub(lambda m: m.group(0) * 2, metin)
 
 
 def _pencere_gizle() -> dict:

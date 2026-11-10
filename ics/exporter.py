@@ -12,7 +12,7 @@ tekrarlı bir etkinliğin duvar saati karşı tarafta DST geçişinde kayardı -
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from icalendar import Calendar as ICalendar
@@ -78,11 +78,13 @@ def _vevent(event: Event, dtstamp: datetime) -> IEvent:
     if event.rrule:
         _rrule_ekle(ve, event.rrule)
 
-    # RDATE/EXDATE UTC saklanıyor; UTC olarak yazmak her zaman tek anlamlı.
+    # RDATE/EXDATE UTC saklanıyor; saatli seride UTC olarak yazmak tek anlamlı.
+    # Tüm gün seride DTSTART DATE olduğundan RFC 5545 bunların da DATE olmasını
+    # ister; UTC yazılırsa farklı default_tzid ile içe aktarınca isabet etmez.
     for ek in event.rdate:
-        ve.add("RDATE", ek)
+        ve.add("RDATE", _yerel(ek, event.tzid).date() if event.all_day else ek)
     for haric in event.exdate:
-        ve.add("EXDATE", haric)
+        ve.add("EXDATE", _yerel(haric, event.tzid).date() if event.all_day else haric)
 
     return ve
 
@@ -131,19 +133,30 @@ def _override_vevent(event: Event, ov: Override, dtstamp: datetime) -> IEvent:
     ve.add("UID", event.uid)
     ve.add("DTSTAMP", dtstamp)
     # RECURRENCE-ID orijinal başlangıcı işaret eder, kaydırılmış hâli değil.
-    ve.add("RECURRENCE-ID", ov.original_start_utc)
+    # Tüm gün seride RECURRENCE-ID/DTSTART/DTEND DATE olmalı (DTSTART ile aynı tür).
+    def an(deger: datetime):
+        yerel = _yerel(deger, event.tzid)
+        return yerel.date() if event.all_day else yerel
+
+    ve.add("RECURRENCE-ID", an(ov.original_start_utc))
 
     if ov.cancelled:
         ve.add("STATUS", "CANCELLED")
         # İptal edilmiş örnek de geçerli bir VEVENT olmalı: DTSTART şart.
-        ve.add("DTSTART", ov.original_start_utc)
+        ve.add("DTSTART", an(ov.original_start_utc))
         ve.add("SUMMARY", ov.new_title or event.title)
         return ve
 
     baslangic = ov.new_start_utc or ov.original_start_utc
-    bitis = ov.new_end_utc or (baslangic + event.duration)
-    ve.add("DTSTART", _yerel(baslangic, event.tzid))
-    ve.add("DTEND", _yerel(bitis, event.tzid))
+    ve.add("DTSTART", an(baslangic))
+    if ov.new_end_utc is not None:
+        ve.add("DTEND", an(ov.new_end_utc))
+    elif event.all_day:
+        # DST gününde 24 saat eklemek yanlış güne düşebilir; takvim günü say.
+        gun = (_yerel(event.end_utc, event.tzid).date() - _yerel(event.start_utc, event.tzid).date()).days
+        ve.add("DTEND", an(baslangic) + timedelta(days=gun))
+    else:
+        ve.add("DTEND", an(baslangic + event.duration))
     ve.add("SUMMARY", ov.new_title if ov.new_title is not None else event.title)
     konum = ov.new_location if ov.new_location is not None else event.location
     if konum:

@@ -347,6 +347,7 @@ def _izgara_payload(
                     "startMin": _dakika(parca.start_utc, gun_baslangic),
                     "endMin": _dakika(parca.end_utc, gun_baslangic),
                     "clipped": occ.start_utc < gun_baslangic or occ.end_utc > gun_bitis,
+                    "clippedStart": occ.start_utc < gun_baslangic,
                 }
             )
             saatli.append(veri)

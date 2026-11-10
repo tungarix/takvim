@@ -37,6 +37,7 @@ from senkron import (
     json_metni,
 )
 from store import Repo, new_uid, yedek_al, yedek_dosyalari, yedek_klasoru, yedekten_don
+from store.repo import MAKS_HATIRLATICI
 from store.yedek import veritabani_bozuklugu
 
 from . import otomatik
@@ -117,6 +118,12 @@ class _KodluHata(ValueError):
         self.param = param
 
 
+# Kötü biçimli girdiden doğan, ValueError olmayan istisnalar (null/sayı yerine metin,
+# taşan tarih/sayı, olmayan takvime yabancı anahtar). Yakalanmazsa stdlib bağlantıyı
+# YANITSIZ kapatıyor; her do_* bunları sabit bir 400'e çevirir.
+_GECERSIZ_GIRDI = (TypeError, AttributeError, OverflowError, sqlite3.IntegrityError)
+
+
 def _hata_esle(mesaj: str) -> tuple[str | None, dict | None]:
     """`core/` + `store/` katmanından gelen BİLİNEN mesajı koda çevirir.
 
@@ -151,6 +158,8 @@ def _hata_esle(mesaj: str) -> tuple[str | None, dict | None]:
         return "bolme_ilk_ornek", None
     if mesaj == "minutes_before negatif olamaz":
         return "hatirlatici_negatif", None
+    if mesaj.startswith("minutes_before en çok "):
+        return "hatirlatici_aralik_disi", {"en_cok": mesaj.rsplit(" ", 2)[-2]}
     if mesaj == "Serinin takvimi silinmiş; önce takvimi oluşturup yeniden dene":
         return "geri_alma_takvim_yok", None
     if mesaj == "bellek veritabanına yedekten dönülemez":
@@ -238,6 +247,11 @@ class _Handler(BaseHTTPRequestHandler):
         if kod is None:
             kod, param = _hata_esle(str(exc))
         self._hata(str(exc), status, kod, param)
+
+    def _gecersiz_girdi(self, exc: BaseException) -> None:
+        """`_GECERSIZ_GIRDI` için sabit mesajlı 400 (ham istisna metni sızmaz)."""
+        print(f"Geçersiz girdi: {type(exc).__name__}", flush=True)
+        self._hata("geçersiz istek", 400, "gecersiz_istek")
 
     def _icerik_uzunlugu(self) -> int:
         """`Content-Length` başlığını doğrulayıp okunacak byte sayısını verir.
@@ -556,7 +570,7 @@ class _Handler(BaseHTTPRequestHandler):
                 raise _KodluHata("bitis_sira_hatasi", "bitiş başlangıçtan sonra olmalı")
             ignore = sorgu.get("ignoreId", [None])[0]
             ignore_id = int(ignore) if ignore is not None else None
-        except (ValueError, KeyError, IndexError) as exc:
+        except (ValueError, KeyError, IndexError, OverflowError) as exc:
             if isinstance(exc, _KodluHata):
                 self._yakala(exc)
             else:
@@ -774,6 +788,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._statik(yol)
         except ValueError as exc:
             self._yakala(exc)
+        except _GECERSIZ_GIRDI as exc:
+            self._gecersiz_girdi(exc)
 
     # -- POST ---------------------------------------------------------------
 
@@ -886,6 +902,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._yakala(exc)
         except LookupError as exc:
             self._yakala(exc, 404)
+        except _GECERSIZ_GIRDI as exc:
+            self._gecersiz_girdi(exc)
 
     def do_PATCH(self) -> None:
         """PATCH /api/events/<id> — başlık/konum/açıklama günceller."""
@@ -912,6 +930,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._yakala(exc)
         except LookupError as exc:
             self._yakala(exc, 404)
+        except _GECERSIZ_GIRDI as exc:
+            self._gecersiz_girdi(exc)
 
     def do_DELETE(self) -> None:
         """DELETE /api/events/<id> — SERİNİN TAMAMINI siler."""
@@ -923,7 +943,13 @@ class _Handler(BaseHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         parcalar = [p for p in parsed.path.split("/") if p]
+        try:
+            self._sil_yonlendir(parcalar)
+        except _GECERSIZ_GIRDI as exc:
+            self._gecersiz_girdi(exc)
 
+    def _sil_yonlendir(self, parcalar: list[str]) -> None:
+        """DELETE yol eşlemesi (do_DELETE yalnızca denetim + istisna sarmalı)."""
         if len(parcalar) == 3 and parcalar[:2] == ["api", "reminders"]:
             try:
                 self.repo.delete_reminder(int(parcalar[2]))
@@ -988,7 +1014,11 @@ class _Handler(BaseHTTPRequestHandler):
         if not takvimler:
             raise _KodluHata("takvim_gerekli", "önce bir takvim oluşturulmalı")
         gorunurler = [c for c in takvimler if c.visible]
-        return int(govde.get("calendarId") or (gorunurler or takvimler)[0].id)
+        takvim_id = int(govde.get("calendarId") or (gorunurler or takvimler)[0].id)
+        # Silinmiş takvimin bayat kimliği yabancı anahtar hatasıyla yanıtsız kalırdı.
+        if self.repo.get_calendar(takvim_id) is None:
+            raise LookupError("takvim bulunamadı")
+        return takvim_id
 
     # -- görevler -----------------------------------------------------------
 
@@ -1011,8 +1041,6 @@ class _Handler(BaseHTTPRequestHandler):
             return ("gun", gun)
         dakika, bitis = _saat_araligi(govde)
         takvim_id = self._hedef_takvim_id(govde)
-        if self.repo.get_calendar(takvim_id) is None:
-            raise LookupError("takvim bulunamadı")
         gun_basi = datetime(gun.year, gun.month, gun.day)
         return (
             "saat",
@@ -1034,6 +1062,12 @@ class _Handler(BaseHTTPRequestHandler):
         dakikalar = [int(d) for d in (ham if isinstance(ham, list) else [ham])]
         if any(d < 0 for d in dakikalar):
             raise _KodluHata("hatirlatici_negatif", "minutes_before negatif olamaz")
+        if any(d > MAKS_HATIRLATICI for d in dakikalar):
+            raise _KodluHata(
+                "hatirlatici_aralik_disi",
+                f"minutes_before en çok {MAKS_HATIRLATICI} olabilir",
+                {"en_cok": MAKS_HATIRLATICI},
+            )
         if dakikalar and not saat_planli:
             raise _KodluHata(
                 "gorev_hatirlatici_saat_ister",

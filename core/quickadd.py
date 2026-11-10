@@ -42,6 +42,8 @@ _AYLAR = {
 # "deneme", "davet", "tatil" gibi çok yaygın kelimeler de bozuluyordu.
 _SAAT = r"(?:saat\s*)?(\d{1,2})(?:[:.](\d{2}))?(?:['’]?(?:de|da|te|ta)\b)?"
 _ARALIK_RE = re.compile(rf"\b{_SAAT}\s*(?:-|–|—|ile)\s*{_SAAT}(?:\s*arası)?", re.I)
+# Aralıkta en az bir işaret: dakika, "saat" öneki, bulunma eki ya da "arası".
+_ARALIK_ISARET_RE = re.compile(r"[:.]|saat|arası|\d['’]?(?:de|da|te|ta)\b", re.I)
 # Tek saat: işaret ŞART (iki nokta, nokta, ek, veya "saat" öneki).
 # İşaretsiz çıplak sayıyı saat saymıyoruz; "3 ekim" gibi ifadelerle çakışır.
 _TEK_SAAT_RE = re.compile(
@@ -161,7 +163,11 @@ def _tarih_coz(metin: str, bugun: date) -> tuple[date | None, tuple[int, int] | 
                 pass
         return aday, m.span()
 
-    m = _SAYISAL_TARIH_RE.search(metin)
+    # "1.5 saat" bir süredir, 1 Mayıs değil: birimle biten eşleşme tarih sayılmaz.
+    m = next(
+        (x for x in _SAYISAL_TARIH_RE.finditer(metin) if not _SURE_RE.match(metin, x.start())),
+        None,
+    )
     if m:
         gun, ay = int(m.group(1)), int(m.group(2))
         ham_yil = m.group(3)
@@ -314,7 +320,11 @@ def parse_quick_add(
     # 3) Saat aralığı ("14:00-16:00") tek saatten ÖNCE denenmeli.
     baslangic_sd: tuple[int, int] | None = None
     bitis_sd: tuple[int, int] | None = None
-    m = _ARALIK_RE.search(maskeli)
+    # İşaretsiz çıplak çift ("5-10 sayfa", "3 ile 5 kişi") saat aralığı değildir (kural 18).
+    m = next(
+        (x for x in _ARALIK_RE.finditer(maskeli) if _ARALIK_ISARET_RE.search(x.group(0))),
+        None,
+    )
     if m:
         baslangic_sd = _saat_dakika(m.group(1), m.group(2))
         bitis_sd = _saat_dakika(m.group(3), m.group(4))

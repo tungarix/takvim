@@ -185,6 +185,9 @@ function modalAcik() {
  * çağrılıyor) sonuca `{[anahtar]: true}` ekleniyor -- çağıran taraf hangi
  * düğmeye basıldığını böyle ayırt ediyor. */
 function modalAc({ baslik, metin = "", onay = t("tamam"), tehlike = false, kur, oku, iptalDegeri, ucuncu = null, genislik = null }) {
+  // Açık kutu varsa önce iptal et: aynı DOM'u paylaşıyorlar, yoksa birincinin
+  // dinleyicisi ve Söz'ü sızar (çift tıklama).
+  if (modalDurum) modalDurum.kapat();
   const perde = el("perde");
   const govde = el("modal-alanlar");
   const tamam = el("modal-tamam");
@@ -239,8 +242,9 @@ function modalAc({ baslik, metin = "", onay = t("tamam"), tehlike = false, kur, 
       } else if (e.key === "Enter" && !e.isComposing) {
         // Çok satırlı alanda Enter yeni satır demek; formu göndermemeli.
         if (e.target && e.target.tagName === "TEXTAREA") return;
-        // Eylem düğmesindeyken Enter o düğmeyi tıklamalı (forma "Kaydet" demek değil).
-        if (e.target && e.target.closest && e.target.closest(".modal-dugmeler")) return;
+        // Herhangi bir düğmedeyken (Vazgeç, Geri yükle, Kopyala, form düğmeleri)
+        // Enter o düğmeyi tıklamalı; forma "Kaydet" demek değil.
+        if (e.target && e.target.closest && e.target.closest("button")) return;
         e.preventDefault(); e.stopPropagation(); bitir(oku());
       } else if (e.key === "Tab") {
         // Odak kutunun DIŞINA kaçmasın: `perde` tıklamayla kapatıyor ama
@@ -860,13 +864,16 @@ function blokYap(occ, gun) {
   blok.addEventListener("pointerdown", (e) => surukleBasla(e, blok, occ, gun, "tasi"));
 
   // Alt kenarda boyutlandırma tutamağı: süreyi değiştirir, yeri değil.
-  const tutamak = document.createElement("div");
-  tutamak.className = "boyut-tutamagi";
-  tutamak.addEventListener("pointerdown", (e) => {
-    e.stopPropagation();
-    surukleBasla(e, blok, occ, gun, "boyutlandir");
-  });
-  blok.appendChild(tutamak);
+  // Gece yarısını aşan (kırpılmış) parçada yok: görünen kenar gerçek bitiş/başlangıç değil.
+  if (!occ.clipped) {
+    const tutamak = document.createElement("div");
+    tutamak.className = "boyut-tutamagi";
+    tutamak.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      surukleBasla(e, blok, occ, gun, "boyutlandir");
+    });
+    blok.appendChild(tutamak);
+  }
 
   return blok;
 }
@@ -1002,7 +1009,9 @@ const ESIK = 4;  // px: bu kadar oynamadan sürükleme başlamaz (tık kaybolmas
 const surukleme = { aktif: false, tasindi: false };
 
 function surukleBasla(e, blok, occ, gun, kip = "tasi") {
-  if (e.button !== 0 || occ.allDay) return;
+  // Başlangıcı gün dışına taşan parçanın üst kenarı GERÇEK başlangıç değil
+  // (startMin kırpıldı); taşımak başlangıcı sessizce bozardı.
+  if (e.button !== 0 || occ.allDay || occ.clippedStart) return;
   const blokKutu = blok.getBoundingClientRect();
   Object.assign(surukleme, {
     aktif: true,
@@ -1176,6 +1185,7 @@ function tumgunBasla(e, blok, occ) {
   Object.assign(tumgunSurukleme, {
     aktif: true, tasindi: false, blok, occ,
     baslangicX: e.clientX, hedefTarih: null,
+    kaynakTarih: yerelTarihISO(occ.startUtc, occ.tzid),
   });
   // Metin seçimi ve işletim sisteminin sürükle-bırakı devreye girmesin;
   // gerekçe `surukleBasla` içinde yazılı.
@@ -1206,13 +1216,13 @@ function tumgunHareket(e) {
 
 async function tumgunBitir() {
   if (!tumgunSurukleme.aktif) return;
-  const { tasindi, occ, hedefTarih } = tumgunSurukleme;
+  const { tasindi, occ, hedefTarih, kaynakTarih } = tumgunSurukleme;
   tumgunSurukleme.aktif = false;
   if (tumgunSurukleme.blok) tumgunSurukleme.blok.classList.remove("suruklenen");
   if (!tasindi) return;
   setTimeout(() => { tumgunSurukleme.tasindi = false; }, 0);
 
-  if (!hedefTarih) { await yukle(); return; }
+  if (!hedefTarih || hedefTarih === kaynakTarih) { await yukle(); return; }
 
   try {
     await istek("/api/occurrences/move", {
@@ -1470,6 +1480,13 @@ function yerelSaatISO(iso, tzid) {
   }).format(new Date(iso));
 }
 
+/* 24 saat ve üstü süre "SS:DD" alanlarıyla ifade edilemez (gün sayısı yok);
+ * böyle etkinliklerde süre dakika olarak döner, yoksa null. */
+function uzunSureDakika(occ) {
+  const dk = Math.round((new Date(occ.endUtc) - new Date(occ.startUtc)) / 60000);
+  return dk >= 24 * 60 ? dk : null;
+}
+
 function dakikayaCevir(ss_dd) {
   const [s, d] = (ss_dd || "0:0").split(":").map(Number);
   return s * 60 + d;
@@ -1548,6 +1565,9 @@ async function etkinligiDuzenle(occ) {
         let bit = dakikayaCevir(s.bitis);
         // Bitiş başlangıçtan küçükse gece yarısını aşıyordur: ertesi güne taşı.
         if (bit <= bas) bit += 24 * 60;
+        // Form gün sayısını ifade edemez: 24 saat+ etkinlikte mevcut süreyi koru.
+        const uzun = uzunSureDakika(occ);
+        if (uzun !== null) bit = bas + uzun;
         govde.newMinutes = bas;
         govde.newEndMinutes = bit;
       }
@@ -1614,6 +1634,8 @@ async function silmeyiGeriAl(occ) {
   const bas = dakikayaCevir(yerelSaatISO(occ.startUtc, occ.tzid));
   let bit = dakikayaCevir(yerelSaatISO(occ.endUtc, occ.tzid));
   if (bit <= bas) bit += 24 * 60;
+  const uzun = uzunSureDakika(occ);
+  if (uzun !== null) bit = bas + uzun;
 
   await eylem(async () => {
     const yanit = await istek("/api/events", {
@@ -2906,6 +2928,8 @@ document.addEventListener("keydown", (e) => {
    * kendi kopyala/yapıştırı çalışmalı, bizim etkinlik panomuz değil. */
   if (e.ctrlKey || e.metaKey) {
     if (yaziKutusu) return;
+    // Seçili metin varken Ctrl+C/X tarayıcının (panel konum/açıklama metni).
+    if ((e.key === "c" || e.key === "x") && window.getSelection().toString()) return;
     const panoKisayollari = { c: kopyala, x: kes, v: yapistir, d: cogalt, z: geriAlKisayolu };
     const islev = panoKisayollari[e.key.toLowerCase()];
     if (!islev) return;
@@ -2928,13 +2952,15 @@ document.addEventListener("keydown", (e) => {
    * seri mi. İkisi de ONAY SORUYOR -- klavyeyle çalışmak silmeyi hızlandırır,
    * geri alınamaz hale getirmez. */
   const secili = durum.secili;
+  // Odak bir düğme/bağlantı/seçimdeyse Enter/Del onun işi (panelde Kapat vb.).
+  const dugmede = !!(e.target.closest && e.target.closest("button, select, a"));
   if (secili) {
-    if (e.key === "Delete" || e.key === "Backspace") {
+    if (!dugmede && (e.key === "Delete" || e.key === "Backspace")) {
       e.preventDefault();
       (e.shiftKey && secili.recurring ? seriyiSil : ornegiSil)(secili);
       return;
     }
-    if (e.key === "F2" || e.key === "Enter") {
+    if (e.key === "F2" || (e.key === "Enter" && !dugmede)) {
       e.preventDefault();
       etkinligiDuzenle(secili);
       return;
@@ -3386,6 +3412,8 @@ async function gorevBlogunuGeriKur(occ) {
   const bas = dakikayaCevir(yerelSaatISO(occ.startUtc, occ.tzid));
   let bit = dakikayaCevir(yerelSaatISO(occ.endUtc, occ.tzid));
   if (bit <= bas) bit += 24 * 60;
+  const uzun = uzunSureDakika(occ);
+  if (uzun !== null) bit = bas + uzun;
   await gorevEylem(
     () => jsonIstek(`/api/tasks/${occ.taskId}`, "PATCH", {
       plan: "saat",

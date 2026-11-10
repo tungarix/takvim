@@ -706,11 +706,15 @@ class _Istek(BaseHTTPRequestHandler):
         elif sonuc == "kapandi":
             self._yanit(409, {"error": "iptal"})
         elif sonuc == "red":
-            self._yanit(403, {"error": "reddedildi"})
-            o.bitir("reddedildi")
+            try:
+                self._yanit(403, {"error": "reddedildi"})
+            finally:  # yanıt yazımı koparsa da oturum kapanmalı (token ölsün)
+                o.bitir("reddedildi")
         elif sonuc == "zaman":
-            self._yanit(408, {"error": "zaman_asimi"})
-            o.bitir("zaman_asimi")
+            try:
+                self._yanit(408, {"error": "zaman_asimi"})
+            finally:
+                o.bitir("zaman_asimi")
         else:
             self._birlestir(govde)
 
@@ -720,15 +724,21 @@ class _Istek(BaseHTTPRequestHandler):
             with o.depo_ac() as repo:
                 rapor = ice_aktar(repo, govde).as_dict()
         except SenkronHatasi as hata:
-            self._yanit(400, {"error": hata.kod, "message": str(hata), "param": hata.param})
-            o.bitir("hata")
+            try:
+                self._yanit(400, {"error": hata.kod, "message": str(hata), "param": hata.param})
+            finally:  # yanıt yazımı koparsa `isleniyor`da takılmasın
+                o.bitir("hata")
             return
         except Exception:
-            self._yanit(500, {"error": "sunucu_hatasi"})
-            o.bitir("hata")
+            try:
+                self._yanit(500, {"error": "sunucu_hatasi"})
+            finally:
+                o.bitir("hata")
             raise
-        self._yanit(200, {"report": {k: rapor[k] for k in ("added", "updated", "deleted", "skipped")}})
-        o.bitir("birlestirildi", rapor)
+        try:
+            self._yanit(200, {"report": {k: rapor[k] for k in ("added", "updated", "deleted", "skipped")}})
+        finally:
+            o.bitir("birlestirildi", rapor)
 
 
 class WifiYonetici:

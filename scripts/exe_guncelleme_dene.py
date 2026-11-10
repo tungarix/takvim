@@ -21,6 +21,7 @@ kullanıcı kurulumuna DOKUNULMAZ ve çalışan gerçek Takvim'in süreçleri ö
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import shutil
 import socket
@@ -131,7 +132,8 @@ def calistir(exe: Path) -> list[str]:
 
             # 2) Yeni exe devri başlatır, 3) uygulama kapanır.
             subprocess.Popen(
-                [str(yeni), "--guncelle-tamamla", "--eski", str(eski), "--pid", str(calisan.pid)],
+                [str(yeni), "--guncelle-tamamla", "--eski", str(eski), "--pid", str(calisan.pid),
+             "--sha256", hashlib.sha256(yeni_bayt).hexdigest()],
                 env=ortam, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             time.sleep(1.5)

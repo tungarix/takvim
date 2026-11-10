@@ -79,7 +79,8 @@ def hedef_hesapla(db_yolu: str | None = None) -> tuple[str, str, str]:
 
 def _kurKomutu(hedef: str, argumanlar: str, dizin: str, lnk: str) -> str:
     """PowerShell komut metni (ayrı fonksiyon ki test edilebilsin)."""
-    # Çift tırnaklar PowerShell'e göre kaçıyor; tek tırnaklı alanlar dosya yolu.
+    # Tek tırnaklı PowerShell dizgesinde `'` ikilenir (kullanıcı adında apostrof olabilir).
+    lnk, hedef, argumanlar, dizin = (m.replace("'", "''") for m in (lnk, hedef, argumanlar, dizin))
     return (
         "$w = New-Object -ComObject WScript.Shell; "
         f"$k = $w.CreateShortcut('{lnk}'); "

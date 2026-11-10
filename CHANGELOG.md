@@ -7,6 +7,33 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.10.1] - 2026-11-10
+
+### Düzeltildi
+- **Hatırlatıcı**: başlığında tipografik kesme işareti (’) olan etkinliğin bildirimi hiç
+  gösterilmiyor ve gönderilmiş sayılıyordu; aynı yer hazırlanmış bir başlıkla komut çalıştırmaya
+  açıktı. Aşırı büyük "kaç dakika önce" değeri tüm bildirimleri kalıcı susturuyordu (artık en çok
+  10 yıl, `hatirlatici_aralik_disi`).
+- **Onay kutuları**: odak Vazgeç'teyken Enter onay veriyordu (silme dahil); kutu içindeki
+  düğmelerde (Geri yükle, Kopyala) Enter yanlış eylemi çalıştırıyordu; çift tıklamayla açılan
+  ikinci kutu birincinin dinleyicisini sızdırıyordu.
+- **Izgara**: gece yarısını aşan etkinliğin ertesi gün parçasını sürüklemek/boyutlandırmak
+  başlangıcı siliyordu; 24 saati aşan etkinlik düzenlenince ya da silme geri alınınca kısalıyordu;
+  tüm gün bloğunu aynı güne bırakmak gereksiz "Taşındı" kaydı yazıyordu.
+- **Klavye**: panel düğmelerinde Enter/Del etkinliği düzenliyor/siliyordu; seçili metin varken
+  Ctrl+C metni kopyalamıyordu.
+- **Hızlı ekleme**: "1.5 saat" tarih (1 Mayıs), "5-10 sayfa" saat aralığı sanılıyordu.
+- **Saat değişimi (DST)**: tekrarlı tüm gün etkinlikler geçiş gününde ertesi güne taşıyordu;
+  boş zaman hesabı o gün bir saat şaşıyordu.
+- **`.ics` dışa aktarma**: tüm gün serilerde EXDATE/RDATE/RECURRENCE-ID artık DATE türünde.
+- **Sunucu**: olmayan takvime ekleme ve kötü biçimli girdi yanıtsız bağlantı kopmasına yol
+  açıyordu (artık 404 / 400 `gecersiz_istek`).
+- **Wi-Fi eşleştirme**: telefonun bağlantısı yanıt yazılırken koparsa oturum açık kalıyordu.
+- **Diğer**: aynı anda açılan iki kopya migration'da çakışmıyor; apostroflu Windows yolunda
+  otomatik başlatma kısayolu kuruluyor; kısayola ikinci tık büyütülmüş pencereyi küçültmüyor;
+  bozuk override (yalnız bitişi olan, başlangıçtan önce) reddediliyor;
+  `scripts/exe_guncelleme_dene.py` zorunlu `--sha256` bayrağını veriyor.
+
 ## [1.10.0] - 2026-11-07
 
 ### Eklendi

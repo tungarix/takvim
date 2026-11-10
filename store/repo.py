@@ -45,6 +45,12 @@ __all__ = ["Repo", "connect", "new_uid"]
 _DB_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 
 
+# Hatırlatıcı üst sınırı (10 yıl, dakika): `now + timedelta(minutes=...)` ve SQLite
+# 64-bit taşmasın; devasa tek kayıt hatırlatıcı döngüsünü sonsuza dek patlatırdı.
+# `senkron/ice.py::MAKS_HATIRLATICI` ile AYNI değer (core/store senkron'u import etmez).
+MAKS_HATIRLATICI = 10 * 365 * 24 * 60
+
+
 def new_uid() -> str:
     """RFC 5545 uyumlu yeni UID üretir."""
     return f"{uuid.uuid4()}@takvim.local"
@@ -1324,6 +1330,8 @@ class Repo:
         """Seriye hatırlatıcı ekler; aynısı varsa mevcudu döndürür."""
         if minutes_before < 0:
             raise ValueError("minutes_before negatif olamaz")
+        if minutes_before > MAKS_HATIRLATICI:
+            raise ValueError(f"minutes_before en çok {MAKS_HATIRLATICI} olabilir")
         if self.get_event(event_id) is None:
             raise LookupError(f"Etkinlik bulunamadı: id={event_id}")
         self.conn.execute(

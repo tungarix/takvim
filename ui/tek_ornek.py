@@ -170,7 +170,9 @@ def _one_getir(tutamak: int) -> bool:
         # (görev çubuğuna küçültülmüş için). Tek komut iki hâli de
         # kapsamıyor: SW_RESTORE gizli pencereyi göstermeyebiliyor.
         user32.ShowWindow(tutamak, 5)  # SW_SHOW
-        user32.ShowWindow(tutamak, 9)  # SW_RESTORE
+        # SW_RESTORE büyütülmüş pencereyi de normale döndürür: yalnız simge durumundaysa.
+        if user32.IsIconic(tutamak):
+            user32.ShowWindow(tutamak, 9)  # SW_RESTORE
         if user32.SetForegroundWindow(tutamak):
             return True
         # SetForegroundWindow, çağıran süreç ön planda değilse sessizce
