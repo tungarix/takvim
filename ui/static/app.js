@@ -3197,6 +3197,10 @@ async function gorevGeriAl(o) {
 /** Ekle/düzenle formu. "Ne zaman?" seçimine göre tarih/saat alanları görünüyor. */
 async function gorevFormuAc(g = null) {
   const yeni = g === null;
+  // Düğme HTML'de hazır, veri ise ilk yukle() bitince geliyor: yavaş açılışta erken tıklama
+  // `durum.veri` null iken TypeError atıp formu hiç açmıyordu (CI'daki aralıklı zaman aşımı).
+  if (!durum.veri) await yukle();
+  if (!durum.veri) return;
   const takvimler = durum.veri.calendars;
   const varsayilanTakvim = takvimler.find((c) => durum.takvimGorunur.get(c.id) !== false)
     || takvimler[0] || {};

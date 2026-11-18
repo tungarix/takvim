@@ -85,10 +85,11 @@ def _blok_ac(page, url, baslik="Deneme"):
 
 # -- Bulgu 11/12: modalda Enter düğmenin kendi eylemini yapar -----------------
 
+# `void`: evaluate dönen Söz'ü BEKLER; modal kapanana dek dönmeyen Söz testi kilitliyordu.
 def test_modalda_iptal_dugmesinde_enter_onay_vermez(page, sunucu_repo):
     page.goto(sunucu_repo[0])
     page.wait_for_selector("#hizli-girdi")
-    page.evaluate("window.__s = 'bekliyor'; onayla('Sil?', 'm', 'Sil', true).then((v) => { window.__s = v; })")
+    page.evaluate("window.__s = 'bekliyor'; void onayla('Sil?', 'm', 'Sil', true).then((v) => { window.__s = v; })")
     page.focus("#modal-iptal")
     page.keyboard.press("Enter")
     page.wait_for_function("window.__s !== 'bekliyor'")
@@ -98,7 +99,7 @@ def test_modalda_iptal_dugmesinde_enter_onay_vermez(page, sunucu_repo):
 def test_sor_kutusunda_iptalde_enter_null_doner(page, sunucu_repo):
     page.goto(sunucu_repo[0])
     page.wait_for_selector("#hizli-girdi")
-    page.evaluate("window.__s = 'bekliyor'; sor('Ad?', 'm', 'yazilan').then((v) => { window.__s = v; })")
+    page.evaluate("window.__s = 'bekliyor'; void sor('Ad?', 'm', 'yazilan').then((v) => { window.__s = v; })")
     page.focus("#modal-iptal")
     page.keyboard.press("Enter")
     page.wait_for_function("window.__s !== 'bekliyor'")
@@ -110,7 +111,7 @@ def test_modal_govdesindeki_dugmede_enter_o_dugmeyi_calistirir(page, sunucu_repo
     page.wait_for_selector("#hizli-girdi")
     page.evaluate(
         """window.__s = 'bekliyor';
-        modalAc({ baslik: 'x', iptalDegeri: null, oku: () => 'oku',
+        void modalAc({ baslik: 'x', iptalDegeri: null, oku: () => 'oku',
           kur: (g, bitir) => {
             const d = document.createElement('button'); d.id = 'govde-dugme';
             d.onclick = () => bitir('dugme'); g.appendChild(d); return d;
@@ -129,7 +130,7 @@ def test_modal_cift_acilinca_ilki_iptal_edilir_dinleyici_sizmaz(page, sunucu_rep
     page.evaluate(
         """window.__r = [];
         sor('bir', 'm').then((v) => window.__r.push(['1', v]));
-        sor('iki', 'm').then((v) => window.__r.push(['2', v]));"""
+        void sor('iki', 'm').then((v) => window.__r.push(['2', v]));"""
     )
     page.keyboard.press("Escape")
     page.wait_for_function("window.__r.length === 2")
@@ -213,7 +214,7 @@ def test_duzenlemede_50_saatlik_etkinlik_suresi_korunur(page, sunucu_repo):
     page.goto(sunucu_repo[0])
     page.wait_for_selector("#hizli-girdi")
     _istegi_yakala(page)
-    page.evaluate(f"etkinligiDuzenle({_UZUN_OCC})")
+    page.evaluate(f"void etkinligiDuzenle({_UZUN_OCC})")
     page.fill("#modal-alanlar input[type=date]", "2026-11-10")
     page.click("#modal-tamam")
     page.wait_for_function("window.__g.length >= 1")
