@@ -338,7 +338,7 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     **Ağ kipi** (`--ag-erisimine-izin-ver`, loopback dışı bağlama): tarayıcı telefondan/başka
     makineden `http://<ağ-ip>:port` ile açtığı sayfanın Origin'i loopback olmadığı için eskiden her
     yazma 403 `kaynak_guvensiz` veriyordu. Artık yalnız bu kipte `Origin == "http://" + Host` kabul
-    edilir (sayfa bu sunucudan geldi demek); farklı Origin yine 403, Host yoksa reddedilir. Loopback
+    edilir ve Host bir IP olmalıdır (alan adı = DNS rebinding, 403) (sayfa bu sunucudan geldi demek); farklı Origin yine 403, Host yoksa reddedilir. Loopback
     kipinde davranış aynıdır.
 
 ### Paketleme
