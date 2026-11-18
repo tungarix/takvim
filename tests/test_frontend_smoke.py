@@ -930,3 +930,28 @@ def test_guncelleme_sorusu_odak_disi_enter_karar_saymaz(page, sunucu_dosyali):
     page.wait_for_function("document.getElementById('perde').hidden")
     page.wait_for_timeout(500)
     assert _ayar(sunucu_dosyali)["guncelleme_denetimi"] is None  # karar verilmedi, yarın yine sorulur
+
+
+def test_ay_gorunumunde_resmi_tatil_seridi(page, sunucu):
+    """Tatil, etkinlikten ayrı okunur şerit olarak çizilir; tıklamak düzenleme PANELİ açmaz.
+
+    Bugünün tarihine bağlı kalmamak için yanıta tatil enjekte ediliyor (görünüm
+    mantığı sunucu testlerinde ayrıca doğrulanıyor).
+    """
+    def tatil_ekle(route):
+        yanit = route.fetch()
+        veri = yanit.json()
+        veri["days"][10]["holidays"] = [{"name": "Deneme Bayramı", "halfDay": True, "kind": "ulusal"}]
+        route.fulfill(response=yanit, json=veri)
+
+    page.route("**/api/month*", tatil_ekle)
+    page.goto(sunucu)
+    page.wait_for_selector("#hizli-girdi")
+    page.click('button[data-gorunum="month"]')
+
+    serit = page.locator(".tatil-serit", has_text="Deneme Bayramı")
+    serit.wait_for()
+    assert "yarım gün" in serit.inner_text()
+    # Gerçek tatiller (ör. 28-29 Ekim ay ızgarasına taşabilir) de şeritle çizilir.
+    assert page.locator(".ay-hucre.tatil").count() >= 1
+    assert page.is_hidden("#panel")

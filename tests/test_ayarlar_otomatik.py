@@ -35,6 +35,7 @@ def test_varsayilanlar_kapali(tmp_path):
         "dil": "tr",
         "tema": "koyu",
         "guncelleme_denetimi": None,
+        "resmi_tatiller": True,
     }
 
 
@@ -72,6 +73,7 @@ def test_bilinmeyen_anahtar_yazilmaz(tmp_path):
         "dil": "tr",
         "tema": "koyu",
         "guncelleme_denetimi": None,
+        "resmi_tatiller": True,
     }
 
 
@@ -310,7 +312,7 @@ def test_ayarlar_varsayilanla_gelir(sunucu_dosya, monkeypatch):
     temel, tmp_path, _ = sunucu_dosya
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "bos"))
     assert _jget(temel, "/api/ayarlar") == {
-        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr", "tema": "koyu", "guncelleme_denetimi": None, "surum": SURUM,
+        "tepsiye_kucult": False, "otomatik_baslat": False, "dil": "tr", "tema": "koyu", "guncelleme_denetimi": None, "resmi_tatiller": True, "surum": SURUM,
         "gunluk": None}
 
 

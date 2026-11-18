@@ -721,7 +721,7 @@ function zamanCiz(veri) {
   baslikKap.innerHTML = `<div></div>`;
   veri.days.forEach((g) => {
     const d = document.createElement("div");
-    d.className = "gun-basligi" + (g.date === bugun ? " bugun" : "");
+    d.className = "gun-basligi" + (g.date === bugun ? " bugun" : "") + ((g.holidays || []).length ? " tatil" : "");
     d.innerHTML = `<div class="ad">${g.dayName}</div><div class="sayi">${g.dayNumber}</div>`;
     baslikKap.appendChild(d);
   });
@@ -730,6 +730,7 @@ function zamanCiz(veri) {
   veri.days.forEach((g) => {
     const hucre = document.createElement("div");
     hucre.className = "tumgun-hucre";
+    (g.holidays || []).forEach((h) => hucre.appendChild(tatilSeridi(h, "tumgun-tatil")));
     g.allDay.filter(gorunurMu).forEach((occ) => {
       const blok = document.createElement("div");
       blok.className = "tumgun-blok";
@@ -1252,6 +1253,16 @@ document.addEventListener("pointercancel", surukleBitir);
 
 /* ---------- ay görünümü ---------- */
 
+/** Resmi tatil şeridi: etkinlik DEĞİL (tıklanınca düzenleme açmaz, sürüklenmez); yalnızca okunur. */
+function tatilSeridi(h, sinif) {
+  const sd = document.createElement("div");
+  sd.className = sinif;
+  const metin = h.halfDay ? `${h.name} (${t("tatil_yarim")})` : h.name;
+  sd.textContent = metin;
+  sd.title = `${t("tatil_ipucu")}: ${metin}`;
+  return sd;
+}
+
 function ayCiz(veri) {
   const bugun = bugunISO();
 
@@ -1268,12 +1279,14 @@ function ayCiz(veri) {
   veri.days.forEach((g) => {
     const hucre = document.createElement("div");
     hucre.className =
-      "ay-hucre" + (g.inMonth ? "" : " disarida") + (g.date === bugun ? " bugun" : "");
+      "ay-hucre" + (g.inMonth ? "" : " disarida") + (g.date === bugun ? " bugun" : "") +
+      ((g.holidays || []).length ? " tatil" : "");
 
     const no = document.createElement("div");
     no.className = "ay-gun-no";
     no.textContent = g.dayNumber;
     hucre.appendChild(no);
+    (g.holidays || []).forEach((h) => hucre.appendChild(tatilSeridi(h, "tatil-serit")));
 
     const gorunurler = g.events.filter(gorunurMu);
     gorunurler.slice(0, AY_MAKS_BLOK).forEach((occ) => {
@@ -2526,6 +2539,16 @@ async function ayarlariAc() {
           { deger: "acik", etiket: t("tema_acik") },
         ],
       },
+      {
+        ad: "tatil",
+        etiket: t("tatil_etiket"),
+        tur: "secim",
+        deger: mevcut.resmi_tatiller === false ? "gizle" : "goster",
+        secenekler: [
+          { deger: "goster", etiket: t("tatil_goster") },
+          { deger: "gizle", etiket: t("tatil_gizle") },
+        ],
+      },
       ...guncAlani,
       {
         ad: "senkron",
@@ -2555,6 +2578,7 @@ async function ayarlariAc() {
         otomatik_baslat: s.otomatik === "acik",
         dil: s.dil === "en" ? "en" : "tr",
         tema: s.tema,
+        resmi_tatiller: s.tatil !== "gizle",
         // "sor" = hâlâ seçilmedi: sessizce "hayır" yazmıyoruz.
         ...(s.guncSecim === "ac" || s.guncSecim === "kapat" ? { guncelleme_denetimi: s.guncSecim === "ac" } : {}),
       }),

@@ -384,6 +384,16 @@ class _Handler(BaseHTTPRequestHandler):
             return "tr"
         return dil if dil in DILLER else "tr"
 
+    def _resmi_tatil(self) -> bool:
+        """Ayarlar → "Resmi tatilleri göster" (bellek DB'sinde dosya yok: varsayılan açık)."""
+        db_yolu = self._db_yolu
+        if db_yolu is None or str(db_yolu) == ":memory:":
+            return True
+        try:
+            return bool(ayar_oku(ayar_dosyasi(Path(str(db_yolu)).resolve().parent)).get("resmi_tatiller", True))
+        except OSError:
+            return True
+
     def _seri_bilgisi(self, sorgu: dict) -> None:
         """GET /api/series_info?event_id= — silme onayı sayıyı buradan alıyor."""
         try:
@@ -423,7 +433,8 @@ class _Handler(BaseHTTPRequestHandler):
         dil = govde.get("dil")
         tema = govde.get("tema")
         denetim = govde.get("guncelleme_denetimi")
-        for ad, deger in (("tepsiye_kucult", tepsi), ("otomatik_baslat", oto)):
+        tatil = govde.get("resmi_tatiller")
+        for ad, deger in (("tepsiye_kucult", tepsi), ("otomatik_baslat", oto), ("resmi_tatiller", tatil)):
             if deger is not None and not isinstance(deger, bool):
                 self._hata(f"{ad} true/false olmalı", 400, "ayar_tipi_gecersiz", {"ad": ad})
                 return
@@ -468,6 +479,8 @@ class _Handler(BaseHTTPRequestHandler):
                 mevcut["tema"] = tema
             if denetim is not None:
                 mevcut["guncelleme_denetimi"] = denetim
+            if tatil is not None:
+                mevcut["resmi_tatiller"] = tatil
             ayar_yaz(ayar_dosyasi(dizin), mevcut)
         self._json(_ayar_durumu(db_yolu))
 
@@ -726,7 +739,8 @@ class _Handler(BaseHTTPRequestHandler):
                     "/api/day": day_payload,
                     "/api/month": month_payload,
                 }[yol]
-                self._json(uretici(self.repo, self._tarih(sorgu), self.tzid, dil=self._dil()))
+                self._json(uretici(self.repo, self._tarih(sorgu), self.tzid, dil=self._dil(),
+                                   resmi_tatil=self._resmi_tatil()))
                 return
 
             if yol == "/api/calendars":
@@ -1837,6 +1851,7 @@ def _ayar_durumu(db_yolu) -> dict:
     tepsi = bool(VARSAYILANLAR["tepsiye_kucult"])
     dil = str(VARSAYILANLAR["dil"])
     tema = str(VARSAYILANLAR["tema"])
+    tatil = bool(VARSAYILANLAR["resmi_tatiller"])
     # Dosyasız (bellek) veritabanı = demo/geliştirme: güncelleme sorusu ve denetimi anlamsız, kapalı say.
     denetim: bool | None = False
     if db_yolu is not None and str(db_yolu) != ":memory:":
@@ -1849,6 +1864,7 @@ def _ayar_durumu(db_yolu) -> dict:
             if sakli.get("tema", tema) in TEMALAR:
                 tema = sakli["tema"]
             denetim = sakli.get("guncelleme_denetimi")
+            tatil = bool(sakli.get("resmi_tatiller", tatil))
         except OSError:
             pass
     try:
@@ -1859,7 +1875,7 @@ def _ayar_durumu(db_yolu) -> dict:
     # olmayan bir yolu göstermek kullanıcıyı boş yere aratırdı.
     gunluk = gunluk_yolu()
     return {"tepsiye_kucult": tepsi, "otomatik_baslat": oto_gercek, "dil": dil,
-            "tema": tema, "guncelleme_denetimi": denetim, "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
+            "tema": tema, "guncelleme_denetimi": denetim, "resmi_tatiller": tatil, "surum": SURUM, "gunluk": str(gunluk) if gunluk.is_file() else None}
 
 
 def gunluk_yolu() -> Path:

@@ -496,6 +496,24 @@ html, body {
   align-content: start;
 }
 
+/* Resmi tatil: dolgusuz + kesikli kenar (etkinlik bloklarından ayrışsın), tıklanamaz görünür. */
+.tatil-serit, .tumgun-tatil {
+  font-size: 12px;
+  padding: 1px 5px;
+  border-radius: var(--yaricap);
+  border: 1px dashed var(--vurgu-acik);
+  color: var(--metin-soluk);
+  background: transparent;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+.tumgun-tatil { font-size: 13px; padding: 2px 7px; }
+.ay-hucre.tatil .ay-gun-no, .gun-basligi.tatil .sayi { color: var(--vurgu-acik); }
+.ay-hucre.bugun.tatil .ay-gun-no { color: var(--vurgu-ink); }
+.gun-basligi.bugun.tatil .sayi { color: var(--vurgu-ink); }
+
 .tumgun-blok {
   font-size: 13px;
   padding: 3px 7px;

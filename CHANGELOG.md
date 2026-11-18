@@ -7,6 +7,9 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+### Eklendi
+- **Resmi tatiller**: Türkiye ulusal günleri ve dini bayramlar (2024-2035, 2028+ tahmin) ay/hafta/gün görünümünde okunur şerit olarak; Ayarlar'dan kapatılır. Takvime/`.ics`/senkrona yazılmaz.
+
 ## [1.10.1] - 2026-11-10
 
 ### Düzeltildi

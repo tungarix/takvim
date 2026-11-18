@@ -1,6 +1,6 @@
 """Kullanıcı ayarları (`ayarlar.json`, veritabanının yanında).
 
-Tek dosya, dört anahtar: tepsiye küçült + otomatik başlatma + dil + tema. Üçü de
+Tek dosya, birkaç anahtar: tepsiye küçült + otomatik başlatma + dil + tema. Üçü de
 varsayılan KAPALI/TR — pencereyi kapatmak uygulamayı kapatır (mevcut davranış),
 Başlangıç klasörüne yazmak sistem düzeyinde değişiklik (AGENTS 24), arayüz
 dili değişince sayfa yeniden yüklenir. Açmak kullanıcının bilinçli kararı,
@@ -31,6 +31,9 @@ VARSAYILANLAR: dict[str, Any] = {
     # Otomatik güncelleme denetimi: None = hiç sorulmadı (ağ isteği YOK, ilk açılışta
     # tek seferlik soru çıkar), True/False = kullanıcının seçimi (plan §1.1).
     "guncelleme_denetimi": None,
+    # Resmi tatil şeritleri (core/resmi_tatiller.py). Varsayılan AÇIK: veriye dokunmuyor,
+    # yalnızca görünümde okunur şerit; istemeyen Ayarlar'dan kapatır.
+    "resmi_tatiller": True,
 }
 
 # `isinstance` denetimi "de" gibi bir dizeyi de geçirir; dil kapalı kümeden

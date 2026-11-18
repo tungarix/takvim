@@ -13,6 +13,7 @@ from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 
 from core import Occurrence, Task, layout
+from core.resmi_tatiller import resmi_tatiller
 from core.timeutil import UTC, get_tz
 
 __all__ = [
@@ -150,6 +151,22 @@ def _occ_sozluk(
     }
 
 
+def _tatil_sozlugu(ilk: date, son: date, dil: str, acik: bool) -> dict[date, list[dict]]:
+    """Gün -> o günün resmi tatilleri. Kapalıyken boş: görünüm tatilsiz çizilir.
+
+    Tatiller DB'de değil ve etkinlik listesine KARIŞMAZ (ayrı alan): ön yüz bunları
+    tıklanamaz şerit olarak çiziyor, düzenleme/sürükleme/arama/.ics hiç görmüyor.
+    """
+    sonuc: dict[date, list[dict]] = {}
+    if not acik:
+        return sonuc
+    for t in resmi_tatiller(ilk, son):
+        sonuc.setdefault(t.tarih, []).append(
+            {"name": t.ad_en if dil == "en" else t.ad_tr, "halfDay": t.yarim_gun, "kind": t.tur}
+        )
+    return sonuc
+
+
 def day_payload(
     repo,
     anchor: date,
@@ -158,6 +175,7 @@ def day_payload(
     calendar_ids: list[int] | None = None,
     include_hidden: bool = False,
     dil: str = "tr",
+    resmi_tatil: bool = True,
 ) -> dict:
     """Tek günlük ızgara. Hafta ile aynı yapı, tek gün.
 
@@ -166,7 +184,7 @@ def day_payload(
     return _izgara_payload(
         repo, anchor, 1, tzid,
         calendar_ids=calendar_ids, include_hidden=include_hidden,
-        etiket=_gun_etiketi(anchor, dil), gorunum="day", dil=dil,
+        etiket=_gun_etiketi(anchor, dil), gorunum="day", dil=dil, resmi_tatil=resmi_tatil,
     )
 
 
@@ -178,6 +196,7 @@ def month_payload(
     calendar_ids: list[int] | None = None,
     include_hidden: bool = False,
     dil: str = "tr",
+    resmi_tatil: bool = True,
 ) -> dict:
     """Ay görünümü: saat ızgarası yok, gün hücrelerinde etkinlik listesi.
 
@@ -203,6 +222,7 @@ def month_payload(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
     gorevler = _gorev_bloklari(repo, occurrences)
+    tatiller = _tatil_sozlugu(izgara_baslangic, izgara_bitis, dil, resmi_tatil)
 
     gunler = []
     for offset in range(gun_sayisi):
@@ -219,6 +239,7 @@ def month_payload(
                 "date": gun.isoformat(),
                 "dayNumber": gun.day,
                 "inMonth": gun.month == ilk.month,
+                "holidays": tatiller.get(gun, []),
                 "events": [
                     dict(
                         _occ_sozluk(o, renkler, hatirlaticilar, gorevler),
@@ -253,6 +274,7 @@ def week_payload(
     calendar_ids: list[int] | None = None,
     include_hidden: bool = False,
     dil: str = "tr",
+    resmi_tatil: bool = True,
 ) -> dict:
     """Bir haftanın tüm görüntüleme verisini hazırlar.
 
@@ -272,7 +294,7 @@ def week_payload(
     return _izgara_payload(
         repo, pazartesi, 7, tzid,
         calendar_ids=calendar_ids, include_hidden=include_hidden,
-        etiket=_hafta_etiketi(pazartesi, dil), gorunum="week", dil=dil,
+        etiket=_hafta_etiketi(pazartesi, dil), gorunum="week", dil=dil, resmi_tatil=resmi_tatil,
     )
 
 
@@ -287,6 +309,7 @@ def _izgara_payload(
     etiket: str,
     gorunum: str,
     dil: str = "tr",
+    resmi_tatil: bool = True,
 ) -> dict:
     """Gün ve hafta görünümlerinin ortak gövdesi.
 
@@ -303,6 +326,7 @@ def _izgara_payload(
         baslangic, bitis, calendar_ids=calendar_ids, include_hidden=include_hidden
     )
     gorevler = _gorev_bloklari(repo, occurrences)
+    tatiller = _tatil_sozlugu(ilk_gun, ilk_gun + timedelta(days=gun_sayisi - 1), dil, resmi_tatil)
 
     gun_adlari, _, ay_adlari = _adlar(dil)
     gunler = []
@@ -360,6 +384,7 @@ def _izgara_payload(
                 "monthName": ay_adlari[gun.month - 1],
                 "dayMinutes": gun_dakika,
                 "allDay": tum_gun,
+                "holidays": tatiller.get(gun, []),
                 "timed": saatli,
             }
         )

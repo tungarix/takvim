@@ -859,6 +859,12 @@ değişim `scripts/exe_guncelleme_dene.py` ile elle denenir.
     açılışta (localStorage önbelleğiyle, göz kırpmasın diye) koyar; renkler yalnız `style.css` jetonlarında
     (`:root` koyu, `:root[data-tema="acik"]` açık). Yeni renk eklerken İKİ temada da tanımla; açık temada
     vurgu bilerek `#c2331d` (mockup'taki `#e5412a` AA'nın altında, hesap CSS yorumunda).
+109. **Resmi tatiller KULLANICI VERİSİ DEĞİL** (`core/resmi_tatiller.py`, gömülü tablo + saf sorgu): DB'ye yazılmaz,
+    `.ics`/senkron/arama/hatırlatıcı/çakışmaya girmez, düzenlenmez. Görünüm yanıtında etkinliklerden AYRI
+    `holidays` alanı (`{name, halfDay, kind}`), ön yüzde tıklanamaz kesikli şerit. Ayar `resmi_tatiller`
+    (varsayılan açık). Sabit ulusal günler her yıl kuraldan; dini bayramlar yalnız tablodaki yıllarda
+    (kapsam dışında UYDURMA, gösterme). 2028+ dini tarihler tahmindir; mobil AYNI tabloyu kullanır, ikisi
+    birlikte güncellenir. Ayar testleri sözlüğün tamamına kilitli: yeni ayar eklerken onları da güncelle.
 
 ---
 
