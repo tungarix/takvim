@@ -27,7 +27,7 @@ Yerel-öncelikli, tek kullanıcı, çevrimdışı masaüstü takvim uygulaması.
 
 **v1 kapsamı tamamlandı + Faz A–E (güvenlik/konfor) bitti.**
 
-**1229 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
+**1298 test geçiyor** (1 Playwright testi atlanır; ayrıca CI'da her push/PR'da otomatik: bkz.
 `.github/workflows/ci.yml`). Görev bitmeden önce hepsinin geçtiğini
 göstermeden "tamamlandı" deme.
 
@@ -196,7 +196,10 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
 
 13. **Gün sınırları `başlangıç + 24 saat` DEĞİL.** DST gününde bir gün 23 veya
     25 saat sürer. `day_bounds()` her iki sınırı da `datetime.combine` ile kurar
-    ve `dayMinutes` her gün için ayrı gönderilir.
+    ve `dayMinutes` her gün için ayrı gönderilir. Tüm gün etkinliğinin BİTİŞİ de
+    `başlangıç + event.duration` ile toplanmaz: `store/repo.py`'de (`put_override`,
+    `task_slots`, `_seriyi_bol`) `core.recurrence._bitis` kullanılır, yoksa DST
+    gününde bitiş gece yarısından kayar (`tests/test_dst_tum_gun_ag_kaynak.py`).
 14. **Aware datetime farkını UTC'ye çevirmeden ALMA.** CPython'ın
     `datetime.__sub__`'ı `self._tzinfo is other._tzinfo` ise ofsetleri
     uygulamadan naive farkı döndürüyor. `get_tz` lru_cache'li olduğu için gün
@@ -332,6 +335,11 @@ testi değiştirerek düzeltmeye çalışma, kodu düzelt.
     açtığı başka bir sayfanın buraya POST etmesini engellemiyor (CORS
     yalnızca YANITI okumayı engeller). Başlık hiç yoksa geçiyoruz: testler ve
     komut satırı araçları göndermiyor, saldırı yüzeyi tarayıcı.
+    **Ağ kipi** (`--ag-erisimine-izin-ver`, loopback dışı bağlama): tarayıcı telefondan/başka
+    makineden `http://<ağ-ip>:port` ile açtığı sayfanın Origin'i loopback olmadığı için eskiden her
+    yazma 403 `kaynak_guvensiz` veriyordu. Artık yalnız bu kipte `Origin == "http://" + Host` kabul
+    edilir (sayfa bu sunucudan geldi demek); farklı Origin yine 403, Host yoksa reddedilir. Loopback
+    kipinde davranış aynıdır.
 
 ### Paketleme
 
@@ -865,6 +873,10 @@ değişim `scripts/exe_guncelleme_dene.py` ile elle denenir.
     (varsayılan açık). Sabit ulusal günler her yıl kuraldan; dini bayramlar yalnız tablodaki yıllarda
     (kapsam dışında UYDURMA, gösterme). 2028+ dini tarihler tahmindir; mobil AYNI tabloyu kullanır, ikisi
     birlikte güncellenir. Ayar testleri sözlüğün tamamına kilitli: yeni ayar eklerken onları da güncelle.
+110. **Düğme HTML'de hazır, veri ilk `yukle()`'den sonra gelir.** `durum.veri`'ye dokunan her düğme
+    işleyicisi önce veriyi beklemeli (`gorevFormuAc` örneği); yoksa erken tıklama `TypeError` atıp formu
+    açmaz ve CI'da aralıklı zaman aşımı üretir. Playwright'ta modal açan `app.js` fonksiyonunu
+    `page.evaluate` ile çağırırken `void` kullan: dönen Söz modal kapanana dek beklenir, test kilitlenir.
 
 ---
 

@@ -7,8 +7,18 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 
 ## [Yayınlanmamış]
 
+## [1.11.0] - 2026-11-19
+
 ### Eklendi
 - **Resmi tatiller**: Türkiye ulusal günleri ve dini bayramlar (2024-2035, 2028+ tahmin) ay/hafta/gün görünümünde okunur şerit olarak; Ayarlar'dan kapatılır. Takvime/`.ics`/senkrona yazılmaz.
+
+### Değişti
+- **Yeni görsel dil**: ay hücreleri yuvarlak kart, hafta/gün ızgarası hayalet çizgili, bugün vurgulu; formlar kart gruplu.
+
+### Düzeltildi
+- **Ağ kipi**: tarayıcıdan yazma 403 `kaynak_guvensiz` veriyordu; sunucu loopback dışına bağlıyken `Origin == "http://" + Host` artık kabul ediliyor.
+- **Saat değişimi (DST)**: tüm gün etkinliği taşıma/bölme bitişi geçiş gününde kayıyordu.
+- **Görev formu**: ilk yükleme bitmeden `+` düğmesine tıklamak formu açmıyordu (CI'daki kararsız test).
 
 ## [1.10.1] - 2026-11-10
 
