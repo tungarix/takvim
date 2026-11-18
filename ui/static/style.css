@@ -34,6 +34,11 @@
   --rozet-metin: #e3b341;
   --rozet-zemin: #2a2113;
   --kenar-ince: rgba(255, 255, 255, .18);
+  /* Yeni görsel dil (mobil 0.5.0): ızgara çizgileri "hayalet" -- sınır değil ipucu.
+     Ay hücreleri çizgiyle değil boşluk + yüzey tonuyla ayrılıyor. Çizgi yalnız
+     dekor; hiçbir bilgi onunla taşınmıyor, bu yüzden AA kontrastı aranmaz. */
+  --cizgi-hayalet: rgba(255, 255, 255, .06);
+  --hucre-zemin: var(--yuzey);
   color-scheme: dark;
 
   /* Yeni takvim için varsayılan renk ÖNERİSİ; kullanıcı yine serbest hex
@@ -51,6 +56,8 @@
   --dugme-yukseklik: 36px;
   --girdi-yukseklik: 36px;
   --yaricap: 6px;
+  --yaricap-kart: 14px;
+  --yazi-gun-no: 16px; /* ay hücresi gün numarası: 11/13/20 ölçeğine eklenen tek boyut */
 
   --saat-genislik: 64px;
   --saat-yukseklik: 48px;
@@ -87,6 +94,8 @@
   --rozet-metin: #7a5410;
   --rozet-zemin: #f6e9c8;
   --kenar-ince: rgba(29, 27, 24, .22);
+  --cizgi-hayalet: rgba(29, 27, 24, .07);
+  --hucre-zemin: #fbf8f2;
   color-scheme: light;
 }
 
@@ -458,13 +467,12 @@ html, body {
 .gun-basligi {
   padding: 8px 6px;
   text-align: center;
-  border-left: 1px solid var(--cizgi-soluk);
 }
-.gun-basligi .ad { font-size: 12px; color: var(--metin-soluk); text-transform: uppercase; letter-spacing: .6px; }
+.gun-basligi .ad { font-size: 11px; color: var(--metin-soluk); text-transform: uppercase; letter-spacing: .6px; }
 .gun-basligi .sayi { font-size: 20px; font-weight: 550; margin-top: 2px; }
 .gun-basligi.bugun .sayi {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 30px; height: 30px; border-radius: var(--yaricap);
+  width: 32px; height: 32px; border-radius: 10px;
   background: var(--vurgu); color: var(--vurgu-ink);
 }
 .gun-basligi.bugun .ad { color: var(--vurgu); }
@@ -527,7 +535,7 @@ html, body {
 
 .gun-sutun {
   position: relative;
-  border-left: 1px solid var(--cizgi-soluk);
+  border-left: 1px solid var(--cizgi-hayalet);
 }
 .gun-sutun.bugun { background: var(--bugun); }
 
@@ -535,7 +543,7 @@ html, body {
 .saat-cizgi {
   position: absolute;
   left: 0; right: 0;
-  border-top: 1px solid var(--cizgi-soluk);
+  border-top: 1px solid var(--cizgi-hayalet);
   pointer-events: none;
 }
 
@@ -837,7 +845,6 @@ kbd {
   text-transform: uppercase;
   letter-spacing: .6px;
   color: var(--metin-soluk);
-  border-left: 1px solid var(--cizgi-soluk);
 }
 
 .ay-izgara {
@@ -845,13 +852,15 @@ kbd {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   grid-auto-rows: 1fr;
+  gap: 4px;
+  padding: 4px 8px 8px;
   min-height: 0;
   overflow-y: auto;
 }
 
 .ay-hucre {
-  border-left: 1px solid var(--cizgi-soluk);
-  border-top: 1px solid var(--cizgi-soluk);
+  background: var(--hucre-zemin);
+  border-radius: 10px;
   padding: 4px;
   min-width: 0;
   min-height: 90px;
@@ -860,18 +869,19 @@ kbd {
   gap: 2px;
   overflow: hidden;
 }
-.ay-hucre.disarida { background: var(--zemin); }
+.ay-hucre.disarida { background: transparent; }
 .ay-hucre.disarida .ay-gun-no { color: var(--metin-silik); }
-.ay-hucre.bugun { background: var(--bugun); }
+.ay-hucre.bugun { background: var(--hucre-zemin); }
 
-.ay-gun-no { font-size: 12px; color: var(--metin-soluk); padding: 1px 3px; }
+.ay-gun-no { font-size: var(--yazi-gun-no); font-weight: 500; line-height: 1.25; color: var(--metin); padding: 1px 4px; }
 .ay-hucre.bugun .ay-gun-no {
   align-self: flex-start;
   background: var(--vurgu);
   color: var(--vurgu-ink);
-  border-radius: var(--yaricap);
-  min-width: 20px;
+  border-radius: 8px;
+  min-width: 26px;
   text-align: center;
+  font-weight: 600;
 }
 
 /* .ay-blok / .ay-daha artık <button> (klavye/ekran okuyucu erişimi için) --
@@ -1072,8 +1082,11 @@ kbd {
   width: min(420px, calc(100vw - 48px));
   background: var(--yuzey);
   border: 1px solid var(--cizgi);
-  border-radius: var(--yaricap);
+  border-radius: 20px;
   padding: 20px;
+  /* Kart grubu kutuyu uzattı: kısa pencerede düğmeler ekran dışına düşmesin. */
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
   box-shadow: 0 18px 48px rgba(0, 0, 0, .6);
 }
 .modal-baslik { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
@@ -1084,7 +1097,11 @@ kbd {
   white-space: pre-line; /* mesajlardaki \n gerçek satır sonu olsun */
 }
 .modal-metin:empty { display: none; }
-.modal-alanlar { display: grid; gap: 10px; margin-top: 14px; }
+.modal-alanlar {
+  display: grid; gap: 10px; margin-top: 14px;
+  /* Alanlar tek yuvarlak kart grubu: mobil formundaki "grup" hissi. */
+  background: var(--yuzey-2); border-radius: var(--yaricap-kart); padding: 12px;
+}
 .modal-alan { display: grid; gap: 4px; }
 .modal-alan.dar { grid-template-columns: 1fr 1fr; gap: 8px; align-items: end; }
 .modal-etiket { font-size: 12px; color: var(--metin-soluk); }
