@@ -16,7 +16,7 @@ GitHub [Releases](https://github.com/tungarix/takvim/releases) sayfasında
 - **Yeni görsel dil**: ay hücreleri yuvarlak kart, hafta/gün ızgarası hayalet çizgili, bugün vurgulu; formlar kart gruplu.
 
 ### Düzeltildi
-- **Ağ kipi**: tarayıcıdan yazma 403 `kaynak_guvensiz` veriyordu; sunucu loopback dışına bağlıyken `Origin == "http://" + Host` artık kabul ediliyor.
+- **Ağ kipi**: tarayıcıdan yazma 403 `kaynak_guvensiz` veriyordu; sunucu loopback dışına bağlıyken `Origin == "http://" + Host` artık kabul ediliyor; Host bir IP değilse (alan adı) reddedilir, böylece DNS rebinding ile tarayıcıdan yazma açılmaz.
 - **Saat değişimi (DST)**: tüm gün etkinliği taşıma/bölme bitişi geçiş gününde kayıyordu.
 - **Görev formu**: ilk yükleme bitmeden `+` düğmesine tıklamak formu açmıyordu (CI'daki kararsız test).
 

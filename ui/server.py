@@ -11,6 +11,7 @@ Sunucu ince tutuldu: hafta/ay mantığı `ui/presenter.py`, zaman ayrıştırma
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import mimetypes
 import os
@@ -328,7 +329,16 @@ class _Handler(BaseHTTPRequestHandler):
         # eşleşmez, yine reddedilir. Loopback'te bu yol HİÇ çalışmaz (AGENTS 40).
         if str(host).lower() in _LOOPBACK_ADRESLERI:
             return False
-        return kaynak == f"http://{self.headers.get('Host')}"
+        # DNS rebinding: saldırgan alan adı LAN IP'sine çözülürse Origin ve Host
+        # aynı saldırgan adı olur. Alan adı yazma yetkisi vermez: Host IP olmalı.
+        host_basligi = self.headers.get("Host") or ""
+        if kaynak != f"http://{host_basligi}":
+            return False
+        try:
+            ipaddress.ip_address(urlparse("//" + host_basligi).hostname or "")
+        except ValueError:
+            return False
+        return True
 
     def _guvensizi_reddet(self, mesaj: str, kod: str) -> None:
         """Güvensiz bir isteği 403 ile reddeder; ÖNCE gövdeyi okuyup atar.

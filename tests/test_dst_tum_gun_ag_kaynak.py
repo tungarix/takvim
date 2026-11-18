@@ -107,6 +107,18 @@ def test_ag_kipinde_ayni_koken_gecer_farkli_origin_403(repo):
         httpd.server_close()
 
 
+def test_ag_kipinde_rebinding_alan_adi_403(repo):
+    httpd = _sunucu(repo, "0.0.0.0")
+    try:
+        port = httpd.server_address[1]
+        ad = f"kotu.example:{port}"
+        assert _post(port, f"http://{ad}", ad) == 403  # Origin == Host ama IP degil
+        assert _post(port, f"http://[fe80::1]:{port}", f"[fe80::1]:{port}") != 403
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
 def test_loopback_kipinde_ayni_koken_kurali_isletilmez(repo):
     httpd = _sunucu(repo, "127.0.0.1")
     try:
