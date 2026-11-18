@@ -35,6 +35,7 @@ from core import (
     parse_iso,
     series_end,
 )
+from core.recurrence import _bitis  # tüm gün bitişi yerel duvar saatiyle (AGENTS 13)
 
 from .migrator import migrate
 
@@ -403,7 +404,7 @@ def _seriyi_bol(
         calendar_id=event.calendar_id,
         title=event.title,
         start_utc=yeni_bas,
-        end_utc=yeni_bas + sure,
+        end_utc=_bitis(event, yeni_bas, sure),
         tzid=event.tzid,
         all_day=event.all_day,
         rrule=yeni_rrule,
@@ -992,7 +993,7 @@ class Repo:
             if event is None:
                 raise LookupError(f"Etkinlik bulunamadı: id={override.event_id}")
             resolved = replace(
-                override, new_end_utc=override.new_start_utc + event.duration
+                override, new_end_utc=_bitis(event, override.new_start_utc, event.duration),
             )
 
         self.conn.execute(
@@ -1193,7 +1194,7 @@ class Repo:
                     and ov.new_start_utc is not None
                 ):
                     bas = ov.new_start_utc
-                    bit = ov.new_end_utc or (ov.new_start_utc + event.duration)
+                    bit = ov.new_end_utc or _bitis(event, ov.new_start_utc, event.duration)
             sonuc[event_id] = (bas, bit)
         return sonuc
 

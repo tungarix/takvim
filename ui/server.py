@@ -318,7 +318,17 @@ class _Handler(BaseHTTPRequestHandler):
         if kaynak is None:
             return True
         host, port = self.server.server_address[0], self.server.server_address[1]
-        return kaynak in (f"http://{host}:{port}", f"http://localhost:{port}")
+        if kaynak in (f"http://{host}:{port}", f"http://localhost:{port}"):
+            return True
+        # Ağ kipi (`--host 0.0.0.0 --ag-erisimine-izin-ver`): tarayıcı Origin'i
+        # `http://<ip>:<port>` gönderir, yukarıdaki listede yok ve TÜM yazan
+        # istekler 403 alıyordu. Bu kipte API zaten kimliksiz ve ağdaki herkes
+        # doğrudan yazabiliyor (AGENTS 65), yani aynı-köken kabulü yeni yüzey
+        # açmıyor. Çapraz köken (başka bir sayfanın Origin'i, Host bizim adres)
+        # eşleşmez, yine reddedilir. Loopback'te bu yol HİÇ çalışmaz (AGENTS 40).
+        if str(host).lower() in _LOOPBACK_ADRESLERI:
+            return False
+        return kaynak == f"http://{self.headers.get('Host')}"
 
     def _guvensizi_reddet(self, mesaj: str, kod: str) -> None:
         """Güvensiz bir isteği 403 ile reddeder; ÖNCE gövdeyi okuyup atar.
