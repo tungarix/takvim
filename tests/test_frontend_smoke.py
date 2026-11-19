@@ -30,6 +30,16 @@ from ui.server import make_server
 from ui.surum import SURUM
 
 
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    """Tarayıcı saat dilimi sunucununkine (IST) sabit.
+
+    Aksi halde CI (UTC) ile sunucunun "bugün"ü 21:00-24:00 UTC arasında farklı
+    güne düşer; ızgara (tarayıcı günü) ile görev listesi (sunucu günü) ayrışır.
+    """
+    return {**browser_context_args, "timezone_id": IST}
+
+
 @pytest.fixture
 def sunucu():
     """Bellek veritabanıyla gerçek HTTP sunucusu, rastgele boş portta."""
