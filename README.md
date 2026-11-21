@@ -8,6 +8,23 @@
 
 ![Takvim ekran görüntüsü](docs/screenshot.png)
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+- **Committers, reviewers and approvers:** [@tungarix](https://github.com/tungarix)
+  (sole maintainer).
+- Only binaries built from this repository by the public GitHub Actions workflow
+  ([`release.yml`](.github/workflows/release.yml)) are signed.
+
+### Privacy policy
+
+This program will not transfer any information to other networked systems unless
+specifically requested by the user or the person installing or operating it. The only
+network requests are the optional update check against GitHub releases of this repository
+(off until the user opts in) and the local-network phone pairing the user starts.
+
 ---
 
 ## English
